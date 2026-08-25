@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+window.onerror = function(msg, url, line, col, error) {
+    fetch('/log_error', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({msg: msg, line: line, col: col}) });
+};
+window.addEventListener('unhandledrejection', function(e) {
+    fetch('/log_error', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({msg: e.reason ? e.reason.message || e.reason : 'Promise rejected'}) });
+});
+</script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔨 Auction Pro Suite</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #09090b; color: #fafaf9; min-height: 100vh; }
+        .fredoka { font-family: 'Fredoka', sans-serif; }
+        .space-grotesk { font-family: 'Space Grotesk', sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+        input[type=number] { -moz-appearance: textfield; }
+
+        /* ── Animations ── */
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes scaleIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
+        @keyframes bounceIn { 0% { transform: scale(0.3); opacity: 0; } 50% { transform: scale(1.05); } 70% { transform: scale(0.95); } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        @keyframes glowPulse { 0%, 100% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.15); } 50% { box-shadow: 0 0 40px rgba(245, 158, 11, 0.35); } }
+        @keyframes confettiFall { 0% { opacity: 1; transform: translateY(0) rotate(0) scale(1); } 100% { opacity: 0; transform: translateY(650px) rotate(720deg) scale(0.4); } }
+        @keyframes spinPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.5); } 50% { box-shadow: 0 0 0 16px rgba(245,158,11,0); } }
+        @keyframes gavelSlam { 0% { transform: scale(1); } 15% { transform: scale(1.15) rotate(-2deg); } 30% { transform: scale(0.95) rotate(1deg); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        @keyframes bidPop { 0% { transform: scale(1); } 50% { transform: scale(1.08); } 100% { transform: scale(1); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes cardLift { from { transform: translateY(0); box-shadow: 0 1px 3px rgba(0,0,0,0.3); } to { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.4); } }
+
+        .anim-slideUp { animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        .anim-scaleIn { animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        .anim-bounceIn { animation: bounceIn 0.5s ease-out forwards; }
+        .anim-float { animation: float 3s ease-in-out infinite; }
+        .anim-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
+        .anim-gavelSlam { animation: gavelSlam 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        .anim-bidPop { animation: bidPop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+
+        /* ── Premium Shimmer (Warm Gold) ── */
+        .shimmer-text {
+            background: linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b, #d97706, #f59e0b);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: shimmer 3s linear infinite;
+        }
+        .gold-gradient { background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%); }
+
+        /* ── Glass Card ── */
+        .glass-card {
+            background: rgba(24, 24, 27, 0.8);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(63, 63, 70, 0.5);
+        }
+
+        /* ── Glow ring on active bid ── */
+        .bid-glow {
+            text-shadow: 0 0 60px rgba(245, 158, 11, 0.3), 0 0 120px rgba(245, 158, 11, 0.1);
+        }
+    </style>
+</head>
+<body class="selection:bg-amber-600/40">
+    <div id="root"></div>
+    <script type="text/babel" src="/static/app.jsx"></script>
+</body>
+</html>

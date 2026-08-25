@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Spectator Screen — Pro Auction</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #09090b; color: white; }
+        .fredoka { font-family: 'Fredoka', sans-serif; }
+        .space-grotesk { font-family: 'Space Grotesk', sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 10px; }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes bidPop { 0% { transform: scale(1); } 50% { transform: scale(1.08); } 100% { transform: scale(1); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .shimmer-text { background: linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b, #d97706, #f59e0b); background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: shimmer 3s linear infinite; }
+        .anim-slideUp { animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        .anim-bidPop { animation: bidPop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        .anim-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
+        .glass-card { background: rgba(24, 24, 27, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(63, 63, 70, 0.5); }
+        .bid-glow { text-shadow: 0 0 60px rgba(245, 158, 11, 0.3), 0 0 120px rgba(245, 158, 11, 0.1); }
+            @keyframes ticker { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } }
+        .ticker-wrap { width: 100%; overflow: hidden; background: #d97706; color: black; font-weight: bold; font-family: "Space Grotesk", sans-serif; letter-spacing: 0.5px; border-top: 1px solid #f59e0b; position: fixed; bottom: 0; left: 0; z-index: 50; display: flex; align-items: center; padding: 0.4rem 0; box-shadow: 0 -4px 15px rgba(245, 158, 11, 0.2); }
+        .ticker-text { white-space: nowrap; animation: ticker 25s linear infinite; padding-right: 50px; }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div id="root"></div>
+    <script type="text/babel">
+        {% raw %}
+        const { useState, useEffect, useRef } = React;
+
+        const PALETTE = ['#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#f97316', '#06b6d4', '#14b8a6', '#ef4444', '#84cc16', '#a855f7', '#6366f1'];
+        const getCatColor = (category) => {
+            if (!category) return '#71717a';
+            let hash = 0;
+            for (let i = 0; i < category.length; i++) {
+                hash = category.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            return PALETTE[Math.abs(hash) % PALETTE.length];
+        };
+
+        const PlayerPhoto = ({ url, name, size = 44 }) => {
+            const [imgError, setImgError] = useState(false);
+            useEffect(() => { setImgError(false); }, [url]);
+            const initials = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+            const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
+            const color = colors[(name || '').charCodeAt(0) % colors.length];
+            if (url && !imgError) return <img src={url} alt={name} onError={() => setImgError(true)} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', border: '3px solid rgba(255,255,255,0.2)', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }} />;
+            return <div style={{ width: size, height: size, borderRadius: '50%', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: size * 0.35, border: '3px solid rgba(255,255,255,0.2)', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>{initials}</div>;
+        };
+
+        const CatBadge = ({ category }) => {
+            const color = getCatColor(category);
+            return <span className="text-[0.65rem] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full" style={{ background: color + '25', color: color, border: `1px solid ${color}50` }}>{category}</span>;
+        };
+
+        const PlayerAttributesBadges = ({ attributes, max = 5, className = "" }) => {
+            if (!attributes || typeof attributes !== 'object') return null;
+            const entries = Object.entries(attributes).filter(([k, v]) => {
+                if (v === null || v === undefined || String(v).trim() === '') return false;
+                const kl = k.toLowerCase();
+                return !['name', 'photo', 'id', 'category', 'base_price', 'photo_url', 'team_id', 'sold_price', 'status', 'sold_at'].includes(kl);
+            });
+            if (entries.length === 0) return null;
+
+            return (
+                <div className={`flex flex-wrap items-center gap-1.5 ${className}`}>
+                    {entries.slice(0, max).map(([key, val]) => (
+                        <span key={key} className="text-[0.65rem] bg-zinc-900/90 text-zinc-300 border border-zinc-800 px-2 py-0.5 rounded-lg font-semibold flex items-center gap-1 shadow-sm">
+                            <span className="text-zinc-500 font-bold uppercase text-[0.55rem]">{key}:</span>
+                            <span className="text-white font-bold">{String(val)}</span>
+                        </span>
+                    ))}
+                </div>
+            );
+        };
+
+        function LiveView() {
+            const [data, setData] = useState(null);
+            const [activeTab, setActiveTab] = useState('stage'); // stage, teams, remaining, sold, leaderboard
+            const [searchQuery, setSearchQuery] = useState('');
+            const [categoryFilter, setCategoryFilter] = useState('all');
+            const [selectedTeam, setSelectedTeam] = useState(null);
+            const [isFullscreen, setIsFullscreen] = useState(false);
+
+            const loadData = async () => {
+                try {
+                    const res = await fetch('/api/live_data');
+                    if (res.ok) {
+                        const d = await res.json();
+                        setData(d);
+                    }
+                } catch(e) {}
+            };
+
+            useEffect(() => {
+                loadData();
+                const interval = setInterval(loadData, 2000);
+                return () => clearInterval(interval);
+            }, []);
+
+            const toggleFullscreen = () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(() => {});
+                    setIsFullscreen(true);
+                } else {
+                    document.exitFullscreen().catch(() => {});
+                    setIsFullscreen(false);
+                }
+            };
+
+            if (!data) return <div className="min-h-screen bg-[#09090b] flex items-center justify-center"><div className="text-center"><div className="text-5xl mb-3 animate-bounce">🔨</div><p className="fredoka text-xl text-amber-500/80">Connecting to auction...</p></div></div>;
+
+            const state = data.auction_state || {};
+            const isBiddingActive = !!state.current_player;
+            const teams = data.teams || [];
+            const soldPlayers = data.sold_players || [];
+            const unsoldPlayers = data.unsold_players || [];
+            const stats = data.stats || {};
+            const categoriesStats = stats.categories || [];
+            const eventName = data.config?.event_name || 'Live Auction';
+
+            
+            const getTickerContent = () => {
+                if (!soldPlayers || soldPlayers.length === 0) return "🔥 Welcome to the Live Auction! Get ready for the first bid.";
+                
+                const sorted = [...soldPlayers].sort((a, b) => b.sold_price - a.sold_price);
+                const topOverall = sorted[0];
+                
+                const catRecords = {};
+                sorted.forEach(p => {
+                    if (p.category && !catRecords[p.category]) catRecords[p.category] = p;
+                });
+                
+                const latest = [...soldPlayers].reverse().slice(0, 3);
+                
+                let parts = [];
+                parts.push(`🏆 OVERALL RECORD: ${topOverall.name} (${topOverall.team_name}) - ${topOverall.sold_price}L`);
+                
+                const catKeys = Object.keys(catRecords).slice(0, 4);
+                catKeys.forEach(c => {
+                    if (catRecords[c].sold_price > 0) parts.push(`🏅 TOP ${c.toUpperCase()}: ${catRecords[c].name} - ${catRecords[c].sold_price}L`);
+                });
+                
+                latest.forEach(p => {
+                    parts.push(`⚡ LATEST: ${p.name} sold to ${p.team_name} for ${p.sold_price}L`);
+                });
+                
+                return parts.join('   •   ');
+            };
+
+            // Filter remaining
+            const filteredUnsold = unsoldPlayers.filter(p => {
+                const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+                const matchesCat = categoryFilter === 'all' || p.category === categoryFilter;
+                return matchesSearch && matchesCat;
+            });
+
+            const allCategories = [...new Set(unsoldPlayers.map(p => p.category).filter(Boolean))];
+
+            return (
+                <div className="min-h-screen flex flex-col pb-10 bg-[#09090b] text-white selection:bg-amber-500/30">
+                    {/* Header */}
+                                        <header className="bg-zinc-900/90 backdrop-blur-md border-b border-zinc-800 sticky top-0 z-30 px-4 md:px-6 py-3 md:py-3.5 flex flex-col gap-3 md:gap-4 shadow-lg">
+                        
+                        <div className="flex justify-between items-start md:items-center w-full">
+                            <div className="flex items-center gap-3 md:gap-4">
+                                <div className="w-10 h-10 md:w-11 md:h-11 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl flex items-center justify-center text-lg md:text-xl shadow-lg shadow-amber-500/20 shrink-0">🔨</div>
+                                <div className="min-w-0">
+                                    <h1 className="fredoka text-lg md:text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-400 truncate">{eventName}</h1>
+                                    <div className="flex items-center gap-1.5 md:gap-2 mt-0.5">
+                                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse shrink-0"></div>
+                                        <span className="text-[0.55rem] md:text-[0.65rem] font-extrabold uppercase tracking-widest text-red-400 whitespace-nowrap">Live Feed</span>
+                                        <span className="text-zinc-600 hidden sm:inline">•</span>
+                                        <span className="text-[0.55rem] md:text-[0.65rem] font-bold text-zinc-400 hidden sm:inline">Auto-updating</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button onClick={toggleFullscreen} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 md:px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center border border-zinc-700 h-10 md:h-11">
+                                    <i className={`fa-solid ${isFullscreen ? 'fa-compress' : 'fa-expand'}`}></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Navigation Tabs */}
+                        <div className="flex items-center gap-1.5 bg-zinc-950/80 p-1 rounded-2xl border border-zinc-800 w-full overflow-x-auto hide-scrollbar">
+                            {[
+                                { id: 'stage', label: '🎯 Live Stage', highlight: isBiddingActive },
+                                { id: 'teams', label: `🛡️ Teams (${teams.length})` },
+                                { id: 'remaining', label: `⏳ Pool (${unsoldPlayers.length})` },
+                                { id: 'sold', label: `🏆 Sold (${soldPlayers.length})` },
+                                { id: 'leaderboard', label: '📊 Stats' }
+                            ].map(t => (
+                                <button
+                                    key={t.id}
+                                    onClick={() => setActiveTab(t.id)}
+                                    className={`px-3 md:px-4 py-2 rounded-xl text-[0.65rem] md:text-xs font-extrabold uppercase tracking-wider transition-all flex items-center gap-1.5 shrink-0 ${
+                                        activeTab === t.id
+                                            ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-black shadow-lg shadow-amber-500/30'
+                                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/80'
+                                    }`}
+                                >
+                                    {t.label}
+                                    {t.highlight && <span className="w-2 h-2 bg-red-400 rounded-full animate-ping shrink-0"></span>}
+                                </button>
+                            ))}
+                        </div>
+                    </header>
+
+                    {/* Main Content Area */}
+                    <main className="flex-1 p-6 max-w-[1700px] w-full mx-auto">
+                        {/* TAB 1: LIVE STAGE */}
+                        {activeTab === 'stage' && (
+                            <div className="space-y-6 anim-slideUp">
+                                {/* Top Banner: Active Bidder Stage */}
+                                {isBiddingActive ? (
+                                    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-zinc-900 via-amber-950/20 to-zinc-900 border-2 border-amber-500/30 p-10 shadow-[0_0_50px_rgba(245,158,11,0.1)]">
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
+                                            <div className="flex items-center gap-2 bg-amber-500/20 border border-amber-500/40 px-4 py-1 rounded-full">
+                                                <div className="w-2 h-2 bg-amber-400 rounded-full animate-ping"></div>
+                                                <span className="fredoka text-amber-400 text-xs font-bold uppercase tracking-widest">Under the Hammer</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col md:flex-row items-center justify-between gap-8 mt-4">
+                                            {/* Player Details */}
+                                            <div className="flex items-center gap-6">
+                                                <PlayerPhoto url={state.photo_url} name={state.current_player} size={130} />
+                                                <div>
+                                                    <div className="mb-2">
+                                                        {state.category && <CatBadge category={state.category} />}
+                                                    </div>
+                                                    <h2 className="fredoka text-5xl font-bold text-white tracking-tight">{state.current_player}</h2>
+                                                    {state.base_price && (
+                                                        <div className="mt-2 text-zinc-400 font-bold text-sm">
+                                                            Base Price: <span className="text-white font-bold">₹{state.base_price} Lakhs</span>
+                                                        </div>
+                                                    )}
+                                                    {state.attributes && <PlayerAttributesBadges attributes={state.attributes} max={6} className="mt-3" />}
+                                                </div>
+                                            </div>
+
+                                            {/* Big Current Bid */}
+                                            <div className="text-center md:text-right bg-zinc-950/60 p-8 rounded-3xl border border-zinc-800 bid-glow anim-bidPop">
+                                                <div className="fredoka text-zinc-400 text-xs font-bold uppercase tracking-[0.3em] mb-1">Current Live Bid</div>
+                                                <div className="space-grotesk text-7xl font-bold shimmer-text leading-none">
+                                                    ₹{state.current_bid || 0}L
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-3xl bg-zinc-900/50 border border-zinc-800 p-12 text-center">
+                                        <div className="text-6xl mb-3 animate-pulse">🔨</div>
+                                        <h2 className="fredoka text-3xl font-bold text-zinc-300">Auction in Progress</h2>
+                                        <p className="text-zinc-500 text-sm mt-1 font-semibold">Waiting for the auctioneer to draw the next player...</p>
+                                    </div>
+                                )}
+
+                                {/* Quick Franchise HUD */}
+                                <div>
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
+                                        <h3 className="fredoka text-lg font-bold text-zinc-300 flex items-center gap-2">
+                                            🛡️ Franchise Purses & Squads
+                                        </h3>
+                                        <span className="text-xs font-bold text-zinc-500">Click any team for full squad</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        {teams.map(t => {
+                                            const pct = Math.max(0, Math.min(100, (t.remaining_budget / t.total_budget) * 100));
+                                            return (
+                                                <div
+                                                    key={t.id}
+                                                    onClick={() => setSelectedTeam(t)}
+                                                    className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 hover:border-amber-500/50 hover:bg-zinc-800 hover:translate-y-[-2px] transition-all duration-300 cursor-pointer group shadow-lg"
+                                                >
+                                                    <div className="flex justify-between items-start mb-2.5">
+                                                        <div className="flex items-center gap-2.5">
+                                                            <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white fredoka font-bold text-sm shadow" style={{ background: t.color || '#3b82f6' }}>
+                                                                {t.logo_url ? <img src={t.logo_url} className="w-6 h-6 object-contain" /> : t.name[0]}
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="font-extrabold text-white text-sm truncate max-w-[120px]">{t.name}</h4>
+                                                                <span className="text-[0.6rem] text-zinc-400 font-bold">{t.player_count || 0}/{t.target_squad_size || 10} players</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-[0.55rem] text-amber-400 font-bold uppercase">Max Bid</div>
+                                                            <div className="fredoka font-bold text-base text-amber-300">
+                                                                ₹{t.max_allowed_bid}L
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="bg-zinc-800 rounded-full h-1.5 overflow-hidden mb-2">
+                                                        <div className={`h-full rounded-full transition-all duration-700 ${pct > 50 ? 'bg-gradient-to-r from-green-500 to-emerald-400' : pct > 20 ? 'bg-gradient-to-r from-yellow-500 to-amber-400' : 'bg-gradient-to-r from-red-500 to-rose-400'}`} style={{ width: `${pct}%` }}></div>
+                                                    </div>
+                                                    <div className="flex justify-between text-[0.65rem] text-zinc-400 font-bold">
+                                                        <span>Purse: <strong className="text-white">₹{t.remaining_budget}L</strong></span>
+                                                        <span>Needs: <strong className="text-amber-400">{t.needed_players || 0}</strong></span>
+                                                    </div>
+                                                    {/* Requirements tags */}
+                                                    {t.fulfillment && t.fulfillment.filter(f => f.min > 0).length > 0 && (
+                                                        <div className="flex flex-wrap gap-1 mt-2">
+                                                            {t.fulfillment.filter(f => f.min > 0).map((f, fi) => (
+                                                                <span key={fi} className={`text-[0.5rem] font-extrabold px-1.5 py-0.5 rounded-full ${f.have > f.min ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : f.met ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>
+                                                                    {f.category}: {f.have}/{f.min} {f.have > f.min ? '✨' : f.met ? '✓' : '⚠️'}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB 2: TEAMS & SQUADS */}
+                        {activeTab === 'teams' && (
+                            <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 anim-slideUp">
+                                {teams.map(t => {
+                                    const pct = Math.max(0, Math.min(100, (t.remaining_budget / t.total_budget) * 100));
+                                    return (
+                                        <div key={t.id} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-xl space-y-4 hover:translate-y-[-2px] transition-all duration-300 hover:border-zinc-700">
+                                            <div className="flex justify-between items-start pb-3 border-b border-zinc-800">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white fredoka font-bold text-xl shadow-lg" style={{ background: t.color || '#3b82f6' }}>
+                                                        {t.logo_url ? <img src={t.logo_url} className="w-9 h-9 object-contain" /> : t.name[0]}
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="fredoka text-xl font-bold text-white">{t.name}</h3>
+                                                        <p className="text-xs text-zinc-400 font-bold">{t.player_count || 0}/{t.target_squad_size || 10} players • ₹{(t.total_budget - t.remaining_budget).toFixed(1)}L spent</p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-[0.6rem] text-amber-400 font-extrabold uppercase">Max Allowed Bid</div>
+                                                    <div className="fredoka text-2xl font-bold text-amber-300">₹{t.max_allowed_bid}L</div>
+                                                </div>
+                                            </div>
+
+                                            {/* Purse & Reserved breakdown */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 bg-zinc-950 p-3 rounded-2xl border border-zinc-800 text-xs">
+                                                <div>
+                                                    <span className="text-[0.6rem] text-zinc-500 font-extrabold uppercase block">Remaining Purse</span>
+                                                    <span className={`fredoka text-base font-bold ${pct > 20 ? 'text-green-400' : 'text-red-400'}`}>₹{t.remaining_budget}L</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="text-[0.6rem] text-zinc-500 font-extrabold uppercase block">Reserved Purse</span>
+                                                    <span className="fredoka text-sm font-bold text-amber-400">₹{t.reserved_purse}L <span className="text-[0.6rem] text-zinc-400">({t.reserved_spots} spots)</span></span>
+                                                </div>
+                                            </div>
+
+                                            {/* Budget progress bar */}
+                                            <div className="bg-zinc-800 rounded-full h-2 overflow-hidden">
+                                                <div className={`h-full rounded-full transition-all duration-700 ${pct > 50 ? 'bg-green-400' : pct > 20 ? 'bg-yellow-400' : 'bg-red-400'}`} style={{ width: `${pct}%` }}></div>
+                                            </div>
+
+                                            {/* Squad members */}
+                                            <div>
+                                                <h4 className="text-xs font-extrabold text-zinc-400 uppercase tracking-widest mb-2.5">Squad Roster ({t.players?.length || 0})</h4>
+                                                {(!t.players || t.players.length === 0) ? (
+                                                    <p className="text-xs text-zinc-600 font-bold py-3 text-center">No players bought yet</p>
+                                                ) : (
+                                                    <div className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar pr-1">
+                                                        {t.players.map(p => (
+                                                            <div key={p.id} className="flex items-center gap-3 p-2 bg-zinc-950/60 rounded-xl border border-zinc-800/80">
+                                                                <PlayerPhoto url={p.photo_url} name={p.name} size={32} />
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="font-bold text-white text-xs truncate">{p.name}</div>
+                                                                    <div className="flex items-center gap-1 mt-0.5">
+                                                                        {p.category && <CatBadge category={p.category} />}
+                                                                    </div>
+                                                                    {p.attributes && <PlayerAttributesBadges attributes={p.attributes} max={2} className="mt-1" />}
+                                                                </div>
+                                                                <div className="fredoka font-bold text-amber-400 text-xs">₹{p.sold_price}L</div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {/* TAB 3: REMAINING POOL */}
+                        {activeTab === 'remaining' && (
+                            <div className="space-y-6 anim-slideUp">
+                                {/* Search & Filters */}
+                                <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 flex flex-col md:flex-row gap-4 items-center justify-between">
+                                    <div className="relative w-full md:w-80">
+                                        <i className="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 text-sm"></i>
+                                        <input
+                                            type="text"
+                                            placeholder="Search players..."
+                                            className="w-full bg-zinc-950 border border-zinc-700 text-white pl-9 pr-4 py-2 rounded-xl text-sm font-bold focus:border-amber-500 outline-none"
+                                            value={searchQuery}
+                                            onChange={e => setSearchQuery(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {['all', ...allCategories].map(cat => (
+                                            <button
+                                                key={cat}
+                                                onClick={() => setCategoryFilter(cat)}
+                                                className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition ${
+                                                    categoryFilter === cat
+                                                        ? 'bg-amber-600 text-white'
+                                                        : 'bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700'
+                                                }`}
+                                            >
+                                                {cat}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Player Grid */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3.5">
+                                    {filteredUnsold.map(p => (
+                                        <div key={p.id} className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 flex flex-col items-center text-center hover:border-amber-500/50 hover:translate-y-[-2px] transition-all duration-300">
+                                            <PlayerPhoto url={p.photo_url} name={p.name} size={64} />
+                                            <h4 className="font-extrabold text-white text-sm mt-3 line-clamp-1">{p.name}</h4>
+                                            <div className="mt-1.5">{p.category && <CatBadge category={p.category} />}</div>
+                                            {p.attributes && <PlayerAttributesBadges attributes={p.attributes} max={2} className="mt-1.5 justify-center" />}
+                                            <div className="mt-2 text-xs text-zinc-400 font-bold bg-zinc-950 px-3 py-1 rounded-full border border-zinc-800">
+                                                Base: <span className="text-white font-bold">₹{p.base_price}L</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB 4: SOLD PLAYERS */}
+                        {activeTab === 'sold' && (
+                            <div className="space-y-4 anim-slideUp">
+                                <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 flex justify-between items-center">
+                                    <h3 className="fredoka text-lg font-bold text-white">🏆 Sold Players Feed ({soldPlayers.length})</h3>
+                                    <span className="text-xs text-zinc-400 font-bold">Total Spent: <span className="text-amber-400 font-bold">₹{stats.spent || 0}L</span></span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {soldPlayers.map(p => (
+                                        <div key={p.id} className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4 flex items-center gap-4 hover:border-amber-500/30 hover:translate-y-[-2px] transition-all duration-300">
+                                            <PlayerPhoto url={p.photo_url} name={p.name} size={50} />
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-extrabold text-white text-sm truncate">{p.name}</div>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    {p.category && <CatBadge category={p.category} />}
+                                                    <span className="text-xs text-zinc-400 font-bold">→ {p.team_name}</span>
+                                                </div>
+                                                {p.attributes && <PlayerAttributesBadges attributes={p.attributes} max={2} className="mt-1" />}
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-[0.6rem] text-zinc-500 font-bold uppercase">Sold for</div>
+                                                <div className="fredoka text-xl font-bold text-amber-400">₹{p.sold_price}L</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB 5: LEADERBOARD & STATS */}
+                        {activeTab === 'leaderboard' && (
+                            <div className="space-y-6 anim-slideUp">
+                                {/* Feature 6: Category Spending Analytics Cards */}
+                                {categoriesStats.length > 0 && (
+                                    <div className="bg-zinc-900 rounded-3xl p-6 border border-zinc-800 space-y-4 shadow-xl hover:border-zinc-700 transition">
+                                        <div className="flex justify-between items-center">
+                                            <h3 className="fredoka text-xl font-bold text-amber-400 flex items-center gap-2">
+                                                📊 Category Spending Distribution
+                                            </h3>
+                                            <span className="text-xs text-zinc-400 font-bold">Total Spend: ₹{stats.spent || 0}L</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-4 lg:grid-cols-3 md:grid-cols-5 lg:grid-cols-7 gap-3">
+                                            {categoriesStats.map((c, i) => (
+                                                <div key={i} className="p-4 bg-zinc-950/70 rounded-2xl border border-zinc-800 space-y-2">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="font-extrabold text-xs text-white truncate">{c.category}</span>
+                                                        <span className="text-[0.65rem] text-zinc-400 font-bold">{c.sold_count}/{c.total}</span>
+                                                    </div>
+                                                    <div className="fredoka text-xl font-bold text-amber-400">₹{c.total_spent}L</div>
+                                                    <div className="bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                                                        <div className="h-full bg-amber-500 rounded-full" style={{ width: `${c.percent_of_total}%` }}></div>
+                                                    </div>
+                                                    <div className="flex justify-between text-[0.6rem] text-zinc-500 font-bold">
+                                                        <span>Avg: ₹{c.avg_price}L</span>
+                                                        <span>{c.percent_of_total}%</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 md:grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Top 5 Expensive Buys */}
+                                    <div className="bg-zinc-900 rounded-3xl p-6 border border-zinc-800 space-y-4 shadow-xl hover:border-zinc-700 transition">
+                                        <h3 className="fredoka text-xl font-bold text-yellow-400 flex items-center gap-2">
+                                            👑 Top 5 Most Expensive Players
+                                        </h3>
+                                        {(!stats.top_buys || stats.top_buys.length === 0) ? (
+                                            <p className="text-sm text-zinc-500 font-bold text-center py-8">No players sold yet</p>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {stats.top_buys.map((b, i) => (
+                                                    <div key={i} className="flex items-center gap-3 p-3 bg-zinc-950/70 rounded-2xl border border-zinc-800">
+                                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${i === 0 ? 'bg-yellow-400 text-black' : i === 1 ? 'bg-zinc-300 text-black' : i === 2 ? 'bg-amber-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}>
+                                                            #{i + 1}
+                                                        </div>
+                                                        <PlayerPhoto url={b.photo_url} name={b.name} size={36} />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="font-extrabold text-white text-sm truncate">{b.name}</div>
+                                                            <div className="text-xs text-zinc-400 font-bold">{b.team_name}</div>
+                                                        </div>
+                                                        <div className="fredoka text-lg font-bold text-amber-400">₹{b.sold_price}L</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Budget Standings */}
+                                    <div className="bg-zinc-900 rounded-3xl p-6 border border-zinc-800 space-y-4 shadow-xl hover:border-zinc-700 transition">
+                                        <h3 className="fredoka text-xl font-bold text-orange-400 flex items-center gap-2">
+                                            💰 Franchise Budget Remaining
+                                        </h3>
+                                        <div className="space-y-3">
+                                            {[...teams].sort((a, b) => b.remaining_budget - a.remaining_budget).map((t, i) => (
+                                                <div key={t.id} className="p-3 bg-zinc-950/70 rounded-2xl border border-zinc-800 space-y-2">
+                                                    <div className="flex justify-between items-center text-sm font-bold">
+                                                        <span className="text-white flex items-center gap-2">
+                                                            <span className="text-zinc-500 text-xs">#{i + 1}</span> {t.name}
+                                                        </span>
+                                                        <span className="fredoka text-amber-400">₹{t.remaining_budget}L</span>
+                                                    </div>
+                                                    <div className="bg-zinc-800 rounded-full h-2 overflow-hidden">
+                                                        <div className="h-full bg-orange-500 rounded-full" style={{ width: `${(t.remaining_budget / t.total_budget) * 100}%` }}></div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {/* Team Details Modal */}
+                    {selectedTeam && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 anim-fadeIn" onClick={() => setSelectedTeam(null)}>
+                            <div className="bg-zinc-900 border border-zinc-700 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 glass-card" onClick={e => e.stopPropagation()}>
+                                <div className="flex justify-between items-center pb-3 border-b border-zinc-800">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white fredoka font-bold text-base shadow-lg" style={{ background: selectedTeam.color || '#3b82f6' }}>
+                                            {selectedTeam.logo_url ? <img src={selectedTeam.logo_url} className="w-8 h-8 object-contain" /> : selectedTeam.name[0]}
+                                        </div>
+                                        <h3 className="fredoka text-xl font-bold text-white">{selectedTeam.name}</h3>
+                                    </div>
+                                    <button onClick={() => setSelectedTeam(null)} className="w-8 h-8 rounded-lg bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center transition">
+                                        <i className="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-xs font-bold text-zinc-400 mb-1">
+                                        <span>Purse: ₹{selectedTeam.remaining_budget}L</span>
+                                        <span>Spent: ₹{(selectedTeam.total_budget - selectedTeam.remaining_budget).toFixed(1)}L</span>
+                                    </div>
+                                </div>
+                                <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar pr-1">
+                                    {(!selectedTeam.players || selectedTeam.players.length === 0) ? (
+                                        <p className="text-xs text-zinc-500 font-bold text-center py-6">No players bought yet</p>
+                                    ) : (
+                                        selectedTeam.players.map(p => (
+                                            <div key={p.id} className="flex items-center gap-2.5 p-2 bg-zinc-950 rounded-xl border border-zinc-800">
+                                                <PlayerPhoto url={p.photo_url} name={p.name} size={30} />
+                                                <span className="font-bold text-white text-xs flex-1 truncate">{p.name}</span>
+                                                <span className="fredoka text-amber-400 text-xs font-bold">₹{p.sold_price}L</span>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                
+                    <div className="ticker-wrap">
+                        <div className="ticker-text text-sm uppercase">
+                            {getTickerContent()}
+                        </div>
+                    </div>
+                </div>
+    );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<LiveView />);
+        {% endraw %}
+    </script>
+</body>
+</html>
