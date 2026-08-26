@@ -46,6 +46,15 @@ window.addEventListener('unhandledrejection', function(e) {
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes cardLift { from { transform: translateY(0); box-shadow: 0 1px 3px rgba(0,0,0,0.3); } to { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.4); } }
 
+        /* ── Cinematic Reveal Animations ── */
+        @keyframes slideInLeft { from { opacity: 0; transform: translateX(-60px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes slideInRight { from { opacity: 0; transform: translateX(60px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes dramaticZoom { 0% { opacity: 0; transform: scale(0); } 70% { opacity: 1; transform: scale(1.08); } 100% { opacity: 1; transform: scale(1); } }
+        @keyframes slamIn { 0% { opacity: 0; transform: translateY(80px) scale(1.3); } 60% { opacity: 1; transform: translateY(-8px) scale(1); } 80% { transform: translateY(3px); } 100% { transform: translateY(0); } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(25px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes cardGlow { 0% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0); } 50% { box-shadow: 0 0 60px 10px rgba(var(--accent-rgb), 0.15); } 100% { box-shadow: 0 0 30px 5px rgba(var(--accent-rgb), 0.08); } }
+        @keyframes revealPulse { 0%, 100% { opacity: 0.03; } 50% { opacity: 0.06; } }
+
         .anim-slideUp { animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
         .anim-scaleIn { animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
         .anim-bounceIn { animation: bounceIn 0.5s ease-out forwards; }
@@ -53,6 +62,12 @@ window.addEventListener('unhandledrejection', function(e) {
         .anim-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
         .anim-gavelSlam { animation: gavelSlam 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
         .anim-bidPop { animation: bidPop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        .anim-slideInLeft { opacity: 0; animation: slideInLeft 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        .anim-slideInRight { opacity: 0; animation: slideInRight 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        .anim-dramaticZoom { opacity: 0; animation: dramaticZoom 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        .anim-slamIn { opacity: 0; animation: slamIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        .anim-fadeInUp { opacity: 0; animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        .anim-cardGlow { animation: cardGlow 1.5s ease-out forwards; }
 
         /* ── Premium Shimmer (Warm Gold) ── */
         .shimmer-text {

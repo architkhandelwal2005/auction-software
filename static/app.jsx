@@ -7,6 +7,7 @@ const SFX = {
     bid: () => { try { const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type='sine';o.frequency.setValueAtTime(600,c.currentTime);o.frequency.exponentialRampToValueAtTime(1000,c.currentTime+0.08);g.gain.setValueAtTime(0.2,c.currentTime);g.gain.exponentialRampToValueAtTime(0.01,c.currentTime+0.12);o.start();o.stop(c.currentTime+0.12); } catch(e){} },
     sold: () => { try { const c=new AudioContext();[523,659,784,1047].forEach((f,i)=>{const o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type=i<3?'sine':'triangle';o.frequency.setValueAtTime(f,c.currentTime+i*0.1);g.gain.setValueAtTime(0.2,c.currentTime+i*0.1);g.gain.exponentialRampToValueAtTime(0.01,c.currentTime+i*0.1+0.4);o.start(c.currentTime+i*0.1);o.stop(c.currentTime+i*0.1+0.4);}); } catch(e){} },
     draw: () => { try { const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type='sine';o.frequency.setValueAtTime(300,c.currentTime);o.frequency.exponentialRampToValueAtTime(800,c.currentTime+0.25);g.gain.setValueAtTime(0.25,c.currentTime);g.gain.exponentialRampToValueAtTime(0.01,c.currentTime+0.35);o.start();o.stop(c.currentTime+0.35); } catch(e){} },
+    reveal: () => { try { const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type='sine';o.frequency.setValueAtTime(200,c.currentTime);o.frequency.exponentialRampToValueAtTime(400,c.currentTime+1.5);g.gain.setValueAtTime(0.15,c.currentTime);g.gain.exponentialRampToValueAtTime(0.01,c.currentTime+2.5);o.start();o.stop(c.currentTime+2.5); } catch(e){} },
     click: () => { try { const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type='sine';o.frequency.setValueAtTime(1200,c.currentTime);g.gain.setValueAtTime(0.1,c.currentTime);g.gain.exponentialRampToValueAtTime(0.01,c.currentTime+0.05);o.start();o.stop(c.currentTime+0.05); } catch(e){} },
     undo: () => { try { const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type='sawtooth';o.frequency.setValueAtTime(500,c.currentTime);o.frequency.exponentialRampToValueAtTime(200,c.currentTime+0.2);g.gain.setValueAtTime(0.1,c.currentTime);g.gain.exponentialRampToValueAtTime(0.01,c.currentTime+0.2);o.start();o.stop(c.currentTime+0.2); } catch(e){} }
 };
@@ -79,6 +80,41 @@ const SPORT_PRESETS = [
     { id: 'art', name: '🎨 Fine Art & Antiques', desc: '13 Rare Lots: Oil Painting, Sculpture, Vintage Watch, Rare Coin, Furniture', event_name: 'Grand Heritage Art & Antiques' },
     { id: 'cricket', name: '🏏 Cricket (100 Players)', desc: '100 Players: Batsman, Bowler, All-Rounder, Wicket-Keeper, 50+, Female', event_name: 'Premier Cricket League 2026' }
 ];
+
+const SPORT_THEMES = {
+    cricket: { id: 'cricket', name: 'Cricket', emoji: '🏏', accent: '#f59e0b', accentName: 'amber',
+        bg: 'radial-gradient(ellipse at 50% 120%, #1a3a1a 0%, #0a1f0a 40%, #050d05 100%)',
+        overlay: 'radial-gradient(circle at 50% 0%, rgba(245,158,11,0.06) 0%, transparent 60%)',
+        cardStyle: 'trading_card' },
+    football: { id: 'football', name: 'Football', emoji: '⚽', accent: '#22c55e', accentName: 'green',
+        bg: 'radial-gradient(ellipse at 50% 120%, #0a2e0a 0%, #061a06 40%, #030d03 100%)',
+        overlay: 'radial-gradient(circle at 50% 0%, rgba(34,197,94,0.06) 0%, transparent 60%)',
+        cardStyle: 'broadcast_banner' },
+    badminton: { id: 'badminton', name: 'Badminton', emoji: '🏸', accent: '#3b82f6', accentName: 'blue',
+        bg: 'radial-gradient(ellipse at 50% 120%, #0a1a3a 0%, #060f2a 40%, #030818 100%)',
+        overlay: 'radial-gradient(circle at 50% 0%, rgba(59,130,246,0.06) 0%, transparent 60%)',
+        cardStyle: 'spotlight' },
+    pickleball: { id: 'pickleball', name: 'Pickleball', emoji: '🏓', accent: '#14b8a6', accentName: 'teal',
+        bg: 'radial-gradient(ellipse at 50% 120%, #0a2a2a 0%, #061a1a 40%, #030d0d 100%)',
+        overlay: 'radial-gradient(circle at 50% 0%, rgba(20,184,166,0.06) 0%, transparent 60%)',
+        cardStyle: 'spotlight' },
+    basketball: { id: 'basketball', name: 'Basketball', emoji: '🏀', accent: '#f97316', accentName: 'orange',
+        bg: 'radial-gradient(ellipse at 50% 120%, #2a1a0a 0%, #1a0f06 40%, #0d0803 100%)',
+        overlay: 'radial-gradient(circle at 50% 0%, rgba(249,115,22,0.06) 0%, transparent 60%)',
+        cardStyle: 'trading_card' },
+    esports: { id: 'esports', name: 'Esports', emoji: '🎮', accent: '#a855f7', accentName: 'purple',
+        bg: 'radial-gradient(ellipse at 50% 120%, #1a0a2e 0%, #0f061a 40%, #08030d 100%)',
+        overlay: 'radial-gradient(circle at 50% 0%, rgba(168,85,247,0.06) 0%, transparent 60%)',
+        cardStyle: 'broadcast_banner' },
+    art: { id: 'art', name: 'Art & Antiques', emoji: '🎨', accent: '#ef4444', accentName: 'red',
+        bg: 'radial-gradient(ellipse at 50% 120%, #2a0a0a 0%, #1a0606 40%, #0d0303 100%)',
+        overlay: 'radial-gradient(circle at 50% 0%, rgba(239,68,68,0.06) 0%, transparent 60%)',
+        cardStyle: 'spotlight' },
+    multi_sport: { id: 'multi_sport', name: 'Multi-Sport / General', emoji: '⭐', accent: '#f59e0b', accentName: 'amber',
+        bg: 'linear-gradient(135deg, #070b14 0%, #0f172a 50%, #070b14 100%)',
+        overlay: 'radial-gradient(circle at 50% 0%, rgba(245,158,11,0.04) 0%, transparent 60%)',
+        cardStyle: 'spotlight' },
+};
 
 const PresetsModal = ({ onLoadPreset, onClose }) => {
     const [loadingId, setLoadingId] = useState(null);
@@ -455,6 +491,7 @@ const SetupWizard = ({ onComplete }) => {
 
     // Step 1
     const [eventName, setEventName] = useState('Society Auction 2026');
+    const [sportTheme, setSportTheme] = useState('multi_sport');
     const [bidIncrement, setBidIncrement] = useState(5);
     const [uploadedFile, setUploadedFile] = useState(null);
     const [uploadedFileName, setUploadedFileName] = useState('');
@@ -576,7 +613,7 @@ const SetupWizard = ({ onComplete }) => {
         await fetch('/api/config', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                config: { event_name: eventName, bid_increment: bidIncrement, common_base_price: basePrice, setup_done: 'true' },
+                config: { event_name: eventName, bid_increment: bidIncrement, common_base_price: basePrice, setup_done: 'true', sport_theme: sportTheme },
                 category_rules: categories.map(c => ({
                     category: c.category, base_price: basePrice,
                     min_per_team: c.per_team_min, max_per_team: c.per_team_max || 99,
@@ -636,6 +673,25 @@ const SetupWizard = ({ onComplete }) => {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="col-span-2">
+                            {/* Sport / Theme Selector */}
+                            <div className="mb-6">
+                                <label className="text-sm font-bold text-slate-300 mb-2 block">Sport / Theme</label>
+                                <p className="text-xs text-slate-500 mb-3">Choose a sport to set the auction stage theme, background, and player card style.</p>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {Object.values(SPORT_THEMES).map(theme => (
+                                        <button key={theme.id} type="button" onClick={() => setSportTheme(theme.id)}
+                                            className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all text-center ${
+                                                sportTheme === theme.id 
+                                                    ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10' 
+                                                    : 'border-slate-800 bg-slate-900/50 hover:border-slate-600 hover:bg-slate-800/80'
+                                            }`}>
+                                            <span className="text-2xl">{theme.emoji}</span>
+                                            <span className={`text-xs font-bold ${sportTheme === theme.id ? 'text-amber-300' : 'text-slate-400'}`}>{theme.name}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
                             <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider block mb-1.5">Event Name</label>
                             <input type="text" className="w-full bg-zinc-950 border border-zinc-700 p-3 rounded-2xl text-base font-bold text-white focus:border-amber-500 outline-none transition" value={eventName} onChange={e => setEventName(e.target.value)} placeholder="e.g. Greenpark Colony Auction 2026" />
                         </div>
@@ -913,6 +969,13 @@ function App() {
     const [dashTab, setDashTab] = useState('overview');
     const [showAddTeamModal, setShowAddTeamModal] = useState(false);
     const [showPresetsModal, setShowPresetsModal] = useState(false);
+    const [revealPhase, setRevealPhase] = useState(6); // 0-6 phases. 6 = fully revealed (idle state)
+    const [quickMode, setQuickMode] = useState(false); // Toggle to skip animations
+    
+    // Derived theme properties from config
+    const currentTheme = config?.sport_theme && SPORT_THEMES[config.sport_theme] 
+        ? SPORT_THEMES[config.sport_theme] 
+        : SPORT_THEMES['multi_sport'];
 
     const loadData = async () => {
         try {
@@ -1031,14 +1094,46 @@ function App() {
         const unsold=players.filter(p=>p.status==='unsold');
         if(!unsold.length){alert('No players left in pool!');return;}
         const pick=unsold[Math.floor(Math.random()*unsold.length)];
-        setCurrentPlayer(pick); setCurrentBid(pick.base_price||0); SFX.draw(); setView('auction');
+        setCurrentPlayer(pick);
+        setCurrentBid(pick.base_price || 0);
+        setView('auction');
+        if (!quickMode) {
+            setRevealPhase(0);
+            SFX.reveal();
+            // Staggered reveal sequence
+            setTimeout(() => setRevealPhase(1), 500); // Category
+            setTimeout(() => setRevealPhase(2), 1200); // Attributes
+            setTimeout(() => setRevealPhase(3), 2000); // Photo
+            setTimeout(() => setRevealPhase(4), 2800); // Name
+            setTimeout(() => { setRevealPhase(5); SFX.draw(); }, 3500); // Base price & controls
+            setTimeout(() => setRevealPhase(6), 3600); // Done
+        } else {
+            setRevealPhase(6);
+            SFX.draw();
+        }
         saveAuctionState(pick, pick.base_price||0);
         speakCommentary(`Now up for auction: ${pick.name}, ${pick.category || 'player'}, base price ${pick.base_price || 0} Lakhs`, voiceEnabled);
     };
 
     const handleSpinSelect = item => {
         if(wheelMode==='player'){
-            setCurrentPlayer(item); setCurrentBid(item.base_price||0); SFX.draw(); setShowWheel(false); setView('auction');
+            setCurrentPlayer(item);
+            setCurrentBid(item.base_price || 0);
+            setShowWheel(false);
+            setView('auction');
+            if (!quickMode) {
+                setRevealPhase(0);
+                SFX.reveal();
+                setTimeout(() => setRevealPhase(1), 500);
+                setTimeout(() => setRevealPhase(2), 1200);
+                setTimeout(() => setRevealPhase(3), 2000);
+                setTimeout(() => setRevealPhase(4), 2800);
+                setTimeout(() => { setRevealPhase(5); SFX.draw(); }, 3500);
+                setTimeout(() => setRevealPhase(6), 3600);
+            } else {
+                setRevealPhase(6);
+                SFX.draw();
+            }
             saveAuctionState(item, item.base_price||0);
             speakCommentary(`Now up for auction: ${item.name}, ${item.category || 'player'}, base price ${item.base_price || 0} Lakhs`, voiceEnabled);
         } else {
@@ -1432,7 +1527,9 @@ function App() {
         // ═══════════════════════════════════════════════
     // AUCTION VIEW (Stadium Broadcast Theme)
     // ═══════════════════════════════════════════════
-    return <div className="flex flex-col lg:flex-row h-screen lg:overflow-hidden" style={{background:'linear-gradient(135deg, #070b14 0%, #0f172a 50%, #070b14 100%)'}}>
+    return <div className="flex flex-col lg:flex-row h-screen lg:overflow-hidden fixed inset-0 z-[100]" 
+                style={{ background: currentTheme.bg, '--accent-rgb': currentTheme.accent === '#f59e0b' ? '245,158,11' : currentTheme.accent === '#22c55e' ? '34,197,94' : '59,130,246' }}>
+        <div className="absolute inset-0 pointer-events-none" style={{ background: currentTheme.overlay }}></div>
         <Confetti show={showConfetti} />
         {showWheel && <SpinWheel items={wheelMode==='player'?unsoldPlayers:teams} title={wheelMode==='player'?'🎯 Draw Player':'🎰 Pick Team'} onSelect={handleSpinSelect} onClose={()=>setShowWheel(false)} />}
         {showTeamRoster && <TeamRosterModal team={showTeamRoster} onClose={()=>setShowTeamRoster(null)} />}
@@ -1440,70 +1537,92 @@ function App() {
 
         {/* Main Stage */}
         <div className="flex-1 flex flex-col relative z-10">
-            <header className="flex justify-between items-center px-6 py-3 bg-slate-950/80 backdrop-blur-md border-b border-slate-800">
-                <button onClick={()=>setView('dashboard')} className="text-slate-400 hover:text-white font-bold text-xs transition flex items-center gap-2 bg-slate-900 px-4 py-2 rounded-xl border border-slate-800 hover:bg-slate-800"><i className="fa-solid fa-arrow-left"></i>Dashboard</button>
+            <header className="flex justify-between items-center px-6 py-2 bg-slate-950/60 backdrop-blur-md border-b border-slate-800/50">
+                <button onClick={()=>setView('dashboard')} className="text-slate-400 hover:text-white font-bold text-xs transition flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-800 hover:bg-slate-800"><i className="fa-solid fa-arrow-left"></i>Dashboard</button>
                 <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 bg-red-500/15 border border-red-500/30 px-3.5 py-1 rounded-full"><div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div><span className="fredoka text-red-400 font-bold text-xs uppercase tracking-widest">Live Hammer Stage</span></div>
-                    <div className="bg-slate-900 border border-slate-800 px-3.5 py-1 rounded-full text-xs text-slate-400 font-bold"><i className="fa-solid fa-users mr-1.5 text-blue-400"></i>{unsoldPlayers.length} in pool</div>
+                    <div className="flex items-center gap-2 bg-red-500/15 border border-red-500/30 px-3 py-1 rounded-full"><div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div><span className="fredoka text-red-400 font-bold text-[0.65rem] uppercase tracking-widest">Live Hammer</span></div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                    <button onClick={()=>setVoiceEnabled(!voiceEnabled)} className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 border ${voiceEnabled ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-slate-900 text-slate-500 border-slate-800'}`}>
+                    <button onClick={()=>setQuickMode(!quickMode)} className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 border ${quickMode ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' : 'bg-slate-900/80 text-slate-500 border-slate-800'}`} title="Skip animations">
+                        <i className="fa-solid fa-bolt"></i> {quickMode ? 'Quick Mode ON' : 'Quick Mode OFF'}
+                    </button>
+                    <button onClick={()=>setVoiceEnabled(!voiceEnabled)} className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 border ${voiceEnabled ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-slate-900/80 text-slate-500 border-slate-800'}`}>
                         <i className={`fa-solid ${voiceEnabled ? 'fa-volume-high' : 'fa-volume-xmark'}`}></i> {voiceEnabled ? 'Voice ON' : 'Voice OFF'}
                     </button>
-                    <a href="/report" target="_blank" className="text-emerald-300 hover:text-white font-bold text-xs bg-emerald-500/15 px-3 py-1.5 rounded-xl border border-emerald-500/30 hover:bg-emerald-500/25 transition flex items-center gap-1.5">
-                        <i className="fa-solid fa-print"></i>Report ↗
-                    </a>
-                    <button onClick={()=>window.open('/live', '_blank')} className="text-blue-300 hover:text-white font-bold text-xs bg-blue-500/15 px-3.5 py-1.5 rounded-xl border border-blue-500/30 hover:bg-blue-500/25 transition flex items-center gap-1.5" title="Open Public Screen">
-                        <i className="fa-solid fa-tv"></i>Public Screen ↗
+                    <button onClick={()=>window.open('/live', '_blank')} className="text-blue-300 hover:text-white font-bold text-xs bg-blue-500/15 px-3 py-1.5 rounded-xl border border-blue-500/30 hover:bg-blue-500/25 transition">
+                        Public Screen ↗
                     </button>
-                    <button onClick={()=>setShowShareModal(true)} className="text-purple-300 hover:text-white font-bold text-xs bg-purple-500/15 px-3.5 py-1.5 rounded-xl border border-purple-500/30 hover:bg-purple-500/25 transition flex items-center gap-1.5" title="Share Links">
-                        <i className="fa-solid fa-share-nodes"></i>Links
-                    </button>
-                    <button onClick={undoLast} className="text-yellow-400 hover:text-yellow-300 font-bold text-xs bg-slate-900 px-3.5 py-1.5 rounded-xl border border-slate-800 hover:bg-slate-800 transition flex items-center gap-1.5"><i className="fa-solid fa-rotate-left"></i>Undo</button>
-                    <a href="/logout" className="text-red-400 hover:text-red-300 font-bold text-xs bg-red-500/15 px-3 py-1.5 rounded-xl border border-red-500/30 hover:bg-red-500/25 transition flex items-center gap-1.5" title="Sign Out">
-                        <i className="fa-solid fa-right-from-bracket"></i>
-                    </a>
+                    <button onClick={undoLast} className="text-yellow-400 font-bold text-xs bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-800 hover:bg-slate-800 transition"><i className="fa-solid fa-rotate-left mr-1"></i>Undo</button>
                 </div>
             </header>
 
             <div className="flex-1 flex items-center justify-center p-6">
                 {currentPlayer ? (
-                    <div className="w-full max-w-3xl anim-slideUp">
-                        <div className="bg-slate-900/90 backdrop-blur-2xl border border-slate-700/80 rounded-3xl p-9 text-center relative overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.8)] mb-5">
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 fredoka text-[10rem] font-bold text-white/[0.02] whitespace-nowrap pointer-events-none select-none">{currentPlayer.category||'PLAYER'}</div>
+                    <div className="w-full max-w-4xl relative">
+                        {/* The Trading Card Container */}
+                        <div className={`bg-slate-950/80 backdrop-blur-3xl border border-slate-700/50 rounded-3xl p-10 text-center relative overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.6)] mb-6 transition-all duration-1000 ${revealPhase >= 0 ? 'anim-cardGlow opacity-100' : 'opacity-0 scale-95'}`}>
+                            
+                            {/* Watermark Background Emoji */}
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[15rem] opacity-5 pointer-events-none select-none grayscale" style={{animation: 'revealPulse 4s infinite'}}>{currentTheme.emoji}</div>
 
-                            <div className="relative z-10">
-                                <div className="flex flex-col items-center mb-5">
-                                    <PlayerPhoto url={currentPlayer.photo_url} name={currentPlayer.name} size={130} />
-                                    {currentPlayer.category && <div className="mt-3"><CatBadge category={currentPlayer.category} /></div>}
-                                    <h2 className="fredoka text-5xl font-bold text-white mt-3 tracking-tight">{currentPlayer.name}</h2>
-                                    <div className="mt-2 bg-slate-950 px-4 py-1 rounded-full border border-slate-800"><span className="text-slate-400 font-bold text-xs">Base Price:</span> <span className="fredoka font-bold text-white ml-1">₹{currentPlayer.base_price}L</span></div>
+                            <div className="relative z-10 flex flex-col items-center">
+                                
+                                {/* Photo Phase (Phase 3) */}
+                                <div className={`relative mb-6 ${revealPhase >= 3 ? 'anim-dramaticZoom' : 'opacity-0 hidden'}`}>
+                                    <div className="absolute inset-0 rounded-full blur-2xl opacity-40" style={{background: currentTheme.accent}}></div>
+                                    <div className="relative z-10 border-4 rounded-full overflow-hidden shadow-2xl" style={{borderColor: currentTheme.accent}}>
+                                        <PlayerPhoto url={currentPlayer.photo_url} name={currentPlayer.name} size={160} />
+                                    </div>
+                                    
+                                    {/* Category Phase (Phase 1) */}
+                                    {currentPlayer.category && (
+                                        <div className={`absolute -bottom-3 left-1/2 -translate-x-1/2 z-20 ${revealPhase >= 1 ? 'anim-slideInLeft' : 'opacity-0'}`}>
+                                            <div className="px-4 py-1.5 rounded-full font-black text-xs uppercase tracking-widest text-black shadow-lg" style={{background: currentTheme.accent}}>
+                                                {currentPlayer.category}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="mb-6">
-                                    <p className="fredoka text-blue-400 text-xs font-bold mb-1 uppercase tracking-[0.3em]">Current Live Bid</p>
-                                    <div className={`fredoka text-[6.5rem] leading-none font-bold shimmer-text transition-transform duration-150 ${bidAnim?'scale-110':'scale-100'}`}>₹{currentBid}L</div>
+
+                                {/* Name Phase (Phase 4) */}
+                                <div className={`${revealPhase >= 4 ? 'anim-slamIn' : 'opacity-0'}`}>
+                                    <h2 className="fredoka text-6xl md:text-7xl font-black text-white tracking-tight uppercase" style={{textShadow: `0 4px 20px ${currentTheme.accent}40`}}>
+                                        {currentPlayer.name}
+                                    </h2>
                                 </div>
-                                <div className="flex justify-center items-center gap-2.5">
-                                    {[-10,-bidIncrement].map(v=><button key={v} onClick={()=>{setCurrentBid(p=>Math.max(0,p+v));SFX.bid();}} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 w-13 h-13 rounded-xl fredoka font-bold text-slate-300 transition active:scale-90 text-sm">{v}</button>)}
-                                    <input type="number" value={currentBid} onChange={e=>setCurrentBid(parseFloat(e.target.value)||0)} className="bg-slate-950 border-2 border-slate-700 text-white text-center fredoka text-3xl font-bold rounded-2xl w-44 py-2.5 outline-none focus:border-blue-500 transition" />
-                                    {[bidIncrement,10,25].map(v=><button key={v} onClick={()=>{setCurrentBid(p=>p+v);SFX.bid();setBidAnim(true);setTimeout(()=>setBidAnim(false),150);}} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 w-13 h-13 rounded-xl fredoka font-bold text-slate-300 transition active:scale-90 text-sm">+{v}</button>)}
+
+                                {/* Base Price & Controls Phase (Phase 5) */}
+                                <div className={`mt-8 w-full ${revealPhase >= 5 ? 'anim-fadeInUp' : 'opacity-0'}`}>
+                                    <div className="mb-8">
+                                        <p className="fredoka text-slate-400 text-sm font-bold mb-2 uppercase tracking-[0.3em]">Current Live Bid</p>
+                                        <div className={`fredoka text-[7rem] leading-none font-black transition-transform duration-150 ${bidAnim?'scale-110':'scale-100'}`} style={{color: currentTheme.accent, textShadow: `0 0 40px ${currentTheme.accent}40`}}>
+                                            ₹{currentBid}L
+                                        </div>
+                                        <p className="text-slate-500 font-bold text-xs mt-2">Base Price: ₹{currentPlayer.base_price}L</p>
+                                    </div>
+
+                                    <div className="flex justify-center items-center gap-3">
+                                        {[-10,-bidIncrement].map(v=><button key={v} onClick={()=>{setCurrentBid(p=>Math.max(0,p+v));SFX.bid();}} className="bg-slate-800/80 hover:bg-slate-700 border border-slate-600 w-14 h-14 rounded-2xl fredoka font-bold text-white transition active:scale-90 text-lg backdrop-blur-md">{v}</button>)}
+                                        <input type="number" value={currentBid} onChange={e=>setCurrentBid(parseFloat(e.target.value)||0)} className="bg-slate-900 border-2 text-white text-center fredoka text-4xl font-bold rounded-2xl w-48 py-2 outline-none transition" style={{borderColor: currentTheme.accent}} />
+                                        {[bidIncrement,10,25].map(v=><button key={v} onClick={()=>{setCurrentBid(p=>p+v);SFX.bid();setBidAnim(true);setTimeout(()=>setBidAnim(false),150);}} className="bg-slate-800/80 hover:bg-slate-700 border border-slate-600 w-14 h-14 rounded-2xl fredoka font-bold text-white transition active:scale-90 text-lg backdrop-blur-md">+{v}</button>)}
+                                    </div>
                                 </div>
-                                <div className="text-slate-500 mt-2.5 text-xs font-bold"><i className="fa-solid fa-keyboard mr-1"></i>↑↓ Keyboard Shortcuts = ±{bidIncrement}L</div>
                             </div>
                         </div>
 
                         {/* Team Selection with Safeguards & SOLD Button */}
-                        <div className="flex gap-3">
+                        <div className={`flex gap-3 transition-all duration-500 ${revealPhase >= 5 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'}`}>
                             
-                            <button onClick={handlePass} className="bg-slate-900 hover:bg-slate-800 border border-slate-700 py-3.5 px-5 rounded-2xl font-bold text-slate-300 hover:text-red-400 transition group flex items-center gap-2 shadow-lg">
-                                <i className="fa-solid fa-ban text-lg text-red-400 group-hover:scale-110 transition"></i>Pass (Bin)
+                            <button onClick={handlePass} className="bg-slate-900/80 backdrop-blur-md hover:bg-slate-800 border border-slate-700/50 py-4 px-6 rounded-2xl font-bold text-slate-300 hover:text-red-400 transition group flex items-center gap-2 shadow-xl">
+                                <i className="fa-solid fa-ban text-xl text-red-400 group-hover:scale-110 transition"></i>Pass (Bin)
                             </button>
 
-                            <button onClick={()=>{setWheelMode('team');setShowWheel(true);}} className="bg-slate-900 hover:bg-slate-800 border border-slate-700 py-3.5 px-5 rounded-2xl font-bold text-slate-300 hover:text-orange-400 transition group flex items-center gap-2 shadow-lg">
-                                <i className="fa-solid fa-dharmachakra text-lg text-orange-400 group-hover:animate-spin"></i>Unsold→Spin
+                            <button onClick={()=>{setWheelMode('team');setShowWheel(true);}} className="bg-slate-900/80 backdrop-blur-md hover:bg-slate-800 border border-slate-700/50 py-4 px-6 rounded-2xl font-bold text-slate-300 hover:text-orange-400 transition group flex items-center gap-2 shadow-xl">
+                                <i className="fa-solid fa-dharmachakra text-xl text-orange-400 group-hover:animate-spin"></i>Unsold→Spin
                             </button>
-                            <div className="flex-1 flex gap-2 bg-slate-900 border border-slate-700 p-2 rounded-2xl shadow-xl">
-                                <select id="teamSel" className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 fredoka text-base font-bold text-white focus:border-green-500 outline-none cursor-pointer">
+
+                            <div className="flex-1 flex gap-2 bg-slate-900/80 backdrop-blur-md border border-slate-700/50 p-2 rounded-2xl shadow-2xl">
+                                <select id="teamSel" className="flex-1 bg-slate-950/50 border border-slate-800 rounded-xl px-5 fredoka text-lg font-bold text-white outline-none cursor-pointer">
                                     <option value="">Select Buying Franchise...</option>
                                     {teams.map(t => {
                                         const isAffordable = t.remaining_budget >= currentBid;
@@ -1516,30 +1635,28 @@ function App() {
                                         if (!isAffordable) label += ` [❌ Low Purse]`;
                                         else if (!isUnderMax) label += ` [❌ Max Limit Reached]`;
                                         
-                                        return (
-                                            <option key={t.id} value={t.id} disabled={!isValid} className={!isValid ? 'text-red-400 bg-slate-950 font-normal' : 'text-white font-bold bg-slate-900'}>
-                                                {label}
-                                            </option>
-                                        );
+                                        return <option key={t.id} value={t.id} disabled={!isValid} className={!isValid ? 'text-red-400 bg-slate-950 font-normal' : 'text-white font-bold bg-slate-900'}>{label}</option>;
                                     })}
                                 </select>
-                                <button className="bg-gradient-to-r from-green-500 via-emerald-500 to-teal-600 hover:from-green-400 hover:to-emerald-400 px-8 rounded-xl fredoka text-xl font-bold text-white transition active:scale-95 shadow-xl shadow-green-500/25 flex items-center gap-2" onClick={()=>{const s=document.getElementById('teamSel').value;if(!s){alert('Please pick a franchise!');return;}handleSold(s);}}>
+                                <button className="px-10 rounded-xl fredoka text-2xl font-bold text-white transition active:scale-95 flex items-center gap-3 shadow-xl" style={{background: currentTheme.accent, textShadow: '0 2px 4px rgba(0,0,0,0.3)'}} onClick={()=>{const s=document.getElementById('teamSel').value;if(!s){alert('Please pick a franchise!');return;}handleSold(s);}}>
                                     <i className="fa-solid fa-gavel"></i>SOLD!
                                 </button>
                             </div>
                         </div>
                     </div>
                 ) : (
-                    <div className="flex flex-col items-center gap-6 anim-float">
-                        <div className="w-28 h-28 bg-blue-500/10 rounded-full flex items-center justify-center border border-blue-500/20 shadow-2xl shadow-blue-500/10"><span className="text-5xl">🏏</span></div>
+                    <div className="flex flex-col items-center gap-8 anim-float">
+                        <div className="w-32 h-32 rounded-full flex items-center justify-center border-2 shadow-[0_0_60px_rgba(var(--accent-rgb),0.3)] backdrop-blur-md" style={{borderColor: currentTheme.accent, background: `${currentTheme.accent}20`}}>
+                            <span className="text-6xl filter drop-shadow-xl">{currentTheme.emoji}</span>
+                        </div>
                         <div className="flex gap-4">
-                            <button onClick={()=>{setWheelMode('player');setShowWheel(true);}} className="group bg-slate-900 border-2 border-slate-700 hover:border-yellow-400/60 px-8 py-4 rounded-2xl flex items-center gap-3 hover:bg-slate-850 transition shadow-2xl">
-                                <i className="fa-solid fa-dharmachakra text-2xl text-yellow-400 group-hover:animate-spin"></i>
-                                <span className="fredoka text-xl font-bold text-white">Spin Draw</span>
+                            <button onClick={()=>{setWheelMode('player');setShowWheel(true);}} className="group bg-slate-900/80 backdrop-blur-md border-2 border-slate-700/50 hover:border-white/50 px-10 py-5 rounded-3xl flex items-center gap-4 hover:bg-slate-800 transition shadow-2xl">
+                                <i className="fa-solid fa-dharmachakra text-3xl group-hover:animate-spin" style={{color: currentTheme.accent}}></i>
+                                <span className="fredoka text-2xl font-bold text-white">Spin Draw</span>
                             </button>
-                            <button onClick={drawRandom} className="group bg-slate-900 border-2 border-slate-700 hover:border-blue-400/60 px-8 py-4 rounded-2xl flex items-center gap-3 hover:bg-slate-850 transition shadow-2xl">
-                                <i className="fa-solid fa-shuffle text-2xl text-blue-400"></i>
-                                <span className="fredoka text-xl font-bold text-white">Random Draw</span>
+                            <button onClick={drawRandom} className="group bg-slate-900/80 backdrop-blur-md border-2 border-slate-700/50 hover:border-white/50 px-10 py-5 rounded-3xl flex items-center gap-4 hover:bg-slate-800 transition shadow-2xl">
+                                <i className="fa-solid fa-shuffle text-3xl" style={{color: currentTheme.accent}}></i>
+                                <span className="fredoka text-2xl font-bold text-white">Random Draw</span>
                             </button>
                         </div>
                     </div>

@@ -28,16 +28,66 @@
         .anim-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
         .glass-card { background: rgba(24, 24, 27, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(63, 63, 70, 0.5); }
         .bid-glow { text-shadow: 0 0 60px rgba(245, 158, 11, 0.3), 0 0 120px rgba(245, 158, 11, 0.1); }
-            @keyframes ticker { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } }
-        .ticker-wrap { width: 100%; overflow: hidden; background: #d97706; color: black; font-weight: bold; font-family: "Space Grotesk", sans-serif; letter-spacing: 0.5px; border-top: 1px solid #f59e0b; position: fixed; bottom: 0; left: 0; z-index: 50; display: flex; align-items: center; padding: 0.4rem 0; box-shadow: 0 -4px 15px rgba(245, 158, 11, 0.2); }
+        
+        /* ── Cinematic Reveal Animations ── */
+        @keyframes slideInLeft { from { opacity: 0; transform: translateX(-60px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes slideInRight { from { opacity: 0; transform: translateX(60px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes dramaticZoom { 0% { opacity: 0; transform: scale(0); } 70% { opacity: 1; transform: scale(1.08); } 100% { opacity: 1; transform: scale(1); } }
+        @keyframes slamIn { 0% { opacity: 0; transform: translateY(80px) scale(1.3); } 60% { opacity: 1; transform: translateY(-8px) scale(1); } 80% { transform: translateY(3px); } 100% { transform: translateY(0); } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(25px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes cardGlow { 0% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0); } 50% { box-shadow: 0 0 60px 10px rgba(var(--accent-rgb), 0.15); } 100% { box-shadow: 0 0 30px 5px rgba(var(--accent-rgb), 0.08); } }
+        @keyframes revealPulse { 0%, 100% { opacity: 0.03; } 50% { opacity: 0.06; } }
+
+        .anim-slideInLeft { opacity: 0; animation: slideInLeft 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        .anim-slideInRight { opacity: 0; animation: slideInRight 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        .anim-dramaticZoom { opacity: 0; animation: dramaticZoom 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        .anim-slamIn { opacity: 0; animation: slamIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        .anim-fadeInUp { opacity: 0; animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        .anim-cardGlow { animation: cardGlow 1.5s ease-out forwards; }
+
+        @keyframes ticker { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } }
         .ticker-text { white-space: nowrap; animation: ticker 25s linear infinite; padding-right: 50px; }
     </style>
 </head>
 <body class="min-h-screen">
     <div id="root"></div>
     <script type="text/babel">
-        {% raw %}
         const { useState, useEffect, useRef } = React;
+
+        const SPORT_THEMES = {
+            cricket: { id: 'cricket', name: 'Cricket', emoji: '🏏', accent: '#f59e0b', accentName: 'amber',
+                bg: 'radial-gradient(ellipse at 50% 120%, #1a3a1a 0%, #0a1f0a 40%, #050d05 100%)',
+                overlay: 'radial-gradient(circle at 50% 0%, rgba(245,158,11,0.06) 0%, transparent 60%)',
+                cardStyle: 'trading_card' },
+            football: { id: 'football', name: 'Football', emoji: '⚽', accent: '#22c55e', accentName: 'green',
+                bg: 'radial-gradient(ellipse at 50% 120%, #0a2e0a 0%, #061a06 40%, #030d03 100%)',
+                overlay: 'radial-gradient(circle at 50% 0%, rgba(34,197,94,0.06) 0%, transparent 60%)',
+                cardStyle: 'broadcast_banner' },
+            badminton: { id: 'badminton', name: 'Badminton', emoji: '🏸', accent: '#3b82f6', accentName: 'blue',
+                bg: 'radial-gradient(ellipse at 50% 120%, #0a1a3a 0%, #060f2a 40%, #030818 100%)',
+                overlay: 'radial-gradient(circle at 50% 0%, rgba(59,130,246,0.06) 0%, transparent 60%)',
+                cardStyle: 'spotlight' },
+            pickleball: { id: 'pickleball', name: 'Pickleball', emoji: '🏓', accent: '#14b8a6', accentName: 'teal',
+                bg: 'radial-gradient(ellipse at 50% 120%, #0a2a2a 0%, #061a1a 40%, #030d0d 100%)',
+                overlay: 'radial-gradient(circle at 50% 0%, rgba(20,184,166,0.06) 0%, transparent 60%)',
+                cardStyle: 'spotlight' },
+            basketball: { id: 'basketball', name: 'Basketball', emoji: '🏀', accent: '#f97316', accentName: 'orange',
+                bg: 'radial-gradient(ellipse at 50% 120%, #2a1a0a 0%, #1a0f06 40%, #0d0803 100%)',
+                overlay: 'radial-gradient(circle at 50% 0%, rgba(249,115,22,0.06) 0%, transparent 60%)',
+                cardStyle: 'trading_card' },
+            esports: { id: 'esports', name: 'Esports', emoji: '🎮', accent: '#a855f7', accentName: 'purple',
+                bg: 'radial-gradient(ellipse at 50% 120%, #1a0a2e 0%, #0f061a 40%, #08030d 100%)',
+                overlay: 'radial-gradient(circle at 50% 0%, rgba(168,85,247,0.06) 0%, transparent 60%)',
+                cardStyle: 'broadcast_banner' },
+            art: { id: 'art', name: 'Art & Antiques', emoji: '🎨', accent: '#ef4444', accentName: 'red',
+                bg: 'radial-gradient(ellipse at 50% 120%, #2a0a0a 0%, #1a0606 40%, #0d0303 100%)',
+                overlay: 'radial-gradient(circle at 50% 0%, rgba(239,68,68,0.06) 0%, transparent 60%)',
+                cardStyle: 'spotlight' },
+            multi_sport: { id: 'multi_sport', name: 'Multi-Sport / General', emoji: '⭐', accent: '#f59e0b', accentName: 'amber',
+                bg: '#09090b',
+                overlay: 'radial-gradient(circle at 50% 0%, rgba(245,158,11,0.04) 0%, transparent 60%)',
+                cardStyle: 'spotlight' },
+        };
 
         const PALETTE = ['#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#f97316', '#06b6d4', '#14b8a6', '#ef4444', '#84cc16', '#a855f7', '#6366f1'];
         const getCatColor = (category) => {
@@ -92,6 +142,8 @@
             const [categoryFilter, setCategoryFilter] = useState('all');
             const [selectedTeam, setSelectedTeam] = useState(null);
             const [isFullscreen, setIsFullscreen] = useState(false);
+            const [revealPhase, setRevealPhase] = useState(6);
+            const [lastPlayerId, setLastPlayerId] = useState(null);
 
             const loadData = async () => {
                 try {
@@ -99,15 +151,31 @@
                     if (res.ok) {
                         const d = await res.json();
                         setData(d);
+                        
+                        // Check if a new player has appeared on stage for animation
+                        if (d.auction_state?.current_player) {
+                            if (d.auction_state.current_player !== lastPlayerId) {
+                                setLastPlayerId(d.auction_state.current_player);
+                                setRevealPhase(0);
+                                setTimeout(() => setRevealPhase(1), 500);
+                                setTimeout(() => setRevealPhase(2), 1200);
+                                setTimeout(() => setRevealPhase(3), 2000);
+                                setTimeout(() => setRevealPhase(4), 2800);
+                                setTimeout(() => setRevealPhase(5), 3500);
+                                setTimeout(() => setRevealPhase(6), 3600);
+                            }
+                        } else {
+                            setLastPlayerId(null);
+                        }
                     }
-                } catch(e) {}
+                } catch (e) { }
             };
 
             useEffect(() => {
                 loadData();
                 const interval = setInterval(loadData, 2000);
                 return () => clearInterval(interval);
-            }, []);
+            }, [lastPlayerId]);
 
             const toggleFullscreen = () => {
                 if (!document.fullscreenElement) {
@@ -169,15 +237,21 @@
             const allCategories = [...new Set(unsoldPlayers.map(p => p.category).filter(Boolean))];
 
             return (
-                <div className="min-h-screen flex flex-col pb-10 bg-[#09090b] text-white selection:bg-amber-500/30">
+                <div className="min-h-screen flex flex-col pb-10 text-white selection:bg-amber-500/30"
+                     style={{ background: currentTheme.bg, '--accent-rgb': currentTheme.accent === '#f59e0b' ? '245,158,11' : currentTheme.accent === '#22c55e' ? '34,197,94' : '59,130,246' }}>
+                    <div className="fixed inset-0 pointer-events-none z-0" style={{ background: currentTheme.overlay }}></div>
+
                     {/* Header */}
-                                        <header className="bg-zinc-900/90 backdrop-blur-md border-b border-zinc-800 sticky top-0 z-30 px-4 md:px-6 py-3 md:py-3.5 flex flex-col gap-3 md:gap-4 shadow-lg">
+                    <header className="bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/50 sticky top-0 z-30 px-4 md:px-6 py-3 md:py-3.5 flex flex-col gap-3 md:gap-4 shadow-lg">
                         
                         <div className="flex justify-between items-start md:items-center w-full">
                             <div className="flex items-center gap-3 md:gap-4">
-                                <div className="w-10 h-10 md:w-11 md:h-11 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl flex items-center justify-center text-lg md:text-xl shadow-lg shadow-amber-500/20 shrink-0">🔨</div>
+                                <div className="w-10 h-10 md:w-11 md:h-11 rounded-2xl flex items-center justify-center text-lg md:text-xl shadow-lg shrink-0 border"
+                                     style={{ background: `${currentTheme.accent}20`, borderColor: `${currentTheme.accent}40`, color: currentTheme.accent, boxShadow: `0 0 20px ${currentTheme.accent}20` }}>
+                                     {currentTheme.emoji}
+                                </div>
                                 <div className="min-w-0">
-                                    <h1 className="fredoka text-lg md:text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-400 truncate">{eventName}</h1>
+                                    <h1 className="fredoka text-lg md:text-xl font-bold truncate" style={{color: currentTheme.accent}}>{eventName}</h1>
                                     <div className="flex items-center gap-1.5 md:gap-2 mt-0.5">
                                         <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse shrink-0"></div>
                                         <span className="text-[0.55rem] md:text-[0.65rem] font-extrabold uppercase tracking-widest text-red-400 whitespace-nowrap">Live Feed</span>
@@ -195,7 +269,7 @@
                         </div>
 
                         {/* Navigation Tabs */}
-                        <div className="flex items-center gap-1.5 bg-zinc-950/80 p-1 rounded-2xl border border-zinc-800 w-full overflow-x-auto hide-scrollbar">
+                        <div className="flex items-center gap-1.5 bg-zinc-950/80 p-1 rounded-2xl border border-zinc-800/50 w-full overflow-x-auto hide-scrollbar">
                             {[
                                 { id: 'stage', label: '🎯 Live Stage', highlight: isBiddingActive },
                                 { id: 'teams', label: `🛡️ Teams (${teams.length})` },
@@ -208,64 +282,85 @@
                                     onClick={() => setActiveTab(t.id)}
                                     className={`px-3 md:px-4 py-2 rounded-xl text-[0.65rem] md:text-xs font-extrabold uppercase tracking-wider transition-all flex items-center gap-1.5 shrink-0 ${
                                         activeTab === t.id
-                                            ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-black shadow-lg shadow-amber-500/30'
+                                            ? 'text-black shadow-lg'
                                             : 'text-zinc-400 hover:text-white hover:bg-zinc-800/80'
                                     }`}
+                                    style={activeTab === t.id ? {background: currentTheme.accent, boxShadow: `0 4px 15px ${currentTheme.accent}40`} : {}}
                                 >
                                     {t.label}
-                                    {t.highlight && <span className="w-2 h-2 bg-red-400 rounded-full animate-ping shrink-0"></span>}
+                                    {t.highlight && <span className="w-2 h-2 bg-red-600 rounded-full animate-ping shrink-0"></span>}
                                 </button>
                             ))}
                         </div>
                     </header>
 
                     {/* Main Content Area */}
-                    <main className="flex-1 p-6 max-w-[1700px] w-full mx-auto">
+                    <main className="flex-1 p-6 max-w-[1700px] w-full mx-auto relative z-10">
                         {/* TAB 1: LIVE STAGE */}
                         {activeTab === 'stage' && (
-                            <div className="space-y-6 anim-slideUp">
+                            <div className="space-y-6">
                                 {/* Top Banner: Active Bidder Stage */}
                                 {isBiddingActive ? (
-                                    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-zinc-900 via-amber-950/20 to-zinc-900 border-2 border-amber-500/30 p-10 shadow-[0_0_50px_rgba(245,158,11,0.1)]">
-                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
-                                            <div className="flex items-center gap-2 bg-amber-500/20 border border-amber-500/40 px-4 py-1 rounded-full">
-                                                <div className="w-2 h-2 bg-amber-400 rounded-full animate-ping"></div>
-                                                <span className="fredoka text-amber-400 text-xs font-bold uppercase tracking-widest">Under the Hammer</span>
+                                    <div className={`relative overflow-hidden rounded-3xl bg-zinc-950/80 backdrop-blur-2xl border border-zinc-700/50 p-10 transition-all duration-1000 ${revealPhase >= 0 ? 'anim-cardGlow opacity-100' : 'opacity-0 scale-95'}`}
+                                         style={revealPhase >= 0 ? {boxShadow: `0 0 100px rgba(0,0,0,0.6)`} : {}}>
+                                         
+                                        {/* Watermark Background Emoji */}
+                                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[15rem] opacity-5 pointer-events-none select-none grayscale" style={{animation: 'revealPulse 4s infinite'}}>{currentTheme.emoji}</div>
+
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4 relative z-10">
+                                            <div className="flex items-center gap-2 border px-4 py-1 rounded-full" style={{background: `${currentTheme.accent}20`, borderColor: `${currentTheme.accent}40`}}>
+                                                <div className="w-2 h-2 rounded-full animate-ping" style={{background: currentTheme.accent}}></div>
+                                                <span className="fredoka text-xs font-bold uppercase tracking-widest" style={{color: currentTheme.accent}}>Under the Hammer</span>
                                             </div>
                                         </div>
 
-                                        <div className="flex flex-col md:flex-row items-center justify-between gap-8 mt-4">
+                                        <div className="flex flex-col md:flex-row items-center justify-between gap-8 mt-4 relative z-10">
                                             {/* Player Details */}
                                             <div className="flex items-center gap-6">
-                                                <PlayerPhoto url={state.photo_url} name={state.current_player} size={130} />
-                                                <div>
-                                                    <div className="mb-2">
-                                                        {state.category && <CatBadge category={state.category} />}
+                                                <div className={`relative shrink-0 ${revealPhase >= 3 ? 'anim-dramaticZoom' : 'opacity-0 hidden'}`}>
+                                                    <div className="absolute inset-0 rounded-full blur-2xl opacity-40" style={{background: currentTheme.accent}}></div>
+                                                    <div className="relative z-10 border-4 rounded-full overflow-hidden shadow-2xl" style={{borderColor: currentTheme.accent}}>
+                                                        <PlayerPhoto url={state.photo_url} name={state.current_player} size={150} />
                                                     </div>
-                                                    <h2 className="fredoka text-5xl font-bold text-white tracking-tight">{state.current_player}</h2>
+                                                </div>
+                                                <div>
+                                                    <div className={`mb-3 ${revealPhase >= 1 ? 'anim-slideInLeft' : 'opacity-0'}`}>
+                                                        {state.category && <span className="px-3 py-1 rounded-full font-black text-[0.65rem] uppercase tracking-widest text-black shadow-lg" style={{background: currentTheme.accent}}>{state.category}</span>}
+                                                    </div>
+                                                    <div className={`${revealPhase >= 4 ? 'anim-slamIn' : 'opacity-0'}`}>
+                                                        <h2 className="fredoka text-5xl md:text-6xl font-black text-white tracking-tight uppercase" style={{textShadow: `0 4px 20px ${currentTheme.accent}40`}}>{state.current_player}</h2>
+                                                    </div>
                                                     {state.base_price && (
-                                                        <div className="mt-2 text-zinc-400 font-bold text-sm">
+                                                        <div className={`mt-3 text-zinc-400 font-bold text-sm ${revealPhase >= 5 ? 'anim-fadeInUp' : 'opacity-0'}`}>
                                                             Base Price: <span className="text-white font-bold">₹{state.base_price} Lakhs</span>
                                                         </div>
                                                     )}
-                                                    {state.attributes && <PlayerAttributesBadges attributes={state.attributes} max={6} className="mt-3" />}
                                                 </div>
                                             </div>
 
-                                            {/* Big Current Bid */}
-                                            <div className="text-center md:text-right bg-zinc-950/60 p-8 rounded-3xl border border-zinc-800 bid-glow anim-bidPop">
-                                                <div className="fredoka text-zinc-400 text-xs font-bold uppercase tracking-[0.3em] mb-1">Current Live Bid</div>
-                                                <div className="space-grotesk text-7xl font-bold shimmer-text leading-none">
-                                                    ₹{state.current_bid || 0}L
+                                            {/* Live Bid */}
+                                            <div className={`text-center md:text-right ${revealPhase >= 5 ? 'anim-fadeInUp' : 'opacity-0'}`}>
+                                                <p className="fredoka text-zinc-400 text-xs font-bold mb-2 uppercase tracking-[0.3em]">Current Live Bid</p>
+                                                <div className="fredoka text-[5rem] md:text-[6.5rem] leading-none font-black tracking-tight" style={{color: currentTheme.accent, textShadow: `0 0 40px ${currentTheme.accent}40`}}>
+                                                    ₹{state.current_bid}L
                                                 </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Attributes Row */}
+                                        <div className="mt-8 border-t border-zinc-800 pt-6 relative z-10">
+                                            <div className={`${revealPhase >= 2 ? 'anim-slideInRight' : 'opacity-0'}`}>
+                                                <PlayerAttributesBadges attributes={state.attributes} max={8} className="justify-start md:justify-center" />
                                             </div>
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="rounded-3xl bg-zinc-900/50 border border-zinc-800 p-12 text-center">
-                                        <div className="text-6xl mb-3 animate-pulse">🔨</div>
-                                        <h2 className="fredoka text-3xl font-bold text-zinc-300">Auction in Progress</h2>
-                                        <p className="text-zinc-500 text-sm mt-1 font-semibold">Waiting for the auctioneer to draw the next player...</p>
+                                    <div className="rounded-3xl bg-zinc-950/80 backdrop-blur-2xl border border-zinc-800/50 p-16 text-center shadow-2xl flex flex-col items-center">
+                                        <div className="w-32 h-32 rounded-full flex items-center justify-center border-2 mb-6" style={{borderColor: currentTheme.accent, background: `${currentTheme.accent}20`, boxShadow: `0 0 60px ${currentTheme.accent}40`}}>
+                                            <span className="text-6xl filter drop-shadow-xl animate-bounce">{currentTheme.emoji}</span>
+                                        </div>
+                                        <h2 className="fredoka text-4xl font-bold text-white tracking-wide" style={{textShadow: `0 2px 10px ${currentTheme.accent}60`}}>Auction Stage Ready</h2>
+                                        <p className="text-zinc-400 text-sm mt-3 font-semibold tracking-wider uppercase">Waiting for the auctioneer to draw the next player...</p>
                                     </div>
                                 )}
 
