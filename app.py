@@ -43,20 +43,6 @@ class _PGCur:
     def execute(self, sql, params=()):
         converted = _pg_sql(sql)
         self._c.execute(converted, params or ())
-        if re.match(r'\s*INSERT\b', sql, re.IGNORECASE):
-            try:
-                self._c.execute('SAVEPOINT _lastval')
-                self._c.execute('SELECT lastval()')
-                row = self._c.fetchone()
-                if row:
-                    self.lastrowid = list(row.values())[0]
-                self._c.execute('RELEASE SAVEPOINT _lastval')
-            except Exception:
-                try:
-                    self._c.execute('ROLLBACK TO SAVEPOINT _lastval')
-                    self._c.execute('RELEASE SAVEPOINT _lastval')
-                except Exception:
-                    pass
         return self
 
     def fetchone(self):  return self._c.fetchone()
@@ -468,10 +454,15 @@ def add_team():
     data = request.json
     conn = get_db()
     c = conn.cursor()
-    c.execute('INSERT INTO teams (name, total_budget, remaining_budget, color) VALUES (?, ?, ?, ?)',
-              (data['name'], data['total_budget'], data['total_budget'], data.get('color', '#3b82f6')))
+    if USE_PG:
+        c.execute('INSERT INTO teams (name, total_budget, remaining_budget, color) VALUES (?, ?, ?, ?) RETURNING id',
+                  (data['name'], data['total_budget'], data['total_budget'], data.get('color', '#3b82f6')))
+        tid = c.fetchone()['id']
+    else:
+        c.execute('INSERT INTO teams (name, total_budget, remaining_budget, color) VALUES (?, ?, ?, ?)',
+                  (data['name'], data['total_budget'], data['total_budget'], data.get('color', '#3b82f6')))
+        tid = c.lastrowid
     conn.commit()
-    tid = c.lastrowid
     conn.close()
     return jsonify({'id': tid, 'success': True})
 
@@ -533,10 +524,15 @@ def add_player():
     data = request.json
     conn = get_db()
     c = conn.cursor()
-    c.execute('INSERT INTO players (name, category, base_price, photo_url) VALUES (?, ?, ?, ?)',
-              (data['name'], data.get('category', ''), data.get('base_price', 0), data.get('photo_url', '')))
+    if USE_PG:
+        c.execute('INSERT INTO players (name, category, base_price, photo_url) VALUES (?, ?, ?, ?) RETURNING id',
+                  (data['name'], data.get('category', ''), data.get('base_price', 0), data.get('photo_url', '')))
+        pid = c.fetchone()['id']
+    else:
+        c.execute('INSERT INTO players (name, category, base_price, photo_url) VALUES (?, ?, ?, ?)',
+                  (data['name'], data.get('category', ''), data.get('base_price', 0), data.get('photo_url', '')))
+        pid = c.lastrowid
     conn.commit()
-    pid = c.lastrowid
     conn.close()
     return jsonify({'id': pid, 'success': True})
 
