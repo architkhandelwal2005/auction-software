@@ -1,0 +1,2007 @@
+:root {
+  --canvas-w: 1920;
+  --canvas-h: 1080;
+  --bg-deep: #031018;
+  --bg-navy: #071b2d;
+  --bg-green: #063c30;
+  --field-green: #0b5b42;
+  --accent: #f5b72e;
+  --accent-bright: #ffd15a;
+  --accent-soft: rgba(245,183,46,.25);
+  --status: #35d391;
+  --secondary-accent: #3c8dff;
+  --text-primary: #f6f8fb;
+  --text-secondary: #a9b4c1;
+  --text-muted: #6e7d8d;
+  --panel: rgba(5,15,28,.72);
+  --panel-strong: rgba(4,12,23,.9);
+  --panel-border: rgba(255,255,255,.11);
+  --accent-border: rgba(245,183,46,.58);
+  --display-font: 'Barlow Condensed','Arial Narrow',Impact,sans-serif;
+  --body-font: 'Inter',system-ui,sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { margin:0; width:100%; height:100%; background:#000; overflow:hidden; }
+body { font-family:var(--body-font); color:var(--text-primary); }
+button, select, input { font:inherit; }
+
+/* --admin-h is set by fitStage(); 0 on the public screen, bar height in admin mode */
+:root { --admin-h: 0px; }
+/* Deterministic centering: the stage is absolutely positioned and centred with an
+   explicit translate, so an oversized canvas can never drift off to one corner. */
+#viewport { position:fixed; inset:0; overflow:hidden; background:#000; }
+.stage {
+  position:absolute;
+  left:50%;
+  top:50%;                      /* JS overrides top to centre in the space above the admin bar */
+  width:1920px;
+  height:1080px;
+  overflow:hidden;
+  transform-origin:center center;
+  transform:translate(-50%,-50%);
+  background:var(--bg-deep);
+  isolation:isolate;
+}
+
+/* ---------- SPORT ENVIRONMENT ---------- */
+.sport-environment, .sport-environment > * { position:absolute; inset:0; pointer-events:none; }
+.sport-environment { z-index:-5; overflow:hidden; background:var(--bg-deep); }
+.env-sky {
+  background:
+    radial-gradient(circle at 22% 7%, rgba(64,148,255,.20), transparent 28%),
+    radial-gradient(circle at 82% 8%, rgba(50,211,145,.10), transparent 22%),
+    linear-gradient(180deg, #061523 0%, #062134 39%, #062d32 65%, #041218 100%);
+}
+.env-stands {
+  inset:120px -160px auto -160px;
+  height:505px;
+  border-radius:0 0 50% 50% / 0 0 25% 25%;
+  background:
+    repeating-linear-gradient(180deg, rgba(255,255,255,.020) 0 3px, transparent 3px 13px),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.018) 0 2px, transparent 2px 21px),
+    linear-gradient(180deg, rgba(8,29,47,.58), rgba(6,21,34,.62));
+  box-shadow:inset 0 -40px 100px rgba(0,0,0,.55);
+  opacity:.92;
+}
+.env-crowd {
+  inset:145px 20px auto 20px;
+  height:390px;
+  opacity:.68;
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,.7) 0 1.4px, transparent 1.7px),
+    radial-gradient(circle, rgba(70,164,255,.68) 0 1.3px, transparent 1.6px),
+    radial-gradient(circle, rgba(53,211,145,.50) 0 1.1px, transparent 1.45px),
+    radial-gradient(circle, rgba(245,183,46,.35) 0 1px, transparent 1.3px);
+  background-size:89px 61px, 73px 51px, 101px 77px, 139px 83px;
+  background-position: 0 0, 31px 21px, 55px 4px, 12px 35px;
+  mask-image:linear-gradient(180deg, transparent 0, #000 16%, #000 82%, transparent 100%);
+  animation:crowdFlicker 7s ease-in-out infinite alternate;
+}
+@keyframes crowdFlicker { from{filter:brightness(.8)} to{filter:brightness(1.15)} }
+
+.floodlight { inset:auto; top:56px; width:190px; height:235px; opacity:.9; }
+.floodlight-left { left:36px; transform:rotate(-4deg); }
+.floodlight-right { right:36px; transform:rotate(4deg); }
+.floodlight i {
+  position:absolute; left:18px; top:0; width:152px; height:56px; border-radius:8px;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,244,184,.95) 0 10px, rgba(255,215,104,.9) 10px 15px, transparent 15px 23px),
+    rgba(255,237,169,.35);
+  box-shadow:0 0 45px rgba(255,226,135,.48), 0 0 100px rgba(255,217,105,.18);
+}
+.floodlight b { position:absolute; left:87px; top:45px; width:10px; height:210px; background:linear-gradient(#273849,#0b1822); transform:skewX(-8deg); opacity:.68; }
+.light-beam { inset:auto; top:80px; width:760px; height:700px; filter:blur(18px); opacity:.16; mix-blend-mode:screen; animation:beamSweep 11s ease-in-out infinite alternate; }
+.beam-left { left:-75px; clip-path:polygon(0 0, 25% 0, 100% 100%, 58% 100%); background:linear-gradient(140deg, rgba(255,237,186,.95), rgba(98,161,255,.18), transparent 72%); }
+.beam-right { right:-70px; clip-path:polygon(75% 0, 100% 0, 43% 100%, 0 100%); background:linear-gradient(220deg, rgba(255,237,186,.9), rgba(76,211,161,.16), transparent 72%); animation-delay:-4s; }
+@keyframes beamSweep { from{transform:translateX(-26px) rotate(-1deg)} to{transform:translateX(28px) rotate(1deg)} }
+
+.env-field {
+  inset:auto -150px -110px -150px;
+  height:620px;
+  transform:perspective(900px) rotateX(55deg) scale(1.1);
+  transform-origin:bottom center;
+  clip-path:polygon(12% 0, 88% 0, 100% 100%, 0 100%);
+  background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,.036) 0 72px, rgba(0,0,0,.038) 72px 144px),
+    linear-gradient(180deg, rgba(18,91,68,.95), rgba(4,48,37,.98));
+  box-shadow:0 -50px 120px rgba(23,130,95,.11);
+}
+.env-sport-markings { opacity:.30; }
+.stage[data-sport='cricket'] .env-sport-markings::before {
+  content:''; position:absolute; left:795px; top:505px; width:330px; height:520px;
+  background:linear-gradient(180deg, rgba(210,180,120,.22), rgba(185,160,102,.16));
+  border:1px solid rgba(255,255,255,.18); transform:perspective(900px) rotateX(58deg);
+  box-shadow:inset 0 0 50px rgba(255,255,255,.03);
+}
+.stage[data-sport='cricket'] .env-sport-markings::after {
+  content:''; position:absolute; left:0; right:0; top:524px; height:2px;
+  background:repeating-linear-gradient(90deg, transparent 0 45px, rgba(255,255,255,.35) 45px 64px, transparent 64px 86px);
+}
+.env-vignette { background:radial-gradient(ellipse at 50% 48%, transparent 32%, rgba(0,0,0,.12) 56%, rgba(0,0,0,.57) 100%), linear-gradient(180deg, rgba(0,0,0,.12), transparent 18%, transparent 78%, rgba(0,0,0,.40)); }
+.env-grain { opacity:.08; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.42'/%3E%3C/svg%3E"); mix-blend-mode:soft-light; }
+
+/* Football */
+.stage[data-sport='football'] { --accent:#d9f84c; --accent-bright:#f0ff8f; --status:#7bf25d; --bg-green:#0b3525; --field-green:#0c5b35; }
+.stage[data-sport='football'] .env-sky { background:radial-gradient(circle at 50% 0%, rgba(96,170,255,.18), transparent 34%), linear-gradient(180deg,#06111d,#09231c 62%,#06120f); }
+.stage[data-sport='football'] .env-sport-markings::before { content:''; position:absolute; left:430px; right:430px; bottom:75px; height:310px; border:4px solid rgba(255,255,255,.20); border-radius:50%; transform:perspective(900px) rotateX(62deg); }
+.stage[data-sport='football'] .env-sport-markings::after { content:''; position:absolute; left:50%; bottom:72px; width:4px; height:345px; background:rgba(255,255,255,.18); transform:perspective(900px) rotateX(62deg); }
+/* Badminton */
+.stage[data-sport='badminton'] { --accent:#9a7cff; --accent-bright:#c5b7ff; --status:#46e5d1; --bg-green:#142e50; --field-green:#113a6a; }
+.stage[data-sport='badminton'] .env-sky { background:radial-gradient(circle at 50% 10%,rgba(128,92,255,.24),transparent 36%),linear-gradient(180deg,#09101d,#151b36 52%,#081421); }
+.stage[data-sport='badminton'] .env-field { background:repeating-linear-gradient(90deg,rgba(255,255,255,.018) 0 120px,rgba(0,0,0,.028) 120px 240px),linear-gradient(180deg,#275086,#163a65); }
+.stage[data-sport='badminton'] .env-sport-markings::before { content:''; position:absolute; left:330px; right:330px; bottom:84px; height:330px; border:3px solid rgba(255,255,255,.28); transform:perspective(900px) rotateX(58deg); }
+.stage[data-sport='badminton'] .env-sport-markings::after { content:''; position:absolute; left:50%; bottom:92px; width:3px; height:290px; background:rgba(255,255,255,.40); transform:perspective(900px) rotateX(58deg); box-shadow:-220px 80px 0 rgba(255,255,255,.20),220px 80px 0 rgba(255,255,255,.20); }
+/* Pickleball */
+.stage[data-sport='pickleball'] { --accent:#b7ff3c; --accent-bright:#dbff91; --status:#42efc2; --bg-green:#0d3f42; --field-green:#146267; }
+.stage[data-sport='pickleball'] .env-sky { background:radial-gradient(circle at 70% 5%,rgba(88,255,218,.14),transparent 28%),linear-gradient(180deg,#061923,#0a2f35 58%,#061517); }
+.stage[data-sport='pickleball'] .env-field { background:repeating-linear-gradient(90deg,rgba(255,255,255,.022) 0 108px,rgba(0,0,0,.035) 108px 216px),linear-gradient(180deg,#1e6e73,#0d474b); }
+.stage[data-sport='pickleball'] .env-sport-markings::before { content:''; position:absolute; left:355px; right:355px; bottom:92px; height:310px; border:3px solid rgba(255,255,255,.24); transform:perspective(900px) rotateX(58deg); }
+/* Multi */
+.stage[data-sport='multi'] { --accent:#d9b865; --accent-bright:#f7df9d; --status:#6ee7d7; --bg-green:#183147; --field-green:#22384a; }
+.stage[data-sport='multi'] .env-sky { background:radial-gradient(circle at 50% 0%,rgba(104,144,255,.18),transparent 40%),linear-gradient(180deg,#0a1322,#17233a 62%,#0b121b); }
+.stage[data-sport='multi'] .env-field { background:repeating-linear-gradient(90deg,rgba(255,255,255,.018) 0 110px,rgba(0,0,0,.035) 110px 220px),linear-gradient(180deg,#21384d,#111f2e); }
+
+/* ---------- HEADER ---------- */
+.tournament-header { position:absolute; z-index:20; left:0; right:0; top:0; height:104px; padding:20px 56px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(245,183,46,.25); background:linear-gradient(180deg,rgba(2,10,17,.84),rgba(3,15,25,.48) 72%,transparent); }
+.brand-lockup { display:flex; align-items:center; gap:18px; }
+.brand-mark { width:56px; height:56px; border:1px solid var(--accent-border); border-radius:15px; display:grid; place-items:center; color:var(--accent); font-size:26px; background:linear-gradient(145deg,rgba(245,183,46,.14),rgba(255,255,255,.03)); box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 0 34px rgba(245,183,46,.08); }
+.tournament-name { font-family:var(--display-font); font-size:44px; line-height:.95; font-weight:800; color:var(--accent-bright); letter-spacing:.4px; text-shadow:0 0 28px rgba(245,183,46,.10); }
+.tournament-subtitle { margin-top:7px; font-family:var(--display-font); font-weight:600; font-size:15px; letter-spacing:4.5px; color:var(--text-secondary); }
+.header-meta { display:flex; align-items:center; gap:26px; }
+.progress-box { min-width:124px; padding:10px 14px; text-align:right; border:1px solid rgba(255,255,255,.11); border-radius:12px; background:rgba(5,14,24,.54); }
+.progress-box span { display:block; font-family:var(--display-font); letter-spacing:2px; font-size:12px; color:var(--text-muted); }
+.progress-box strong { font-family:var(--display-font); font-size:26px; }
+.live-dot { display:flex; align-items:center; gap:9px; padding:10px 15px; border:1px solid rgba(255,82,95,.36); border-radius:999px; font-size:13px; font-weight:800; letter-spacing:2px; color:#ff7b86; background:rgba(90,10,20,.22); }
+.live-dot span { width:8px; height:8px; border-radius:50%; background:#ff4051; box-shadow:0 0 15px #ff4051; }
+
+/* ---------- MAIN LAYOUT ---------- */
+.main-grid { position:absolute; z-index:10; left:62px; right:58px; top:114px; bottom:154px; display:grid; grid-template-columns: 540px minmax(620px, 1fr) 420px; gap:34px; align-items:center; }
+.player-zone { position:relative; height:100%; min-width:0; display:flex; align-items:center; justify-content:center; }
+.price-zone { align-self:center; justify-self:stretch; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; padding-top:10px; text-align:center; }
+.status-pill { display:inline-flex; align-items:center; gap:10px; padding:10px 18px; border-radius:999px; background:rgba(22,138,95,.16); border:1px solid rgba(53,211,145,.38); box-shadow:inset 0 1px 0 rgba(255,255,255,.05); }
+.status-pill span { width:9px; height:9px; border-radius:50%; background:var(--status); box-shadow:0 0 14px var(--status); }
+.status-pill b { font-family:var(--display-font); font-size:18px; letter-spacing:3.6px; color:var(--status); }
+.price-label { margin-top:28px; font-family:var(--display-font); font-size:22px; letter-spacing:5.2px; color:#98a8b9; font-weight:700; }
+.current-price { margin-top:1px; font-family:var(--display-font); font-size:162px; line-height:.88; font-weight:900; letter-spacing:-3px; color:var(--accent-bright); text-shadow:0 0 22px rgba(245,183,46,.18),0 0 78px rgba(245,183,46,.12); font-variant-numeric:tabular-nums; }
+.price-meta-row { margin-top:34px; display:flex; gap:18px; }
+.price-meta-card { width:176px; height:102px; display:flex; flex-direction:column; justify-content:center; align-items:center; border-radius:17px; background:linear-gradient(180deg,rgba(8,22,37,.82),rgba(4,13,24,.76)); border:1px solid rgba(255,255,255,.10); box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 16px 34px rgba(0,0,0,.22); }
+.price-meta-card span { font-family:var(--display-font); letter-spacing:2.6px; font-size:14px; color:var(--text-muted); font-weight:700; }
+.price-meta-card strong { margin-top:8px; font-family:var(--display-font); font-size:31px; color:#f4f7fa; }
+.increment-card { border-color:rgba(60,141,255,.34); background:linear-gradient(180deg,rgba(13,47,78,.82),rgba(8,30,53,.72)); }
+.increment-card strong { color:#5ca4ff; }
+
+/* ---------- TEAM PURSE PANEL ---------- */
+.purse-panel { align-self:center; width:100%; padding:20px 18px 18px; border-radius:22px; background:linear-gradient(180deg,rgba(6,16,30,.82),rgba(4,12,23,.72)); border:1px solid rgba(255,255,255,.10); box-shadow:0 26px 70px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.04); backdrop-filter:blur(14px); }
+.panel-title { margin:0 4px 15px; font-family:var(--display-font); font-size:17px; letter-spacing:3px; color:#9badbf; font-weight:700; }
+.team-rows { display:flex; flex-direction:column; gap:10px; }
+.team-row { position:relative; min-height:84px; display:grid; grid-template-columns:52px 1fr auto; align-items:center; gap:14px; padding:11px 14px; border-radius:14px; background:linear-gradient(180deg,rgba(15,30,50,.82),rgba(9,23,39,.74)); border:1px solid rgba(255,255,255,.075); overflow:hidden; }
+.team-row::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--team-color,#4c8dff); opacity:.9; }
+.team-logo { width:46px; height:46px; border-radius:12px; display:grid; place-items:center; font-family:var(--display-font); font-size:19px; font-weight:900; background:linear-gradient(145deg,color-mix(in srgb,var(--team-color) 82%, white 5%),color-mix(in srgb,var(--team-color) 65%, black 25%)); color:white; box-shadow:0 8px 24px rgba(0,0,0,.25); }
+.team-copy strong { display:block; font-family:var(--display-font); font-size:24px; line-height:1; letter-spacing:.2px; }
+.team-copy span { display:block; margin-top:5px; color:var(--text-muted); font-size:12px; letter-spacing:1px; text-transform:uppercase; }
+.team-purse { font-family:var(--display-font); font-size:29px; font-weight:800; color:#f6f7f8; white-space:nowrap; }
+
+/* ---------- BOTTOM INFO STRIP ---------- */
+.player-info-strip { position:absolute; z-index:20; left:0; right:0; bottom:0; height:142px; display:grid; grid-template-columns:240px repeat(5, 1fr); align-items:stretch; background:linear-gradient(180deg,rgba(3,11,20,.76),rgba(2,8,15,.94)); border-top:1px solid rgba(255,255,255,.085); backdrop-filter:blur(9px); }
+.info-leading { display:flex; align-items:center; gap:10px; padding-left:55px; border-right:1px solid rgba(255,255,255,.07); font-family:var(--display-font); font-size:15px; letter-spacing:2.8px; color:#8d9dad; font-weight:700; white-space:nowrap; }
+.sport-dot { color:var(--accent); font-size:18px; }
+.info-cell { display:flex; flex-direction:column; justify-content:center; padding:0 32px; border-right:1px solid rgba(255,255,255,.07); }
+.info-cell span { font-family:var(--display-font); font-size:13px; letter-spacing:2.6px; color:#697b8d; font-weight:700; }
+.info-cell strong { margin-top:8px; font-family:var(--display-font); font-size:29px; line-height:1; color:#f4f7fa; }
+
+/* ---------- UNIVERSAL PHOTO ENGINE ---------- */
+.photo-shell { position:relative; overflow:hidden; background:#0a1724; }
+.photo-shell .photo-blur { position:absolute; inset:-12%; width:124%; height:124%; object-fit:cover; object-position:var(--focal-x,50%) var(--focal-y,38%); filter:blur(28px) saturate(.82) brightness(.55); opacity:.78; transform:scale(1.08); }
+.photo-shell .photo-main { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:var(--focal-x,50%) var(--focal-y,38%); }
+.photo-shell[data-fit='contain'] .photo-main { object-fit:contain; padding:3%; }
+.photo-shell::after { content:''; position:absolute; inset:0; background:linear-gradient(180deg,transparent 55%,rgba(1,7,12,.15) 70%,rgba(1,7,12,.60) 100%), radial-gradient(circle at 50% 35%,transparent 48%,rgba(0,0,0,.16) 100%); pointer-events:none; }
+.photo-shell .photo-placeholder { position:absolute; inset:0; display:none; place-items:center; background:radial-gradient(circle at 50% 34%,rgba(78,129,187,.32),transparent 28%), linear-gradient(145deg,#10293d,#071520 65%); }
+.photo-shell.is-fallback .photo-placeholder { display:grid; }
+.photo-shell.is-fallback .photo-main, .photo-shell.is-fallback .photo-blur { display:none; }
+.placeholder-person { position:relative; width:60%; height:72%; opacity:.88; }
+.placeholder-person::before { content:''; position:absolute; left:50%; top:7%; width:118px; height:118px; transform:translateX(-50%); border-radius:50%; background:linear-gradient(#60778e,#31495f); box-shadow:0 0 60px rgba(90,147,200,.16); }
+.placeholder-person::after { content:''; position:absolute; left:50%; bottom:4%; width:260px; height:330px; transform:translateX(-50%); border-radius:48% 48% 20% 20% / 28% 28% 12% 12%; background:linear-gradient(180deg,#45647e,#1e354a 70%,#122536); }
+
+/* ---------- TEMPLATE: ARENA ---------- */
+.tpl-arena { width:468px; height:668px; position:relative; border-radius:26px; padding:12px; border:1px solid var(--accent-border); background:linear-gradient(145deg,rgba(7,25,40,.88),rgba(5,14,24,.78)); box-shadow:0 30px 70px rgba(0,0,0,.38),0 0 34px rgba(245,183,46,.08),inset 0 1px 0 rgba(255,255,255,.06); }
+.tpl-arena::before,.tpl-arena::after { content:''; position:absolute; width:54px; height:54px; border-color:var(--accent); opacity:.75; }
+.tpl-arena::before { left:-7px; top:-7px; border-left:2px solid; border-top:2px solid; border-radius:15px 0 0 0; }
+.tpl-arena::after { right:-7px; bottom:-7px; border-right:2px solid; border-bottom:2px solid; border-radius:0 0 15px 0; }
+.arena-photo { height:486px; border-radius:18px 18px 12px 12px; border:1px solid rgba(255,255,255,.08); }
+.arena-copy { position:absolute; left:27px; right:27px; bottom:24px; }
+.category-badge { display:inline-flex; padding:7px 13px; border-radius:999px; border:1px solid rgba(53,211,145,.38); background:rgba(26,126,90,.21); color:var(--status); font-family:var(--display-font); font-weight:800; letter-spacing:2px; font-size:15px; }
+.player-name { margin-top:10px; font-family:var(--display-font); font-size:56px; line-height:.92; font-weight:900; letter-spacing:.3px; text-transform:uppercase; }
+.player-subline { margin-top:12px; display:flex; gap:12px; align-items:center; font-family:var(--display-font); color:#9fb1c0; font-size:18px; letter-spacing:1.8px; text-transform:uppercase; }
+.player-subline b { color:var(--accent-bright); font-weight:700; }
+
+/* ---------- TEMPLATE: COLLECTOR ---------- */
+.tpl-collector { width:452px; height:700px; position:relative; padding:10px; clip-path:polygon(4% 0,96% 0,100% 5%,100% 93%,94% 100%,6% 100%,0 94%,0 6%); background:linear-gradient(145deg,#d9a936 0%,#ffe07a 14%,#825e15 27%,#f6c347 40%,#6b4b0f 55%,#e8bd4f 78%,#9f7822 100%); box-shadow:0 28px 75px rgba(0,0,0,.46),0 0 30px rgba(245,183,46,.10); }
+/* Flex column with the base-price ribbon's height reserved as bottom padding:
+   the photo absorbs any extra height a long player name needs, so nothing can
+   ever run underneath the ribbon regardless of how long the real data is. */
+.collector-inner { width:100%; height:100%; position:relative; padding:16px 16px 82px; clip-path:inherit; background:linear-gradient(180deg,rgba(6,24,40,.99),rgba(4,13,23,.99)); border:1px solid rgba(255,255,255,.08); display:flex; flex-direction:column; }
+.collector-inner::before { content:''; position:absolute; inset:10px; clip-path:inherit; border:1px solid rgba(245,183,46,.35); pointer-events:none; }
+/* Heights below are tuned so populated data clears the absolutely-positioned
+   base-price ribbon; with placeholder text the original values overlapped it. */
+.collector-photo { flex:1 1 auto; min-height:150px; clip-path:polygon(0 0,100% 0,100% 92%,94% 100%,0 100%); border:1px solid rgba(255,255,255,.08); }
+.collector-title { margin:14px 2px 10px; font-family:var(--display-font); font-size:46px; font-weight:900; line-height:.9; text-transform:uppercase; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.collector-tags { display:flex; gap:8px; margin-bottom:14px; }
+.collector-tag { padding:6px 9px; border-radius:7px; border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.045); font-family:var(--display-font); font-size:14px; letter-spacing:1.4px; color:#c7d1db; }
+.collector-data { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+.collector-data .stat { min-height:56px; padding:9px 12px; border:1px solid rgba(255,255,255,.075); background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.016)); overflow:hidden; }
+.collector-data span { display:block; color:#718397; font-family:var(--display-font); font-size:12px; letter-spacing:1.9px; }
+.collector-data strong { display:block; margin-top:5px; color:#eef3f7; font-family:var(--display-font); font-size:19px; }
+.collector-price { position:absolute; left:16px; right:16px; bottom:16px; height:55px; display:flex; justify-content:space-between; align-items:center; padding:0 17px; background:linear-gradient(90deg,#7a5512,#d8a72f 38%,#ffdc72 72%,#8a6115); color:#101318; font-family:var(--display-font); font-weight:900; letter-spacing:1px; }
+.collector-price span { font-size:14px; }
+.collector-price strong { font-size:27px; }
+
+/* ---------- TEMPLATE: CIRCULAR ---------- */
+.tpl-circular { width:520px; height:690px; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.circle-orbit { position:relative; width:456px; height:456px; border-radius:50%; display:grid; place-items:center; filter:drop-shadow(0 30px 55px rgba(0,0,0,.34)); }
+.circle-orbit::before { content:''; position:absolute; inset:0; border-radius:50%; background:conic-gradient(from 15deg,transparent 0 7%,var(--accent) 7% 18%,transparent 18% 35%,rgba(255,255,255,.12) 35% 49%,transparent 49% 67%,var(--accent) 67% 77%,transparent 77% 100%); animation:ringSpin 20s linear infinite; opacity:.85; }
+.circle-orbit::after { content:''; position:absolute; inset:18px; border-radius:50%; border:1px solid rgba(255,255,255,.13); box-shadow:0 0 70px rgba(63,137,255,.14),0 0 34px var(--accent-soft); }
+@keyframes ringSpin { to{ transform:rotate(360deg); } }
+.circle-photo { width:390px; height:390px; border-radius:50%; border:2px solid var(--accent); box-shadow:inset 0 0 0 8px rgba(3,14,24,.78); z-index:2; }
+.circle-name { margin-top:31px; font-family:var(--display-font); font-size:61px; line-height:.9; font-weight:900; text-transform:uppercase; text-align:center; }
+.circle-role { margin-top:12px; font-family:var(--display-font); font-size:18px; letter-spacing:2px; color:#9fb0bf; text-transform:uppercase; }
+.circle-id { margin-top:13px; padding:6px 12px; border-radius:999px; background:rgba(245,183,46,.08); border:1px solid rgba(245,183,46,.3); color:var(--accent-bright); font-family:var(--display-font); letter-spacing:2px; }
+
+/* ---------- TEMPLATE: BROADCAST ---------- */
+.tpl-broadcast { width:560px; height:520px; position:relative; display:grid; grid-template-columns:245px 1fr; align-items:stretch; clip-path:polygon(0 0,95% 0,100% 9%,100% 100%,4% 100%,0 93%); background:linear-gradient(135deg,rgba(8,26,43,.93),rgba(4,13,24,.91)); border:1px solid rgba(255,255,255,.08); box-shadow:0 28px 70px rgba(0,0,0,.38); }
+.broadcast-photo { margin:18px 0 18px 18px; clip-path:polygon(0 0,100% 0,100% 94%,92% 100%,0 100%); border-right:2px solid var(--accent); }
+.broadcast-copy { padding:38px 30px 28px 28px; }
+.broadcast-eyebrow { font-family:var(--display-font); font-size:15px; letter-spacing:2.3px; color:var(--status); }
+.broadcast-name { margin-top:11px; font-family:var(--display-font); font-size:52px; line-height:.91; font-weight:900; text-transform:uppercase; }
+.broadcast-role { margin-top:11px; color:#91a2b4; font-family:var(--display-font); font-size:17px; letter-spacing:1.7px; text-transform:uppercase; }
+.broadcast-rule { height:3px; margin:22px 0; background:linear-gradient(90deg,var(--accent),rgba(245,183,46,.05)); }
+.broadcast-stats { display:flex; flex-direction:column; gap:12px; }
+.broadcast-stat { display:flex; align-items:baseline; justify-content:space-between; gap:14px; padding-bottom:9px; border-bottom:1px solid rgba(255,255,255,.07); }
+.broadcast-stat span { font-family:var(--display-font); color:#667a8d; font-size:13px; letter-spacing:1.7px; }
+.broadcast-stat strong { font-family:var(--display-font); font-size:20px; color:#eef2f5; text-align:right; }
+
+/* ---------- TEMPLATE: POSTER ---------- */
+.tpl-poster { width:470px; height:680px; position:relative; transform:rotate(-2.7deg); background:#f0ede4; padding:18px 18px 26px; color:#10161b; box-shadow:0 34px 80px rgba(0,0,0,.48),0 0 40px rgba(245,183,46,.07); }
+.tpl-poster::before { content:''; position:absolute; inset:0; pointer-events:none; opacity:.18; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.55' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.34'/%3E%3C/svg%3E"); mix-blend-mode:multiply; }
+.poster-photo { height:475px; background:#19242d; }
+.poster-copy { padding:20px 7px 0; }
+.poster-kicker { display:flex; justify-content:space-between; align-items:center; font-family:var(--display-font); font-size:13px; letter-spacing:1.7px; color:#53606a; }
+.poster-name { margin-top:8px; font-family:var(--display-font); font-size:54px; line-height:.87; font-weight:900; text-transform:uppercase; }
+.poster-role { margin-top:12px; font-family:var(--display-font); font-size:18px; letter-spacing:1.5px; color:#37444e; }
+.poster-stamp { position:absolute; right:24px; bottom:28px; width:75px; height:75px; border:3px solid #9d7725; border-radius:50%; display:grid; place-items:center; transform:rotate(10deg); font-family:var(--display-font); color:#8b6c26; font-size:11px; text-align:center; line-height:1.05; opacity:.75; }
+
+/* ---------- TEMPLATE SPECIFIC LAYOUT TUNING ---------- */
+.stage[data-template='collector'] .player-zone { justify-content:flex-start; padding-left:34px; }
+.stage[data-template='circular'] .player-zone { justify-content:center; }
+.stage[data-template='broadcast'] .player-zone { justify-content:flex-start; }
+.stage[data-template='poster'] .player-zone { justify-content:center; padding-left:10px; }
+.stage[data-template='broadcast'] .price-zone { transform:translateX(-12px); }
+.stage[data-template='poster'] .price-zone { transform:translateX(-12px); }
+
+/* ---------- DEBUG ---------- */
+.debug-panel { position:absolute; z-index:100; top:18px; right:18px; width:260px; padding:16px; border-radius:16px; background:rgba(4,11,20,.92); border:1px solid rgba(245,183,46,.35); box-shadow:0 20px 60px rgba(0,0,0,.5); backdrop-filter:blur(12px); }
+.debug-title { font-family:var(--display-font); font-size:16px; letter-spacing:2px; color:var(--accent-bright); margin-bottom:10px; }
+.debug-panel label { display:block; font-size:11px; text-transform:uppercase; color:#8293a3; letter-spacing:1px; margin-top:10px; }
+.debug-panel select { width:100%; margin-top:5px; padding:8px; background:#0b1726; border:1px solid rgba(255,255,255,.1); border-radius:8px; color:white; }
+.debug-hint { margin-top:12px; font-size:11px; line-height:1.4; color:#667789; }
+
+/* subtle entrance */
+.player-zone > * { animation:playerIn .56s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes playerIn { from{opacity:0; transform:translateY(20px) scale(.992)} to{opacity:1; transform:translateY(0) scale(1)} }
+.price-pop { animation:pricePop .38s ease-out; }
+@keyframes pricePop { 0%{transform:scale(1)} 45%{transform:scale(1.045)} 100%{transform:scale(1)} }
+.team-flash { animation:teamFlash .48s ease-out; }
+@keyframes teamFlash { 0%{box-shadow:inset 0 0 0 999px rgba(255,255,255,.06)} 100%{box-shadow:none} }
+
+@media (prefers-reduced-motion: reduce) {
+  *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; }
+}
+
+/* ---------- FRONTEND-ONLY PLACEHOLDER OVERRIDES ---------- */
+.photo-placeholder-label {
+  position:absolute;
+  left:22px;
+  right:22px;
+  bottom:22px;
+  text-align:center;
+  font-family:var(--display-font);
+  font-size:18px;
+  font-weight:800;
+  letter-spacing:3px;
+  color:#9fb2c4;
+  text-transform:uppercase;
+}
+[data-slot] { min-width:0; }
+
+/* ---------- LIVE-DATA ADDITIONS ----------
+   Support for real team logos and the empty-teams state. These extend the
+   display system for live data; they do not alter the approved design. */
+.team-logo img { width:100%; height:100%; object-fit:cover; border-radius:inherit; display:block; }
+.team-empty { padding:26px 8px; text-align:center; font-family:var(--display-font); font-size:16px; letter-spacing:2.4px; color:var(--text-muted); }
+
+/* The shared .player-zone entrance animation sets `transform`, which was
+   overriding the Photo Poster's rotate(-2.7deg) and rendering it upright.
+   This variant carries the tilt through the entrance so it survives. */
+.tpl-poster { animation-name: posterIn; }
+@keyframes posterIn {
+  from { opacity:0; transform:translateY(20px) scale(.992) rotate(-2.7deg); }
+  to   { opacity:1; transform:translateY(0) scale(1) rotate(-2.7deg); }
+}
+
+/* ==========================================================================
+   PHOTOGRAPHIC SPORT ENVIRONMENT
+   CSS gradients and shapes cannot read as a real floodlit stadium — the
+   depth, crowd detail and light falloff of an actual photograph is what the
+   approved references have. So the environment can be backed by a real photo
+   selected via `data-bg` on the stage. Each background tunes its own focal
+   point and grading, because a floodlit night stadium and a daylight nets
+   photo need very different treatment to sit behind the same foreground.
+   With no `data-bg`, the original CSS-only environment renders unchanged.
+   ========================================================================== */
+.env-photo, .env-photo-grade { position:absolute; inset:0; pointer-events:none; opacity:0; }
+.stage[data-bg] .env-photo, .stage[data-bg] .env-photo-grade { opacity:1; }
+
+.stage[data-bg] .env-photo {
+  background-size:cover;
+  background-repeat:no-repeat;
+  transform:scale(1.06);
+  animation:envDrift 46s ease-in-out infinite alternate;
+}
+@keyframes envDrift {
+  from { transform:scale(1.06) translate3d(-10px,0,0); }
+  to   { transform:scale(1.10) translate3d(10px,-8px,0); }
+}
+
+/* ── background library ── */
+.stage[data-bg='cricket-pitch'] .env-photo {
+  /* floodlit night stadium, green pitch glowing — the Circular Spotlight default */
+  background-image:url('/static/img/bg-cricket-pitch.jpg');
+  background-position:center 50%;
+  filter:brightness(.60) saturate(1.06) contrast(1.06);
+}
+.stage[data-bg='cricket-arena'] .env-photo {
+  /* packed vibrant stadium bowl — the second pitch option */
+  background-image:url('/static/img/bg-cricket-arena.jpg');
+  background-position:center 44%;
+  filter:brightness(.56) saturate(1.02) contrast(1.05);
+}
+.stage[data-bg='cricket-stadium'] .env-photo {
+  background-image:url('/static/img/bg-cricket-stadium.jpg');
+  background-position:center 46%;
+  filter:brightness(.66) saturate(1.0) contrast(1.04);
+}
+.stage[data-bg='cricket-crowd'] .env-photo {
+  background-image:url('/static/img/bg-cricket-crowd.jpg');
+  background-position:center 38%;
+  filter:brightness(.60) saturate(.95) contrast(1.05);
+}
+.stage[data-bg='cricket-nets'] .env-photo {
+  /* daylight source — graded down hard and cooled so it reads as evening */
+  background-image:url('/static/img/bg-cricket-nets.jpg');
+  background-position:center 62%;
+  filter:brightness(.30) saturate(.62) contrast(1.12);
+}
+.stage[data-bg='cricket-ground'] .env-photo {
+  background-image:url('/static/img/bg-cricket-ground.jpg');
+  background-position:center 50%;
+  filter:brightness(.30) saturate(.60) contrast(1.10);
+}
+.stage[data-bg='football-stadium'] .env-photo {
+  background-image:url('/static/img/bg-football-stadium.jpg');
+  background-position:center 52%;
+  filter:brightness(.62) saturate(.95) contrast(1.04);
+}
+
+/* Colour grade toward the design's navy/teal, plus scrims behind the header,
+   the bottom information strip and the right-hand purse panel so foreground
+   type keeps its contrast over any photograph. */
+.stage[data-bg] .env-photo-grade {
+  background:
+    linear-gradient(180deg, rgba(2,9,17,.90) 0%, rgba(3,13,22,.52) 11%, rgba(3,16,26,.16) 24%, transparent 40%),
+    linear-gradient(0deg,  rgba(2,8,14,.93) 0%, rgba(2,10,18,.58) 12%, transparent 30%),
+    linear-gradient(270deg, rgba(3,12,21,.74) 0%, rgba(3,12,21,.26) 17%, transparent 33%),
+    radial-gradient(ellipse 70% 60% at 50% 52%, rgba(2,10,18,.22) 0%, rgba(2,8,15,.58) 100%),
+    linear-gradient(180deg, rgba(6,28,45,.28), rgba(4,32,30,.24));
+}
+
+/* With a real photograph present, the synthetic stands / crowd / field /
+   markings and the fake floodlight fixtures would double up on what the
+   image already shows, so they switch off whenever a photo background is on. */
+.stage[data-bg] .env-stands,
+.stage[data-bg] .env-crowd,
+.stage[data-bg] .env-field,
+.stage[data-bg] .env-sport-markings,
+.stage[data-bg] .floodlight,
+.stage[data-bg] .light-beam { display:none; }
+
+/* The photo carries its own vignette; keep only a light edge falloff. */
+.stage[data-bg] .env-vignette {
+  background:radial-gradient(ellipse at 50% 50%, transparent 48%, rgba(0,0,0,.32) 100%);
+}
+
+/* ==========================================================================
+   DRAMATIC GOLD TREATMENT
+   The base design was right structurally but visually flat next to the
+   approved references. This layer adds the metallic gold plating, gradient
+   price type, shield crests, purse bars and nameplates that give the screen
+   its broadcast weight. Colour still flows from the sport theme's --accent
+   tokens, so non-cricket themes inherit the same treatment in their palette.
+   ========================================================================== */
+:root {
+  --gold-plate: linear-gradient(145deg,#7d5a12 0%,#e0b94f 14%,#fff2c0 30%,#d9a72f 46%,#7a5510 62%,#f0cf70 82%,#a97f1e 100%);
+  --gold-rim: linear-gradient(180deg,#ffeaa9,#d7a733 46%,#8b6415);
+  --gold-text: linear-gradient(180deg,#fff6cf 0%,#ffdf7a 30%,#f5bc32 56%,#d0900f 80%,#a8730c 100%);
+}
+
+/* ── CURRENT PRICE: gold gradient type with a controlled bloom ── */
+.current-price {
+  background-image:var(--gold-text);
+  -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent; color:transparent;
+  text-shadow:none;
+  letter-spacing:-4px;
+  filter:
+    drop-shadow(0 3px 0 rgba(0,0,0,.42))
+    drop-shadow(0 0 26px rgba(245,183,46,.46))
+    drop-shadow(0 0 70px rgba(245,183,46,.24));
+}
+.price-label { color:#b9c7d6; }
+
+/* ── status pill ── */
+.status-pill {
+  background:linear-gradient(180deg,rgba(24,150,102,.26),rgba(12,88,60,.20));
+  border-color:rgba(53,211,145,.55);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 0 26px rgba(53,211,145,.18);
+}
+
+/* ── base price / increment cards ── */
+.price-meta-card {
+  position:relative;
+  border-color:rgba(245,183,46,.30);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 18px 38px rgba(0,0,0,.34), 0 0 22px rgba(245,183,46,.06);
+}
+.price-meta-card::before {
+  content:''; position:absolute; left:14px; right:14px; top:0; height:2px; border-radius:2px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent); opacity:.75;
+}
+.price-meta-card strong {
+  background-image:var(--gold-text); -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+.increment-card strong { background-image:none; -webkit-text-fill-color:#5ca4ff; }
+
+/* ── TEAM PANEL: shield crests, purse bars, stronger rows ── */
+.purse-panel {
+  border-color:rgba(245,183,46,.26);
+  box-shadow:0 26px 70px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.05), 0 0 30px rgba(245,183,46,.05);
+}
+.panel-title {
+  color:var(--accent-bright); letter-spacing:3.4px;
+  padding-bottom:11px; border-bottom:1px solid rgba(245,183,46,.20);
+}
+.team-row {
+  grid-template-columns:54px 1fr auto;
+  grid-template-rows:auto auto;
+  row-gap:9px;
+  min-height:88px;
+  background:linear-gradient(180deg,rgba(17,34,56,.86),rgba(8,20,35,.80));
+  border-color:rgba(255,255,255,.10);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+}
+.team-row::before { width:4px; box-shadow:0 0 16px var(--team-color); }
+.team-logo {
+  width:50px; height:56px; border-radius:0; font-size:20px;
+  clip-path:polygon(50% 0%,100% 14%,100% 62%,50% 100%,0 62%,0 14%);
+  box-shadow:0 8px 22px rgba(0,0,0,.38);
+}
+.team-copy strong { font-size:25px; }
+.team-purse {
+  font-size:30px;
+  background-image:var(--gold-text); -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+.team-bar {
+  grid-column:1 / -1; height:5px; border-radius:99px; overflow:hidden;
+  background:rgba(255,255,255,.08); box-shadow:inset 0 1px 2px rgba(0,0,0,.5);
+}
+.team-bar i {
+  display:block; height:100%; border-radius:99px;
+  background:linear-gradient(90deg,#1f9d68,#35d391 70%,#7bf0bd);
+  box-shadow:0 0 12px rgba(53,211,145,.55);
+}
+
+/* ── HEADER ── */
+.brand-mark {
+  background:var(--gold-plate); color:#20170a; border:none; font-size:28px;
+  box-shadow:0 6px 20px rgba(0,0,0,.45), 0 0 28px rgba(245,183,46,.22), inset 0 1px 0 rgba(255,255,255,.5);
+}
+.tournament-name {
+  background-image:var(--gold-text); -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 2px 0 rgba(0,0,0,.35)) drop-shadow(0 0 22px rgba(245,183,46,.20));
+}
+.progress-box { border-color:rgba(245,183,46,.26); }
+.progress-box strong { color:var(--accent-bright); }
+
+/* ── shared gold nameplate (Arena + Circular) ── */
+.arena-plate, .circle-plate {
+  position:relative; margin-top:10px; padding:12px 18px 14px; border-radius:14px;
+  background:linear-gradient(180deg,rgba(6,20,34,.90),rgba(3,11,20,.92));
+  border:1px solid rgba(245,183,46,.42);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 14px 34px rgba(0,0,0,.42), 0 0 26px rgba(245,183,46,.08);
+}
+.arena-plate::after, .circle-plate::after {
+  content:''; position:absolute; left:16px; right:16px; bottom:-1px; height:2px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+}
+.arena-copy .player-name { margin-top:0; }
+
+/* ── ARENA: gold plated outer rim over a dark inner body ── */
+.tpl-arena {
+  position:relative; border:none; padding:3px;
+  background:var(--gold-plate);
+  box-shadow:0 34px 80px rgba(0,0,0,.52), 0 0 44px rgba(245,183,46,.16);
+}
+.tpl-arena::before { display:none; }
+.tpl-arena::after {
+  display:block; content:''; position:absolute; inset:6px; border-radius:21px; z-index:0;
+  background:linear-gradient(160deg,rgba(6,22,37,.94),rgba(3,12,21,.96));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);
+  border:none;
+}
+/* Only lift the children above the ::after inner body — do NOT set a blanket
+   `position` here, or .arena-copy loses its absolute placement and stretches
+   past the gold rim. */
+.tpl-arena > .photo-shell { position:relative; z-index:1; margin:9px 9px 0; height:474px; border-radius:16px; }
+.tpl-arena > .arena-copy { position:absolute; z-index:2; left:24px; right:24px; bottom:20px; }
+
+/* ── CIRCULAR SPOTLIGHT ── */
+.tpl-circular { width:560px; height:700px; }
+.circle-orbit { width:474px; height:474px; }
+.circle-orbit::before {
+  opacity:1; filter:drop-shadow(0 0 22px rgba(245,183,46,.45));
+  background:conic-gradient(from 200deg,
+    rgba(255,242,192,0) 0deg, var(--accent) 26deg, #fff2c0 62deg, var(--accent) 96deg,
+    rgba(255,242,192,0) 150deg, rgba(255,255,255,.14) 190deg, rgba(255,242,192,0) 232deg,
+    var(--accent) 286deg, #ffe9a8 318deg, rgba(255,242,192,0) 356deg);
+}
+.circle-orbit::after {
+  inset:14px; border:2px solid rgba(255,236,175,.30);
+  box-shadow:0 0 90px rgba(245,183,46,.20), inset 0 0 60px rgba(3,14,24,.85);
+}
+.circle-photo {
+  width:410px; height:410px; border:3px solid transparent;
+  background-image:linear-gradient(#04111d,#04111d), var(--gold-rim);
+  background-origin:border-box; background-clip:content-box, border-box;
+  box-shadow:inset 0 0 0 6px rgba(3,14,24,.9), 0 0 60px rgba(245,183,46,.18);
+}
+.circle-badge {
+  position:absolute; right:-18px; bottom:26px; z-index:4;
+  width:104px; height:104px; border-radius:50%;
+  display:grid; place-items:center; text-align:center; padding:0 8px;
+  border:3px solid transparent;
+  background-image:linear-gradient(160deg,#0a1e33,#04111d), var(--gold-rim);
+  background-origin:border-box; background-clip:content-box, border-box;
+  box-shadow:0 10px 30px rgba(0,0,0,.5), 0 0 30px rgba(245,183,46,.25);
+}
+.circle-badge span {
+  font-family:var(--display-font); font-weight:900; font-size:16px; line-height:1.05;
+  letter-spacing:1px; color:var(--accent-bright);
+}
+.circle-plate { margin-top:34px; padding:14px 30px 16px; text-align:center; }
+.circle-name {
+  margin:0; font-size:58px;
+  background-image:var(--gold-text); -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 2px 0 rgba(0,0,0,.4));
+}
+.circle-sub {
+  margin-top:6px; font-family:var(--display-font); font-size:19px;
+  letter-spacing:5px; color:#c3d0dc; text-transform:uppercase;
+}
+/* chip row — the circular template's own way of presenting player data */
+.chip-row {
+  margin-top:20px; display:flex; align-items:stretch;
+  padding:6px 8px; border-radius:16px;
+  background:linear-gradient(180deg,rgba(6,20,34,.80),rgba(3,11,20,.76));
+  border:1px solid rgba(245,183,46,.30);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 14px 30px rgba(0,0,0,.34);
+}
+.chip { display:flex; align-items:center; gap:9px; padding:8px 15px; }
+.chip + .chip { border-left:1px solid rgba(255,255,255,.10); }
+.chip i { font-style:normal; font-size:17px; color:var(--accent); opacity:.9; }
+.chip span { display:block; font-family:var(--display-font); font-size:11px; letter-spacing:2px; color:#6f8091; }
+.chip b { display:block; margin-top:2px; font-family:var(--display-font); font-size:19px; color:#eef3f8; white-space:nowrap; }
+
+/* ── COLLECTOR ── */
+.collector-title {
+  background-image:var(--gold-text); -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 2px 0 rgba(0,0,0,.4));
+}
+.collector-inner::before { border-color:rgba(245,183,46,.5); }
+.collector-price { box-shadow:0 -6px 22px rgba(0,0,0,.4); }
+
+/* ── BROADCAST ── */
+.broadcast-name {
+  background-image:var(--gold-text); -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 2px 0 rgba(0,0,0,.4));
+}
+.broadcast-rule {
+  height:3px; background:linear-gradient(90deg,#ffeaa9,var(--accent) 40%,rgba(245,183,46,.04));
+  box-shadow:0 0 16px rgba(245,183,46,.35);
+}
+.tpl-broadcast {
+  border-color:rgba(245,183,46,.24);
+  box-shadow:0 30px 74px rgba(0,0,0,.46), 0 0 32px rgba(245,183,46,.07);
+}
+
+/* ── POSTER ── */
+.tpl-poster { box-shadow:0 36px 86px rgba(0,0,0,.55), 0 0 46px rgba(245,183,46,.12); }
+.poster-stamp { border-color:#b08a2c; color:#96762b; }
+
+/* ==========================================================================
+   COLLECTOR — CRICKET-ATTAX STYLE
+   Restructured into a collectible player card: a category chip and an
+   archetype badge (BATSMAN / BOWLER / ALL-ROUNDER / WICKET-KEEPER, derived
+   from the free-text role) sit above the photo; a split nameplate shows the
+   first name small over a big gold surname; the role runs on a rail; a 2x2
+   stat grid and a gold base-price ribbon close it out. --arch-color is set
+   per player so the accent matches the archetype.
+   ========================================================================== */
+.tpl-collector { --arch-color:#f5b72e; }
+.collector-topbar {
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  margin-bottom:12px;
+}
+.collector-cat {
+  padding:6px 12px; border-radius:7px;
+  font-family:var(--display-font); font-weight:800; font-size:15px; letter-spacing:2px;
+  color:#04121f; background:linear-gradient(180deg,#ffe89a,var(--accent) 60%,#c98f18);
+  box-shadow:0 3px 10px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.5);
+}
+.collector-type {
+  display:inline-flex; align-items:center; gap:7px;
+  padding:6px 12px; border-radius:99px;
+  background:linear-gradient(180deg, color-mix(in srgb,var(--arch-color) 26%, #071726), rgba(4,13,23,.9));
+  border:1px solid color-mix(in srgb,var(--arch-color) 60%, transparent);
+  box-shadow:0 0 18px color-mix(in srgb,var(--arch-color) 24%, transparent);
+}
+.collector-type .ct-icon { font-style:normal; font-size:16px; line-height:1; filter:drop-shadow(0 0 6px color-mix(in srgb,var(--arch-color) 60%, transparent)); }
+.collector-type .ct-label { font-family:var(--display-font); font-weight:800; font-size:15px; letter-spacing:1.6px; color:var(--arch-color); }
+
+.collector-photo {
+  flex:1 1 auto; min-height:150px;
+  clip-path:polygon(0 0,100% 0,100% 92%,94% 100%,0 100%);
+  border:1px solid color-mix(in srgb,var(--arch-color) 34%, rgba(255,255,255,.08));
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.4), 0 0 30px color-mix(in srgb,var(--arch-color) 14%, transparent);
+}
+/* role rail — full role text on a thin illuminated strip under the photo */
+.collector-rolerail {
+  margin-top:11px; padding:6px 12px; border-radius:6px; text-align:center;
+  font-family:var(--display-font); font-weight:700; font-size:15px; letter-spacing:2.4px;
+  text-transform:uppercase; color:#dbe6f0;
+  background:linear-gradient(90deg, transparent, color-mix(in srgb,var(--arch-color) 16%, rgba(255,255,255,.04)), transparent);
+  border-top:1px solid color-mix(in srgb,var(--arch-color) 30%, transparent);
+  border-bottom:1px solid color-mix(in srgb,var(--arch-color) 30%, transparent);
+}
+/* split nameplate */
+.collector-nameplate { margin:12px 2px 12px; }
+.collector-firstname {
+  font-family:var(--display-font); font-weight:600; font-size:20px; letter-spacing:3px;
+  line-height:1; text-transform:uppercase; color:#9fb1c0;
+}
+.collector-title {
+  margin:2px 0 0; font-family:var(--display-font); font-size:50px; font-weight:900;
+  line-height:.86; text-transform:uppercase;
+  overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  /* keeps the gold gradient from the gold-treatment layer */
+}
+.collector-data { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+.collector-data .stat {
+  min-height:54px; padding:9px 12px; overflow:hidden;
+  border:1px solid rgba(255,255,255,.075); border-left:2px solid color-mix(in srgb,var(--arch-color) 55%, transparent);
+  background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.016));
+}
+.collector-price {
+  background:linear-gradient(90deg,#7a5512,var(--accent) 38%,#ffdc72 72%,#8a6115);
+}
+
+/* archetype tints for the whole card frame */
+.tpl-collector[data-archetype='batsman']    { --arch-color:#35d391; }
+.tpl-collector[data-archetype='bowler']      { --arch-color:#3c8dff; }
+.tpl-collector[data-archetype='allrounder']  { --arch-color:#f5b72e; }
+.tpl-collector[data-archetype='keeper']      { --arch-color:#46e5d1; }
+
+/* ==========================================================================
+   DRAMA OVERLAY
+   A theatre-lighting layer that sits above the photographic background but
+   below the content. Gold volumetric rays from the top corners, a soft
+   central key light behind the price, and drifting embers — this is what
+   gives the reference images their cinematic weight, independent of the
+   underlying photo. Sits at z-index between environment and content.
+   ========================================================================== */
+.drama { position:absolute; inset:0; z-index:1; pointer-events:none; overflow:hidden; }
+.stage[data-drama='off'] .drama { display:none; }
+
+/* twin light rays sweeping in from the upper corners */
+.drama .ray {
+  position:absolute; top:-14%; width:52%; height:150%;
+  mix-blend-mode:screen; filter:blur(22px); opacity:.5;
+}
+.drama .ray-l {
+  left:-8%;
+  background:linear-gradient(128deg, rgba(255,231,168,.55), rgba(245,183,46,.14) 42%, transparent 66%);
+  clip-path:polygon(0 0, 34% 0, 100% 100%, 52% 100%);
+  animation:rayL 12s ease-in-out infinite alternate;
+}
+.drama .ray-r {
+  right:-8%;
+  background:linear-gradient(232deg, rgba(255,231,168,.5), rgba(76,211,161,.12) 42%, transparent 66%);
+  clip-path:polygon(66% 0, 100% 0, 48% 100%, 0 100%);
+  animation:rayR 14s ease-in-out infinite alternate;
+}
+@keyframes rayL { from{transform:translateX(-26px) rotate(-1.5deg); opacity:.4} to{transform:translateX(26px) rotate(1.5deg); opacity:.62} }
+@keyframes rayR { from{transform:translateX(26px) rotate(1.5deg); opacity:.36} to{transform:translateX(-26px) rotate(-1.5deg); opacity:.58} }
+
+/* central key light behind the price column */
+.drama .keylight {
+  position:absolute; left:50%; top:46%; width:820px; height:820px; transform:translate(-50%,-50%);
+  background:radial-gradient(circle, rgba(245,183,46,.20), rgba(245,183,46,.06) 40%, transparent 66%);
+  mix-blend-mode:screen; animation:keyPulse 6s ease-in-out infinite;
+}
+@keyframes keyPulse { 0%,100%{opacity:.7; transform:translate(-50%,-50%) scale(1)} 50%{opacity:1; transform:translate(-50%,-50%) scale(1.06)} }
+
+/* warm pitch glow rising from the bottom, like the reference's lit pitch */
+.drama .pitchglow {
+  position:absolute; left:0; right:0; bottom:0; height:34%;
+  background:radial-gradient(ellipse 60% 100% at 32% 100%, rgba(245,183,46,.22), transparent 70%);
+  mix-blend-mode:screen;
+}
+
+/* drifting embers */
+.drama .ember {
+  position:absolute; bottom:16%; width:4px; height:4px; border-radius:50%;
+  background:radial-gradient(circle, #ffe6a6, rgba(245,183,46,.5) 60%, transparent);
+  box-shadow:0 0 8px rgba(245,183,46,.7);
+  animation:emberRise var(--dur,9s) ease-in-out var(--delay,0s) infinite;
+  opacity:0;
+}
+@keyframes emberRise {
+  0%{transform:translateY(0) translateX(0); opacity:0}
+  12%{opacity:.9}
+  80%{opacity:.5}
+  100%{transform:translateY(-360px) translateX(var(--drift,20px)); opacity:0}
+}
+
+/* ==========================================================================
+   PICKLEBALL — TEMPLATE 1: "HALL"
+   An old indoor wooden court, lit by a single hanging lamp. The player hangs
+   on the wall as a framed portrait with a brass plaque beneath. Warm timber,
+   brass and cream — nothing here is shared with the other pickleball
+   templates; each one gets its own photograph and its own construction.
+   ========================================================================== */
+
+/* ── The photograph carries the environment; nothing is drawn over it ── */
+.stage[data-sport='pickleball'] .sport-environment > *:not(.env-photo):not(.env-photo-grade):not(.env-grain),
+.stage[data-sport='pickleball'] .drama { display: none; }
+
+.stage[data-template='pb-hall'] .env-photo {
+  opacity: 1;
+  background-image: url('img/bg-pb-wood.jpg');
+  background-size: cover;
+  background-position: center 58%;
+  /* lifted enough for the timber to read, then held back so it stays a backdrop */
+  filter: brightness(1.22) contrast(.98) saturate(1.02) blur(1.5px);
+}
+/* Vignette + scrim so the hall sits behind the content rather than competing */
+.stage[data-template='pb-hall'] .env-photo-grade {
+  opacity: 1;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 52%, rgba(6,4,2,.22) 0 46%, rgba(6,4,2,.5) 82%, rgba(4,3,2,.74) 100%),
+    linear-gradient(180deg, rgba(8,5,3,.62) 0%, rgba(8,5,3,.18) 24%, rgba(8,5,3,.2) 70%, rgba(6,4,2,.68) 100%);
+}
+.stage[data-template='pb-hall'] .env-grain { opacity: .2; }
+
+/* ── Palette ── */
+.stage[data-template='pb-hall'] {
+  --hall-brass: #c9a227;
+  --hall-brass-lt: #f3dd9a;
+  --hall-cream: #f6eddc;
+  --hall-timber: rgba(28,18,10,.82);
+}
+
+.tpl-pb { width: 100%; height: 100%; display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          font-family: var(--display-font, 'Barlow Condensed', sans-serif); }
+
+/* ══════════════════════════════════════════════════════════
+   LEFT — framed portrait under a hanging lamp
+   ══════════════════════════════════════════════════════════ */
+.tpl-pb-hall { gap: 0; position: relative; padding-top: 54px; }
+
+/* Hanging lamp: flex, shade, and the cone of light it throws */
+.pbh-lamp { position: absolute; top: -74px; left: 50%; transform: translateX(-50%); z-index: 1; }
+.pbh-lamp i {
+  display: block; width: 2px; height: 62px; margin: 0 auto;
+  background: linear-gradient(180deg, rgba(120,98,60,0), rgba(160,132,80,.85));
+}
+.pbh-lamp b {
+  display: block; width: 62px; height: 30px; margin: 0 auto;
+  border-radius: 4px 4px 30px 30px;
+  background: linear-gradient(180deg, #3a2c18, #191009);
+  box-shadow: 0 3px 10px rgba(0,0,0,.7), inset 0 -4px 8px rgba(255,206,120,.35);
+  position: relative;
+}
+/* the light cone */
+.pbh-lamp b::after {
+  content: ''; position: absolute; left: 50%; top: 100%;
+  width: 620px; height: 640px; transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(255,214,140,.26) 0%, rgba(255,204,120,.10) 38%, transparent 76%);
+  -webkit-clip-path: polygon(44% 0, 56% 0, 100% 100%, 0 100%);
+  clip-path: polygon(44% 0, 56% 0, 100% 100%, 0 100%);
+  filter: blur(7px);
+  pointer-events: none;
+}
+
+/* Timber frame with brass corners */
+.pbh-frame {
+  position: relative; z-index: 2;
+  width: 372px; padding: 15px;
+  background: linear-gradient(150deg, #3a2a17 0%, #241809 46%, #3d2c18 100%);
+  border: 1px solid rgba(201,162,39,.42);
+  border-radius: 4px;
+  box-shadow:
+    0 34px 74px rgba(0,0,0,.78),
+    inset 0 1px 0 rgba(243,221,154,.22),
+    inset 0 0 0 1px rgba(0,0,0,.5);
+}
+.pbh-photo {
+  width: 100%; aspect-ratio: 4/5; height: auto;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.6), 0 0 44px rgba(255,204,120,.10);
+}
+.pbh-corner {
+  position: absolute; width: 22px; height: 22px; pointer-events: none;
+  border: 2px solid var(--hall-brass);
+  opacity: .85;
+}
+.pbh-tl { top: 6px; left: 6px; border-right: none; border-bottom: none; }
+.pbh-tr { top: 6px; right: 6px; border-left: none; border-bottom: none; }
+.pbh-bl { bottom: 6px; left: 6px; border-right: none; border-top: none; }
+.pbh-br { bottom: 6px; right: 6px; border-left: none; border-top: none; }
+
+/* Lot number stamped on the frame edge */
+.pbh-lot {
+  position: absolute; top: 15px; right: 15px;
+  padding: 5px 11px;
+  background: rgba(12,8,4,.86);
+  border: 1px solid rgba(201,162,39,.5);
+  color: var(--hall-brass-lt);
+  font-size: 15px; font-weight: 700; letter-spacing: 2.4px; text-transform: uppercase;
+}
+
+/* Brass plaque beneath the frame */
+.pbh-plaque {
+  position: relative; z-index: 2;
+  margin-top: 18px; width: 400px; padding: 16px 22px 18px;
+  text-align: center;
+  background: linear-gradient(180deg, #2a1d0e, #171007);
+  border: 1px solid rgba(201,162,39,.4);
+  border-top: 2px solid rgba(201,162,39,.6);
+  box-shadow: 0 20px 46px rgba(0,0,0,.7), inset 0 1px 0 rgba(243,221,154,.18);
+}
+.pbh-name {
+  font-size: 46px; font-weight: 800; line-height: .94; letter-spacing: 1px;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #fdf3d8 0%, var(--hall-brass-lt) 40%, var(--hall-brass) 72%, #8a6a14 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+/* rule with a small engraved ball at its centre */
+.pbh-rule { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 9px 0 8px; }
+.pbh-rule i { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, rgba(201,162,39,.6), transparent); }
+.pbh-rule svg { width: 17px; height: 17px; fill: var(--hall-brass); flex-shrink: 0; }
+.pbh-rule .pbh-holes circle { fill: #171007; }
+.pbh-role {
+  font-size: 17px; font-weight: 600; letter-spacing: 3.4px; text-transform: uppercase;
+  color: var(--hall-cream); opacity: .92;
+}
+.pbh-meta {
+  margin-top: 11px; display: flex; flex-wrap: wrap; justify-content: center; gap: 7px;
+}
+.pbh-meta span {
+  padding: 5px 12px;
+  border: 1px solid rgba(201,162,39,.3);
+  background: rgba(201,162,39,.07);
+  color: rgba(246,237,220,.82);
+  font-size: 13px; font-weight: 600; letter-spacing: 1.6px; text-transform: uppercase;
+  max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pbh-meta b { color: var(--hall-brass-lt); font-weight: 800; }
+
+/* ══════════════════════════════════════════════════════════
+   MIDDLE — price stands on the court, no panel
+   ══════════════════════════════════════════════════════════ */
+.stage[data-template='pb-hall'] .price-zone { background: none; border: none; box-shadow: none; }
+.stage[data-template='pb-hall'] .status-pill {
+  background: rgba(20,13,6,.7);
+  border: 1px solid rgba(201,162,39,.45);
+  backdrop-filter: blur(8px);
+}
+.stage[data-template='pb-hall'] .status-pill span { background: var(--hall-brass); box-shadow: 0 0 12px var(--hall-brass); }
+.stage[data-template='pb-hall'] .status-pill b { color: var(--hall-brass-lt); letter-spacing: 3px; }
+.stage[data-template='pb-hall'] .price-label {
+  color: rgba(246,237,220,.62); letter-spacing: 7px;
+  text-shadow: 0 2px 16px rgba(0,0,0,.9);
+}
+.stage[data-template='pb-hall'] .current-price {
+  background: linear-gradient(180deg, #fffaf0 0%, #f3dd9a 34%, var(--hall-brass) 68%, #7d5f11 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 8px 34px rgba(201,162,39,.42)) drop-shadow(0 2px 3px rgba(0,0,0,.6));
+}
+.stage[data-template='pb-hall'] .price-meta-card {
+  background: rgba(18,12,6,.74);
+  border: 1px solid rgba(201,162,39,.28);
+  backdrop-filter: blur(10px);
+}
+.stage[data-template='pb-hall'] .price-meta-card span { color: rgba(246,237,220,.5); }
+.stage[data-template='pb-hall'] .price-meta-card strong { color: var(--hall-brass-lt); }
+
+/* ══════════════════════════════════════════════════════════
+   HEADER + FOOTER trim
+   ══════════════════════════════════════════════════════════ */
+.stage[data-template='pb-hall'] .tournament-header { border-bottom-color: rgba(201,162,39,.24); }
+.stage[data-template='pb-hall'] .tournament-name {
+  background: linear-gradient(180deg, #fdf3d8, var(--hall-brass-lt) 46%, var(--hall-brass));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.stage[data-template='pb-hall'] .brand-mark {
+  border-color: rgba(201,162,39,.5); color: var(--hall-brass-lt);
+  background: linear-gradient(145deg, rgba(201,162,39,.16), rgba(255,255,255,.02));
+}
+.stage[data-template='pb-hall'] .live-dot span { background: #e0563f; box-shadow: 0 0 14px #e0563f; }
+.stage[data-template='pb-hall'] .progress-box { border-color: rgba(201,162,39,.3); background: rgba(18,12,6,.7); }
+.stage[data-template='pb-hall'] .progress-box strong { color: var(--hall-brass-lt); }
+
+
+/* ==========================================================================
+   PICKLEBALL — TEMPLATE 2: "SUNSET"
+   Golden hour on a resort court. The sky is drawn rather than photographed so
+   the horizon can be placed deliberately behind the price and the palette
+   stays under control. Profile is an instant photo print pinned to the board.
+   ========================================================================== */
+
+.sun-env { display: none; }
+.stage[data-template='pb-sunset'] .sun-env {
+  display: block; position: absolute; inset: 0; z-index: -3;
+  pointer-events: none; overflow: hidden; perspective: 1250px;
+}
+/* A real photograph of an open court, colour-graded to golden hour. A drawn
+   sky never reads as real; grading a photograph keeps the light, texture and
+   depth of the original while moving it to evening. */
+.stage[data-template='pb-sunset'] .env-photo {
+  opacity: 1;
+  background-image: url('img/bg-pb-blue.jpg');
+  background-size: cover;
+  background-position: center 58%;
+  /* sepia lays a warm base, saturate brings it back up, hue-rotate tunes the
+     cast toward amber, and the levels drop it to evening exposure */
+  filter: sepia(.66) saturate(1.85) hue-rotate(-16deg) brightness(.6) contrast(1.14);
+}
+/* Dusk sky painted over the photo's blown-out daytime sky: deep violet
+   overhead falling through ember to a bright band on the horizon. */
+.stage[data-template='pb-sunset'] .env-photo-grade {
+  opacity: 1;
+  background:
+    linear-gradient(180deg,
+      rgba(32,22,58,.94) 0%, rgba(58,32,64,.88) 9%, rgba(104,46,62,.76) 17%,
+      rgba(168,74,52,.62) 23%, rgba(224,124,52,.46) 28%, rgba(252,178,84,.30) 32%,
+      rgba(160,92,48,.22) 38%, rgba(56,34,26,.30) 52%,
+      rgba(32,20,16,.66) 80%, rgba(22,13,10,.86) 100%);
+}
+.stage[data-template='pb-sunset'] .sport-environment > *:not(.env-photo):not(.env-photo-grade):not(.env-grain),
+.stage[data-template='pb-sunset'] .drama { display: none; }
+.stage[data-template='pb-sunset'] .env-grain { opacity: .13; }
+
+/* ── Palette (held back a touch from a full postcard sunset) ── */
+.stage[data-template='pb-sunset'] {
+  --sun-gold: #f0b855;
+  --sun-gold-lt: #ffe4ae;
+  --sun-amber: #d98430;
+  --sun-ink: #2a1a12;
+  --sun-cream: #fbf3e6;
+}
+
+/* ── Sky ── */
+.sun-sky {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg,
+    #1b1a2c 0%, #2e2840 16%, #4d3a4a 32%, #7d4c44 46%,
+    #a86540 58%, #c2884b 66%, #cd9d5c 72%, #96653a 80%, #33221a 100%);
+}
+/* soft cloud bands catching the last light */
+.sun-cloud {
+  position: absolute; left: -8%; right: -8%;
+  border-radius: 50%;
+  filter: blur(26px);
+  opacity: .5;
+}
+
+/* low sun, kept off-centre so it never sits behind the price */
+/* Low sun sitting on the tree line of the photograph, off to the right so it
+   never falls behind the price. */
+.sun-disc {
+  position: absolute; left: 70%; top: 30%;
+  width: 460px; height: 460px; transform: translate(-50%,-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    rgba(255,244,214,.85) 0 9%, rgba(255,206,132,.52) 24%,
+    rgba(240,158,72,.22) 46%, rgba(200,110,50,.07) 66%, transparent 78%);
+  filter: blur(6px);
+}
+
+/* distant hills silhouette */
+.sun-hills {
+  position: absolute; left: -5%; right: -5%; top: 56%; height: 120px;
+  background: #34211c;
+  -webkit-mask-image: radial-gradient(ellipse 30% 100% at 14% 100%, #000 60%, transparent 62%),
+                      radial-gradient(ellipse 26% 100% at 38% 100%, #000 60%, transparent 62%),
+                      radial-gradient(ellipse 34% 100% at 68% 100%, #000 60%, transparent 62%),
+                      radial-gradient(ellipse 24% 100% at 92% 100%, #000 60%, transparent 62%);
+  mask-image: radial-gradient(ellipse 30% 100% at 14% 100%, #000 60%, transparent 62%),
+              radial-gradient(ellipse 26% 100% at 38% 100%, #000 60%, transparent 62%),
+              radial-gradient(ellipse 34% 100% at 68% 100%, #000 60%, transparent 62%),
+              radial-gradient(ellipse 24% 100% at 92% 100%, #000 60%, transparent 62%);
+  opacity: .82;
+}
+
+/* perimeter fence line at the far edge of the court */
+.sun-fence {
+  position: absolute; left: 0; right: 0; top: 62%; height: 86px;
+  background:
+    repeating-linear-gradient(68deg,  rgba(30,18,14,.5) 0 1px, transparent 1px 11px),
+    repeating-linear-gradient(-68deg, rgba(30,18,14,.5) 0 1px, transparent 1px 11px);
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 40%, #000 78%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 40%, #000 78%, transparent);
+  opacity: .55;
+}
+
+/* ── Court in perspective, warm terracotta and teal ── */
+.sun-court {
+  position: absolute; left: 50%; bottom: -180px;
+  width: 1980px; height: 1180px;
+  transform: translateX(-50%) rotateX(71deg);
+  transform-origin: 50% 100%;
+  /* muted dusk court — reads as surface, not a colour block */
+  background: linear-gradient(180deg, #3c5b60 0%, #2f4a51 44%, #24383e 100%);
+  box-shadow: 0 0 0 96px rgba(118,66,40,.7);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0,0,0,.28) 16%, #000 42%);
+  mask-image: linear-gradient(180deg, transparent 0%, rgba(0,0,0,.28) 16%, #000 42%);
+}
+
+/* ── Net ── */
+.sun-net { position: absolute; left: 12%; right: 12%; top: 63.5%; height: 92px; }
+
+/* ── Court light poles, silhouetted with a warm lamp ── */
+.sun-pole { position: absolute; bottom: 20%; width: 90px; height: 400px; }
+
+/* warm haze pulling it together */
+/* Warm bloom spilling off the horizon, plus a gentle vignette */
+.sun-haze {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 62% 30% at 66% 32%, rgba(255,186,104,.24), transparent 68%),
+    radial-gradient(ellipse 88% 62% at 50% 46%, transparent 0 44%, rgba(28,16,12,.42) 88%, rgba(20,11,8,.6) 100%);
+}
+
+/* ══════════════════════════════════════════════════════════
+   LEFT — instant photo print, pinned and tilted
+   ══════════════════════════════════════════════════════════ */
+.tpl-pb-sun { gap: 0; position: relative; }
+.pbs-clip {
+  position: relative; z-index: 3;
+  margin: 0 0 -20px -168px; transform: rotate(-3.5deg);
+  width: 56px;
+}
+.pbs-clip i {
+  display: block; width: 56px; height: 30px; border-radius: 5px 5px 3px 3px;
+  background: linear-gradient(180deg, #e8edf2, #9aa7b4 58%, #67737f);
+  box-shadow: 0 5px 14px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.8);
+}
+.pbs-clip b {
+  display: block; width: 15px; height: 26px; margin: 0 auto;
+  border-radius: 0 0 3px 3px;
+  background: linear-gradient(180deg, #8b96a2, #545e69);
+}
+.pbs-print {
+  position: relative; z-index: 2;
+  width: 400px; padding: 17px 17px 19px;
+  transform: rotate(-3.5deg);
+  background: linear-gradient(178deg, #fdfbf6 0%, #f4ece0 100%);
+  box-shadow: 0 32px 64px rgba(30,14,6,.62), 0 2px 0 rgba(255,255,255,.7) inset;
+}
+.pbs-photo {
+  width: 100%; aspect-ratio: 1/1; height: auto; border-radius: 0;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.14);
+  filter: saturate(1.04) contrast(1.02);
+}
+.pbs-caption { text-align: center; padding-top: 15px; }
+.pbs-name {
+  font-family: var(--display-font, 'Barlow Condensed', sans-serif);
+  font-size: 40px; font-weight: 800; line-height: .96; letter-spacing: .4px;
+  color: #241812; text-transform: uppercase;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.pbs-role {
+  margin-top: 4px; font-size: 15px; font-weight: 700; letter-spacing: 3px;
+  color: var(--sun-amber); text-transform: uppercase;
+}
+.pbs-line {
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(42,26,18,.14);
+  display: flex; justify-content: center; align-items: center; gap: 10px;
+  font-size: 13px; font-weight: 600; letter-spacing: 1.4px;
+  color: #6b5748; text-transform: uppercase;
+}
+.pbs-line i { width: 3px; height: 3px; border-radius: 50%; background: rgba(42,26,18,.26); }
+.pbs-line b { color: #241812; font-weight: 800; }
+
+/* ══════════════════════════════════════════════════════════
+   MIDDLE — the price sits on the horizon
+   ══════════════════════════════════════════════════════════ */
+.stage[data-template='pb-sunset'] .price-zone { background: none; border: none; box-shadow: none; }
+.stage[data-template='pb-sunset'] .status-pill {
+  background: rgba(42,26,18,.5); border: 1px solid rgba(240,184,85,.5);
+  backdrop-filter: blur(8px);
+}
+.stage[data-template='pb-sunset'] .status-pill span { background: var(--sun-gold); box-shadow: 0 0 12px var(--sun-gold); }
+.stage[data-template='pb-sunset'] .status-pill b { color: var(--sun-gold-lt); letter-spacing: 3px; }
+.stage[data-template='pb-sunset'] .price-label {
+  color: rgba(251,243,230,.72); letter-spacing: 6px;
+  text-shadow: 0 2px 14px rgba(40,18,6,.9);
+}
+.stage[data-template='pb-sunset'] .current-price {
+  background-image: linear-gradient(180deg, #fffaf0 0%, var(--sun-gold-lt) 30%, var(--sun-gold) 62%, #a5691f 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  filter: drop-shadow(0 4px 2px rgba(60,26,8,.55)) drop-shadow(0 10px 40px rgba(240,184,85,.4));
+}
+.stage[data-template='pb-sunset'] .price-meta-card {
+  background: rgba(42,26,18,.6); border: 1px solid rgba(240,184,85,.3);
+  backdrop-filter: blur(8px);
+}
+.stage[data-template='pb-sunset'] .price-meta-card span { color: rgba(251,243,230,.55); }
+.stage[data-template='pb-sunset'] .price-meta-card strong { color: var(--sun-gold-lt); }
+
+/* ── Header / footer trim ── */
+.stage[data-template='pb-sunset'] .tournament-header { border-bottom-color: rgba(240,184,85,.24); }
+.stage[data-template='pb-sunset'] .tournament-name {
+  background-image: linear-gradient(180deg, #fffaf0, var(--sun-gold-lt) 46%, var(--sun-gold));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+.stage[data-template='pb-sunset'] .tournament-subtitle { color: rgba(251,243,230,.5); }
+.stage[data-template='pb-sunset'] .brand-mark {
+  border-color: rgba(240,184,85,.5); color: var(--sun-gold-lt);
+  background: linear-gradient(145deg, rgba(240,184,85,.18), rgba(255,255,255,.02));
+}
+.stage[data-template='pb-sunset'] .progress-box { background: rgba(42,26,18,.6); border-color: rgba(240,184,85,.3); }
+.stage[data-template='pb-sunset'] .progress-box strong { color: var(--sun-gold-lt); }
+
+/* ==========================================================================
+   PICKLEBALL — TEMPLATE 3: "PRESS"
+   A monochrome editorial spread built on a black-and-white paddle study.
+   Nothing here repeats the other two: no glass, no cards, no rounded
+   corners, no gradients. Hairline rules, oversized type, generous negative
+   space, and a single volt accent lifted from the ball. The price is the
+   headline and sits top-left; the player is set small and precise on the
+   right; franchises are a plain typographic line along the foot.
+   ========================================================================== */
+
+.stage[data-template='pb-press'] .env-photo {
+  opacity: 1;
+  background-image: url('img/bg-pb-paddle.jpg');
+  background-size: cover;
+  background-position: 62% center;
+  /* softened so the paddle sits behind the type rather than competing with it */
+  filter: grayscale(1) contrast(1.1) brightness(.78) blur(3px);
+  transform: scale(1.03);        /* hides the soft edge the blur leaves */
+}
+.stage[data-template='pb-press'] .env-photo-grade {
+  opacity: 1;
+  background:
+    linear-gradient(90deg, rgba(6,6,7,.82) 0%, rgba(6,6,7,.58) 34%, rgba(6,6,7,.12) 60%, rgba(6,6,7,.44) 100%),
+    linear-gradient(180deg, rgba(6,6,7,.56) 0%, transparent 20%, transparent 76%, rgba(6,6,7,.7) 100%);
+}
+.stage[data-template='pb-press'] .env-grain { opacity: .3; }
+
+/* ── Palette: paper-white, ink-black, one volt ── */
+.stage[data-template='pb-press'] {
+  --pr-paper: #f2f2ef;
+  --pr-mute: rgba(242,242,239,.44);
+  --pr-hair: rgba(242,242,239,.22);
+  --pr-volt: #d4ff4a;
+}
+
+/* ══════════════════════════════════════════════════════════
+   LAYOUT — headline price left, player right, franchises foot
+   ══════════════════════════════════════════════════════════ */
+.stage[data-template='pb-press'] .main-grid {
+  grid-template-columns: 0.82fr 0.8fr 580px;
+  grid-template-rows: 1fr;
+  grid-template-areas: "price player teams";
+  gap: 48px;
+  align-items: center;
+  /* bottom clears the shared information strip, same as every other template */
+  top: 126px; bottom: 154px; left: 84px; right: 74px;
+}
+.stage[data-template='pb-press'] .price-zone  { grid-area: price; }
+.stage[data-template='pb-press'] .player-zone { grid-area: player; }
+.stage[data-template='pb-press'] .purse-panel { grid-area: teams; }
+
+/* ── The price is the headline ── */
+.stage[data-template='pb-press'] .price-zone {
+  background: none; border: none; box-shadow: none;
+  align-items: flex-start; text-align: left; padding: 0;
+}
+.stage[data-template='pb-press'] .status-pill {
+  background: none; border: none; border-left: 2px solid var(--pr-volt);
+  border-radius: 0; padding: 2px 0 2px 12px; box-shadow: none;
+}
+.stage[data-template='pb-press'] .status-pill span { display: none; }
+.stage[data-template='pb-press'] .status-pill b {
+  color: var(--pr-volt); font-size: 12px; letter-spacing: 5px; font-weight: 600;
+}
+.stage[data-template='pb-press'] .price-label {
+  color: var(--pr-mute); font-size: 12px; letter-spacing: 8px;
+  margin: 26px 0 4px;
+}
+/* clear the shared gold-foil treatment — this headline is flat paper-white */
+.stage[data-template='pb-press'] .current-price {
+  background-image: none;
+  -webkit-text-fill-color: var(--pr-paper); color: var(--pr-paper);
+  filter: none; text-shadow: none;
+  font-size: 168px; line-height: .84; letter-spacing: -7px; font-weight: 800;
+}
+/* base price / increment become a plain typographic footnote */
+.stage[data-template='pb-press'] .price-meta-row {
+  margin-top: 30px; gap: 0; border-top: 1px solid var(--pr-hair); padding-top: 16px;
+  width: 100%; max-width: 560px;
+}
+.stage[data-template='pb-press'] .price-meta-card {
+  background: none; border: none; border-right: 1px solid var(--pr-hair);
+  border-radius: 0; padding: 0 30px 0 0; margin-right: 30px; box-shadow: none;
+}
+.stage[data-template='pb-press'] .price-meta-card:last-child { border-right: none; }
+.stage[data-template='pb-press'] .price-meta-card span {
+  color: var(--pr-mute); font-size: 11px; letter-spacing: 3px;
+}
+.stage[data-template='pb-press'] .price-meta-card strong {
+  color: var(--pr-paper); font-size: 26px; font-weight: 700;
+}
+
+/* ── The player: small, precise, right-hand column ── */
+.stage[data-template='pb-press'] .player-zone { display: block; }
+.tpl-pb-press {
+  width: 100%; height: 100%;
+  display: grid; grid-template-columns: 30px 1fr; gap: 22px;
+  align-content: center;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+/* Lot number set vertically down the gutter */
+.pbe-rail {
+  writing-mode: vertical-rl; text-orientation: mixed;
+  display: flex; align-items: flex-start; justify-content: flex-start;
+  border-left: 1px solid var(--pr-hair); padding-left: 9px;
+}
+.pbe-rail span {
+  color: var(--pr-volt); font-size: 13px; font-weight: 600;
+  letter-spacing: 6px; text-transform: uppercase; white-space: nowrap;
+}
+.pbe-body { min-width: 0; }
+.pbe-shot { width: 348px; margin-bottom: 26px; }
+.pbe-photo {
+  width: 348px; height: 435px; border-radius: 0;
+  filter: grayscale(1) contrast(1.1);
+  border-bottom: 4px solid var(--pr-volt);
+}
+.pbe-name {
+  margin: 0; color: var(--pr-paper);
+  font-size: 48px; font-weight: 800; line-height: .94; letter-spacing: -1.4px;
+  text-transform: uppercase;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.pbe-hair { height: 1px; background: var(--pr-hair); margin: 20px 0 16px; }
+.pbe-list { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 26px; }
+.pbe-item { min-width: 0; }
+.pbe-item dt {
+  color: var(--pr-mute); font-size: 10px; font-weight: 600;
+  letter-spacing: 3px; text-transform: uppercase; margin-bottom: 4px;
+}
+.pbe-item dd {
+  margin: 0; color: var(--pr-paper);
+  font-size: 17px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+
+/* ── Masthead and footer set as press furniture ── */
+.stage[data-template='pb-press'] .tournament-header {
+  border-bottom: 1px solid var(--pr-hair);
+}
+.stage[data-template='pb-press'] .tournament-name {
+  color: var(--pr-paper); background: none; -webkit-text-fill-color: currentColor;
+  letter-spacing: -1px;
+}
+.stage[data-template='pb-press'] .tournament-subtitle { color: var(--pr-mute); letter-spacing: 4px; }
+.stage[data-template='pb-press'] .brand-mark {
+  border: 1px solid var(--pr-hair); border-radius: 0;
+  background: none; color: var(--pr-volt); box-shadow: none;
+}
+.stage[data-template='pb-press'] .progress-box {
+  background: none; border: none; border-left: 1px solid var(--pr-hair);
+  border-radius: 0; padding-left: 16px;
+}
+.stage[data-template='pb-press'] .progress-box span  { color: var(--pr-mute); }
+.stage[data-template='pb-press'] .progress-box strong { color: var(--pr-paper); }
+.stage[data-template='pb-press'] .live-dot {
+  background: none; border: 1px solid var(--pr-hair); border-radius: 0;
+  color: var(--pr-paper); letter-spacing: 3px;
+}
+.stage[data-template='pb-press'] .live-dot span { background: var(--pr-volt); box-shadow: none; }
+
+/* ==========================================================================
+   PICKLEBALL — SHARED CHROME
+   The franchise panel on the right and the information strip along the bottom
+   are FIXED across every pickleball template. Only the player display and the
+   background change from one template to the next, so the operator and the
+   room always read the same furniture in the same place.
+   ========================================================================== */
+
+.stage[data-sport='pickleball'] {
+  --pb-chrome-bg:   rgba(9, 14, 22, .82);
+  --pb-chrome-line: rgba(255, 255, 255, .12);
+  --pb-chrome-ink:  #eef3f8;
+  --pb-chrome-dim:  rgba(238, 243, 248, .48);
+  --pb-chrome-acc:  #34d399;
+}
+
+/* ── RIGHT: franchise purses ──
+   Sized to be read from across a room: this is the number every captain in
+   the audience is watching, so it gets a wider column and larger type. */
+.stage[data-template='pb-hall'] .main-grid,
+.stage[data-template='pb-sunset'] .main-grid {
+  grid-template-columns: 480px minmax(500px, 1fr) 580px;
+}
+.stage[data-sport='pickleball'] .purse-panel {
+  align-self: center;
+  padding: 30px 26px 28px;
+  background: var(--pb-chrome-bg);
+  border: 1px solid var(--pb-chrome-line);
+  border-radius: 20px;
+  box-shadow: 0 26px 62px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05);
+  backdrop-filter: blur(14px);
+  display: block;
+}
+.stage[data-sport='pickleball'] .panel-title {
+  margin: 0 2px 20px;
+  padding-bottom: 17px;
+  border-bottom: 1px solid var(--pb-chrome-line);
+  color: var(--pb-chrome-dim);
+  font-size: 23px; letter-spacing: 4px; font-weight: 700;
+}
+.stage[data-sport='pickleball'] .team-rows { display: flex; flex-direction: column; gap: 15px; }
+.stage[data-sport='pickleball'] .team-row {
+  display: grid;
+  grid-template-columns: 68px 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center; gap: 7px 18px;
+  padding: 18px 20px;
+  background: rgba(0,0,0,.3);
+  border: 1px solid rgba(255,255,255,.07);
+  border-left: 5px solid var(--team-color, #64748b);
+  border-radius: 16px;
+}
+.stage[data-sport='pickleball'] .team-logo {
+  grid-row: 1 / 3;
+  width: 68px; height: 68px; border-radius: 14px;
+  display: grid; place-items: center; overflow: hidden;
+  background: color-mix(in srgb, var(--team-color, #64748b) 26%, transparent);
+  border: 1px solid color-mix(in srgb, var(--team-color, #64748b) 48%, transparent);
+  color: #fff; font-size: 22px; font-weight: 800;
+}
+.stage[data-sport='pickleball'] .team-logo img { width: 100%; height: 100%; object-fit: cover; }
+.stage[data-sport='pickleball'] .team-copy { min-width: 0; }
+.stage[data-sport='pickleball'] .team-copy strong {
+  display: block; color: var(--pb-chrome-ink);
+  font-size: 27px; font-weight: 700; letter-spacing: .9px; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.stage[data-sport='pickleball'] .team-copy span {
+  display: block; margin-top: 2px; color: var(--pb-chrome-dim);
+  font-size: 15px; font-weight: 500; letter-spacing: 1.6px; text-transform: uppercase;
+}
+.stage[data-sport='pickleball'] .team-purse {
+  color: var(--pb-chrome-acc);
+  font-size: 35px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.stage[data-sport='pickleball'] .team-bar {
+  grid-column: 2 / 4;
+  height: 7px; border-radius: 4px; overflow: hidden;
+  background: rgba(255,255,255,.09);
+}
+.stage[data-sport='pickleball'] .team-bar i {
+  display: block; height: 100%; border-radius: 3px;
+  background: var(--team-color, #64748b);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--team-color, #64748b) 55%, transparent);
+  transition: width .5s ease;
+}
+
+/* ── BOTTOM: player information strip ── */
+.stage[data-sport='pickleball'] .player-info-strip {
+  display: grid;
+  background: var(--pb-chrome-bg);
+  border-top: 1px solid var(--pb-chrome-line);
+  backdrop-filter: blur(14px);
+}
+.stage[data-sport='pickleball'] .info-leading { color: var(--pb-chrome-dim); }
+.stage[data-sport='pickleball'] .sport-dot { color: var(--pb-chrome-acc); }
+.stage[data-sport='pickleball'] .info-cell span { color: var(--pb-chrome-dim); }
+.stage[data-sport='pickleball'] .info-cell strong { color: var(--pb-chrome-ink); }
+
+/* ==========================================================================
+   RESULT OVERLAY — SOLD / UNSOLD / PASSED
+   Full-stage cinematic overlay shown after sell/pass events.
+   Works across all sports; pickleball gets emerald SOLD colour from team color.
+   ========================================================================== */
+
+.result-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4,14,28,0.88);
+  backdrop-filter: blur(24px);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+.result-overlay--visible {
+  opacity: 1;
+}
+
+.result-overlay-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+}
+
+/* player photo circle */
+.result-overlay-photo {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center top;
+  border: 4px solid rgba(255,255,255,.12);
+  box-shadow: 0 0 40px rgba(0,0,0,.6);
+}
+
+/* SOLD / UNSOLD badge */
+.result-overlay-badge {
+  font-family: var(--display-font, 'Barlow Condensed', sans-serif);
+  font-size: 88px;
+  font-weight: 900;
+  letter-spacing: 8px;
+  line-height: 1;
+  animation: resultPop 0.5s cubic-bezier(.22,1,.36,1) both;
+}
+.result-overlay[data-status='sold'] .result-overlay-badge {
+  color: var(--overlay-team-color, #10b981);
+  text-shadow:
+    0 0 60px var(--overlay-team-color, #10b981),
+    0 0 120px var(--overlay-team-color, rgba(16,185,129,.5));
+}
+.result-overlay[data-status='passed'] .result-overlay-badge {
+  color: #ef4444;
+  text-shadow: 0 0 60px rgba(239,68,68,.7), 0 0 120px rgba(239,68,68,.4);
+}
+
+/* player name */
+.result-overlay-player {
+  font-family: var(--display-font, 'Barlow Condensed', sans-serif);
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+/* "TO TEAM NAME" */
+.result-overlay-detail {
+  font-family: var(--body-font, 'Inter', sans-serif);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 6px;
+  color: rgba(255,255,255,.55);
+  text-transform: uppercase;
+}
+.result-overlay[data-status='sold'] .result-overlay-detail {
+  color: var(--overlay-team-color, #10b981);
+}
+
+/* sold price */
+.result-overlay-price {
+  font-family: var(--display-font, 'Barlow Condensed', sans-serif);
+  font-size: 54px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #fff;
+}
+
+@keyframes resultPop {
+  0%   { transform: scale(0.5); opacity: 0; }
+  60%  { transform: scale(1.08); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ==========================================================================
+   ADMIN CONTROL PANEL (shown only when ?admin=1 in URL)
+   Sits at the very bottom of the 1920×1080 canvas — scales with the stage.
+   ========================================================================== */
+
+.admin-panel {
+  position: fixed;           /* outside the scaled stage — always native browser size */
+  bottom: 0; left: 0; right: 0;
+  z-index: 250;              /* above the SOLD/PASSED overlay (200) so controls stay usable */
+  background: rgba(4,10,22,0.98);
+  border-top: 1px solid rgba(255,255,255,.10);
+  backdrop-filter: blur(16px);
+  font-family: var(--body-font, 'Inter', sans-serif);
+}
+
+.admin-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  min-height: 72px;
+}
+
+/* ── Idle bar ── */
+.admin-idle-bar { justify-content: center; gap: 18px; flex-wrap: wrap; }
+.admin-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: rgba(255,255,255,.3);
+  text-transform: uppercase;
+}
+.admin-stage-sel { display: flex; gap: 8px; }
+.admin-idle-btns { display: flex; gap: 10px; }
+.admin-stats { margin-left: auto; }
+
+/* ── Active bar ── */
+.admin-active-bar { justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+
+.admin-player-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+}
+.admin-player-cat {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  color: var(--accent, #f5b72e);
+  text-transform: uppercase;
+}
+.admin-player-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+/* ── Bid strip ── */
+.admin-bid-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 14px;
+  padding: 6px 12px;
+}
+.admin-bid-btn {
+  width: 52px; height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  color: #ef4444;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background .15s, transform .1s;
+  font-family: inherit;
+}
+.admin-bid-btn:hover { background: rgba(239,68,68,.18); }
+.admin-bid-btn:active { transform: scale(0.92); }
+.admin-bid-btn.admin-bid-up { color: #10b981; }
+.admin-bid-btn.admin-bid-up:hover { background: rgba(16,185,129,.18); }
+.admin-bid-amount {
+  min-width: 110px;
+  text-align: center;
+  font-family: var(--display-font, 'Barlow Condensed', sans-serif);
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 1px;
+}
+
+/* ── Action strip ── */
+.admin-actions-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.admin-team-sel {
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.15);
+  background: rgba(255,255,255,.06);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  min-width: 180px;
+}
+/* Team picker needs room for "Team Name (₹1000L)" without truncating */
+.admin-team-sel-wide { min-width: 300px; font-size: 15px; }
+.admin-team-sel option { background: #0f172a; color: #fff; font-size: 15px; padding: 6px; }
+.admin-team-sel option:disabled { color: #ef4444; }
+
+/* ── Shared button style ── */
+.admin-btn {
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 10px;
+  border: none;
+  font-size: 13px;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+  letter-spacing: .5px;
+  transition: opacity .15s, transform .1s;
+  white-space: nowrap;
+}
+.admin-btn:active { transform: scale(0.95); opacity: 0.85; }
+.admin-btn-amber  { background: #f59e0b; color: #000; }
+.admin-btn-blue   { background: #3b82f6; color: #fff; }
+.admin-btn-red    { background: #ef4444; color: #fff; }
+.admin-btn-green  { background: #10b981; color: #fff; font-size: 15px; padding: 0 24px; }
+.admin-btn-gray   { background: rgba(255,255,255,.1); color: rgba(255,255,255,.7); border: 1px solid rgba(255,255,255,.12); }
+
+/* ==========================================================================
+   PLAYER PICK MODAL
+   ========================================================================== */
+
+/* hidden attribute must always win over display rules */
+[hidden] { display: none !important; }
+
+.player-pick-modal {
+  position: fixed;           /* outside the scaled stage — native browser size */
+  inset: 0;
+  z-index: 400;
+  background: rgba(4,10,22,0.95);
+  backdrop-filter: blur(20px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.player-pick-inner {
+  width: min(720px, 92vw);
+  max-height: min(820px, 86vh);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: rgba(15,23,42,.95);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 24px;
+  padding: 28px;
+  box-shadow: 0 40px 120px rgba(0,0,0,.8);
+}
+
+.player-pick-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.player-pick-title {
+  font-family: var(--display-font, 'Barlow Condensed', sans-serif);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  color: #fff;
+  text-transform: uppercase;
+}
+.player-pick-actions { display: flex; gap: 10px; }
+
+.player-pick-search {
+  width: 100%;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  color: #fff;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+.player-pick-search::placeholder { color: rgba(255,255,255,.3); }
+
+.player-pick-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 560px;
+  padding-right: 4px;
+}
+.player-pick-list::-webkit-scrollbar { width: 4px; }
+.player-pick-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 4px; }
+
+.pick-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.06);
+  background: rgba(255,255,255,.04);
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.pick-row:hover {
+  background: rgba(255,255,255,.09);
+  border-color: var(--accent, #f5b72e);
+}
+.pick-photo {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,.1);
+  flex-shrink: 0;
+}
+.pick-photo-init {
+  background: rgba(255,255,255,.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 800;
+  color: rgba(255,255,255,.6);
+}
+.pick-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.pick-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+.pick-cat {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent, #f5b72e);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.pick-price {
+  font-family: var(--display-font, 'Barlow Condensed', sans-serif);
+  font-size: 18px;
+  font-weight: 700;
+  color: rgba(255,255,255,.55);
+}
+.pick-empty {
+  text-align: center;
+  padding: 40px;
+  color: rgba(255,255,255,.3);
+  font-size: 14px;
+}
+
+/* ==========================================================================
+   LIVE AUCTION EXTRAS — spin wheel, confetti, direct bid entry, mute state
+   These restore documented behaviours to the Cinematic Stage. All of it sits
+   outside the scaled canvas so it renders at native browser size.
+   ========================================================================== */
+
+/* ── Direct bid entry (replaces the read-only bid readout) ── */
+input.admin-bid-amount {
+  min-width: 130px; width: 130px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 10px;
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+}
+input.admin-bid-amount::-webkit-outer-spin-button,
+input.admin-bid-amount::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,129,.10); }
+.bid-pulse { animation: bidPulse .2s ease; }
+@keyframes bidPulse { 0% { transform: scale(1) } 45% { transform: scale(1.12) } 100% { transform: scale(1) } }
+
+/* ── Extra button colours ── */
+.admin-btn-purple { background: #8b5cf6; color: #fff; }
+.admin-btn.is-muted { background: rgba(239,68,68,.18); color: #fca5a5; border-color: rgba(239,68,68,.4); }
+
+/* ── Confetti ── */
+.confetti-layer { position: fixed; inset: 0; pointer-events: none; z-index: 500; overflow: hidden; }
+.confetti-layer i {
+  position: absolute; top: -24px; display: block;
+  animation-name: confettiFall; animation-timing-function: ease-in; animation-fill-mode: forwards;
+}
+@keyframes confettiFall {
+  to { transform: translateY(105vh) rotate(720deg); opacity: 0; }
+}
+
+/* ── Spin wheel ── */
+.spin-modal {
+  position: fixed; inset: 0; z-index: 450;
+  background: rgba(4,10,22,.94); backdrop-filter: blur(18px);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+.spin-inner {
+  width: min(940px, 94vw); max-height: 92vh;
+  display: flex; flex-direction: column; gap: 18px;
+  padding: 26px 28px 24px;
+  background: rgba(15,23,42,.96);
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 22px;
+  box-shadow: 0 40px 120px rgba(0,0,0,.8);
+}
+.spin-head { display: flex; justify-content: space-between; align-items: center; }
+.spin-title { font-size: 20px; font-weight: 800; letter-spacing: 3px; color: #f1f5f9; }
+.spin-body { display: grid; grid-template-columns: 1fr 300px; gap: 24px; min-height: 0; }
+.spin-stage { position: relative; display: grid; place-items: center; padding: 12px 0; }
+.spin-wheel {
+  width: 300px; height: 300px; border-radius: 50%;
+  border: 6px solid rgba(255,255,255,.14);
+  box-shadow: 0 0 0 10px rgba(0,0,0,.35), 0 24px 60px rgba(0,0,0,.6);
+  position: relative;
+}
+.spin-wheel.spin-hit { box-shadow: 0 0 0 10px rgba(245,183,46,.5), 0 0 70px rgba(245,183,46,.6); }
+.spin-label {
+  position: absolute; left: 50%; top: 50%;
+  transform-origin: 0 0;
+  font-size: 11px; font-weight: 700; color: rgba(0,0,0,.78);
+  white-space: nowrap; pointer-events: none;
+}
+.spin-empty { position: absolute; inset: 0; display: grid; place-items: center;
+  color: rgba(255,255,255,.35); font-size: 13px; font-weight: 700; letter-spacing: 2px; }
+.spin-pointer {
+  position: absolute; top: -2px; left: 50%; transform: translateX(-50%);
+  width: 0; height: 0; z-index: 3;
+  border-left: 15px solid transparent; border-right: 15px solid transparent;
+  border-top: 26px solid #f5b72e;
+  filter: drop-shadow(0 3px 8px rgba(0,0,0,.6));
+}
+.spin-side { display: flex; flex-direction: column; min-height: 0; }
+.spin-side-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-bottom: 10px; margin-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  font-size: 12px; font-weight: 700; letter-spacing: 2px; color: rgba(238,243,248,.5);
+}
+.spin-all { display: flex; align-items: center; gap: 6px; cursor: pointer; color: #94a3b8; }
+.spin-list { overflow-y: auto; display: flex; flex-direction: column; gap: 5px; max-height: 300px; }
+.spin-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  background: rgba(255,255,255,.03); color: #cbd5e1; font-size: 14px;
+}
+.spin-item:hover { background: rgba(255,255,255,.07); }
+.spin-item i { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.spin-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spin-foot { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.spin-result { font-size: 24px; font-weight: 800; color: #f5b72e; letter-spacing: 1px; min-height: 30px; }
+.spin-foot-btns { display: flex; gap: 10px; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ORGANISATION BRANDING + WELCOME INTRO
+   Organisation name sits small above the large event name; the org logo
+   replaces the placeholder mark. The intro overlay plays on Go Live.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Organisation line above the event name */
+.tournament-org {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 15px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
+  color: rgba(255,255,255,.6); margin-bottom: 2px; line-height: 1;
+}
+.stage[data-sport='pickleball'] .tournament-org { color: color-mix(in srgb, var(--pb-accent, #10b981) 75%, white); }
+
+/* Org logo inside the brand mark */
+.brand-mark.has-logo { background: rgba(255,255,255,.06); padding: 6px; }
+.brand-mark.has-logo img { display: block; }
+
+/* "presented by ORG" credit, low on the public stage */
+.presented-by {
+  position: absolute; bottom: 132px; left: 50%; transform: translateX(-50%);
+  z-index: 40; pointer-events: none;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 15px; font-weight: 500; letter-spacing: 2px; text-transform: uppercase;
+  color: rgba(255,255,255,.45); white-space: nowrap;
+}
+.presented-by b { font-weight: 800; color: rgba(255,255,255,.72); }
+
+/* ── Intro / welcome overlay ── */
+.intro-overlay {
+  position: absolute; inset: 0; z-index: 300;
+  display: none; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at 50% 40%, rgba(10,16,30,.94), rgba(3,6,14,.98));
+  backdrop-filter: blur(6px);
+  opacity: 0; transition: opacity .6s ease;
+  cursor: pointer;
+}
+.intro-overlay.is-visible { opacity: 1; }
+.intro-inner {
+  text-align: center; transform: translateY(18px) scale(.98);
+  transition: transform .8s cubic-bezier(.2,.8,.2,1);
+  padding: 0 40px;
+}
+.intro-overlay.is-visible .intro-inner { transform: none; }
+.intro-logo { margin-bottom: 34px; min-height: 4px; }
+.intro-logo img {
+  max-height: 200px; max-width: 460px; object-fit: contain;
+  filter: drop-shadow(0 12px 40px rgba(0,0,0,.6));
+}
+.intro-kicker {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 26px; font-weight: 600; letter-spacing: 12px; text-transform: uppercase;
+  color: rgba(255,255,255,.5); margin-bottom: 18px;
+}
+.intro-event {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 108px; font-weight: 800; line-height: .95; letter-spacing: 1px;
+  text-transform: uppercase; color: #fff;
+  text-shadow: 0 8px 60px rgba(0,0,0,.7);
+  max-width: 1400px;
+}
+.intro-org {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 28px; font-weight: 500; letter-spacing: 3px;
+  color: rgba(255,255,255,.6); margin-top: 22px;
+}
+.intro-org:empty { display: none; }
+.intro-bar {
+  width: 220px; height: 4px; margin: 44px auto 0;
+  background: rgba(255,255,255,.12); border-radius: 3px; overflow: hidden;
+}
+.intro-bar i {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, #f5b72e, #ffe08a);
+  border-radius: 3px;
+}
+.intro-overlay.is-visible .intro-bar i { animation: introBar 9s linear forwards; }
+@keyframes introBar { to { width: 100%; } }

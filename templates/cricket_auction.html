@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Live Auction — Public Display</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='auction_display.css') }}?v=44" />
+</head>
+<body>
+  <main id="viewport" aria-label="Auction public display">
+    <section id="stage" class="stage" data-sport="cricket" data-template="arena">
+      <!-- SPORT ENVIRONMENT (purely visual) -->
+      <div class="sport-environment" aria-hidden="true">
+        <div class="env-sky"></div>
+        <div class="env-photo"></div>
+        <div class="env-photo-grade"></div>
+        <div class="env-stands"></div>
+        <div class="env-crowd"></div>
+        <div class="floodlight floodlight-left"><i></i><b></b></div>
+        <div class="floodlight floodlight-right"><i></i><b></b></div>
+        <div class="light-beam beam-left"></div>
+        <div class="light-beam beam-right"></div>
+        <div class="env-field"></div>
+        <div class="env-sport-markings"></div>
+        <div class="env-vignette"></div>
+        <div class="env-grain"></div>
+      </div>
+
+      <!-- SUNSET ATMOSPHERE — sun glow and warm haze layered over the
+           colour-graded court photograph. The scene itself is the photo. -->
+      <div class="sun-env" aria-hidden="true">
+        <div class="sun-disc"></div>
+        <div class="sun-haze"></div>
+      </div>
+
+      <!-- DRAMA OVERLAY (purely visual; theatre lighting above the background) -->
+      <div class="drama" aria-hidden="true">
+        <div class="ray ray-l"></div>
+        <div class="ray ray-r"></div>
+        <div class="keylight"></div>
+        <div class="pitchglow"></div>
+        <div class="ember" style="left:14%;--dur:9s;--delay:0s;--drift:24px"></div>
+        <div class="ember" style="left:23%;--dur:11s;--delay:1.6s;--drift:-18px"></div>
+        <div class="ember" style="left:34%;--dur:8s;--delay:3.1s;--drift:30px"></div>
+        <div class="ember" style="left:44%;--dur:12s;--delay:0.8s;--drift:-26px"></div>
+        <div class="ember" style="left:56%;--dur:10s;--delay:2.4s;--drift:20px"></div>
+        <div class="ember" style="left:63%;--dur:9.5s;--delay:4.2s;--drift:-22px"></div>
+      </div>
+
+      <!-- HEADER -->
+      <header class="tournament-header">
+        <div class="brand-lockup">
+          <div class="brand-mark" data-slot="tournament.logo">◉</div>
+          <div>
+            <div class="tournament-org" data-slot="tournament.org" style="display:none">ORGANISATION</div>
+            <div class="tournament-name" data-slot="tournament.name">TOURNAMENT NAME</div>
+            <div class="tournament-subtitle" data-slot="tournament.subtitle">PLAYER AUCTION • LIVE DISPLAY</div>
+          </div>
+        </div>
+        <div class="header-meta">
+          <div class="progress-box"><span>PLAYER</span><strong data-slot="auction.progress">-- / --</strong></div>
+          <div class="live-dot"><span></span> LIVE</div>
+        </div>
+      </header>
+      <div id="presentedBy" class="presented-by" style="display:none"></div>
+      <div id="introOverlay" class="intro-overlay" style="display:none">
+        <div class="intro-inner">
+          <div class="intro-logo" id="introLogo"></div>
+          <div class="intro-kicker">WELCOME TO</div>
+          <div class="intro-event" id="introEvent">EVENT NAME</div>
+          <div class="intro-org" id="introOrg"></div>
+          <div class="intro-bar"><i></i></div>
+        </div>
+      </div>
+
+
+      <div class="main-grid">
+        <!-- LEFT: the only region that changes between player display templates -->
+        <section id="playerZone" class="player-zone" aria-label="Player display"></section>
+
+        <!-- CENTER: price display -->
+        <section class="price-zone" aria-label="Auction price display">
+          <div class="status-pill"><span></span><b data-slot="auction.status">CURRENT PLAYER</b></div>
+          <div class="price-label">CURRENT PRICE</div>
+          <div class="current-price" data-slot="auction.current-price">₹ --</div>
+          <div class="price-meta-row">
+            <div class="price-meta-card">
+              <span>BASE PRICE</span>
+              <strong data-slot="player.base-price">₹ --</strong>
+            </div>
+            <div class="price-meta-card increment-card">
+              <span>INCREMENT</span>
+              <strong data-slot="auction.increment">+ ₹ --</strong>
+            </div>
+          </div>
+        </section>
+
+        <!-- RIGHT: participating teams + remaining purse only -->
+        <aside class="purse-panel" aria-label="Participating teams and remaining purse">
+          <div class="panel-title">TEAMS • REMAINING PURSE</div>
+          <div class="team-rows" id="teamRows"></div>
+        </aside>
+      </div>
+
+      <!-- BOTTOM INFORMATION STRIP -->
+      <footer class="player-info-strip">
+        <div class="info-leading"><span class="sport-dot">●</span> PLAYER INFORMATION</div>
+        <div class="info-cell"><span>AGE</span><strong data-slot="player.age">--</strong></div>
+        <div class="info-cell"><span>ROLE</span><strong data-slot="player.role">--</strong></div>
+        <div class="info-cell"><span>STYLE / POSITION</span><strong data-slot="player.style">--</strong></div>
+        <div class="info-cell"><span>CATEGORY</span><strong data-slot="player.category">--</strong></div>
+        <div class="info-cell"><span>BASE PRICE</span><strong data-slot="player.base-price-footer">₹ --</strong></div>
+      </footer>
+
+      <!-- RESULT OVERLAY: shown after SOLD or UNSOLD/PASSED events -->
+      <div id="resultOverlay" class="result-overlay" hidden style="display:none">
+        <div class="result-overlay-inner">
+          <div class="result-overlay-photo" id="resultPhoto"></div>
+          <div class="result-overlay-badge" id="resultBadge">SOLD</div>
+          <div class="result-overlay-player" id="resultPlayer"></div>
+          <div class="result-overlay-detail" id="resultDetail"></div>
+          <div class="result-overlay-price" id="resultPrice"></div>
+        </div>
+      </div>
+
+      <!-- PREVIEW CONTROLS ONLY. Hidden by default; never part of the public screen. -->
+      <div id="debugPanel" class="debug-panel" hidden>
+        <div class="debug-title">DISPLAY PREVIEW</div>
+        <label>Sport
+          <select id="sportSelect">
+            <option value="cricket">Cricket</option>
+            <option value="football">Football</option>
+            <option value="badminton">Badminton</option>
+            <option value="pickleball">Pickleball</option>
+            <option value="multi">Multi-sport</option>
+          </select>
+        </label>
+        <label>Player display
+          <select id="templateSelect">
+            <option value="arena">1 — Arena Portrait</option>
+            <option value="collector">2 — Collector Card</option>
+            <option value="circular">3 — Circular Spotlight</option>
+            <option value="broadcast">4 — Broadcast Panel</option>
+            <option value="poster">5 — Photo Poster</option>
+            <option disabled>─── Pickleball ───</option>
+            <option value="pb-hall">PB — Hall</option>
+            <option value="pb-sunset">PB — Sunset</option>
+            <option value="pb-press">PB — Press</option>
+          </select>
+        </label>
+        <label>Background
+          <select id="bgSelect">
+            <option value="cricket-pitch">Cricket — Floodlit Pitch (Circular)</option>
+            <option value="cricket-arena">Cricket — Packed Arena</option>
+            <option value="cricket-stadium">Cricket — Floodlit Stadium</option>
+            <option value="cricket-crowd">Cricket — Packed House</option>
+            <option value="cricket-nets">Cricket — Practice Nets</option>
+            <option value="cricket-ground">Cricket — Ground Aerial</option>
+            <option value="football-stadium">Football — Night Stadium</option>
+            <option value="none">None (CSS environment)</option>
+          </select>
+        </label>
+        <div class="debug-hint">D: show/hide panel • F: fullscreen • 1–5: switch player display</div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       ADMIN CONTROLS — OUTSIDE the scaled stage so they render at native
+       browser size and stay readable at any window size. Only shown when
+       ?admin=1 is in the URL; never part of the public screen.
+       ══════════════════════════════════════════════════════════════════ -->
+  <div id="adminPanel" class="admin-panel" style="display:none">
+    <!-- Idle bar: no player on block -->
+    <div id="adminIdle" class="admin-bar admin-idle-bar">
+      <span class="admin-label">NO PLAYER ON BLOCK</span>
+      <div class="admin-stage-sel">
+        <select class="admin-team-sel" id="adminSportSel" title="Sport">
+          <option value="cricket">Cricket</option>
+          <option value="pickleball">Pickleball</option>
+          <option value="football">Football</option>
+          <option value="badminton">Badminton</option>
+        </select>
+        <select class="admin-team-sel" id="adminTemplateSel" title="Template">
+          <option value="arena">Arena Portrait</option>
+          <option value="collector">Collector Card</option>
+          <option value="circular">Circular</option>
+          <option value="broadcast">Broadcast</option>
+          <option value="poster">Poster</option>
+          <option value="pb-hall">PB — Hall</option>
+            <option value="pb-sunset">PB — Sunset</option>
+            <option value="pb-press">PB — Press</option>
+        </select>
+      </div>
+      <div class="admin-idle-btns">
+        <button class="admin-btn admin-btn-purple" id="adminSpinBtn">Spin Draw</button>
+        <button class="admin-btn admin-btn-amber" id="adminRandomBtn">Random Draw</button>
+        <button class="admin-btn admin-btn-blue" id="adminPickBtn">Pick Player</button>
+        <button class="admin-btn admin-btn-gray" id="adminUndoBtn">Undo</button>
+        <button class="admin-btn admin-btn-gray" id="adminMuteBtn" title="Mute sound and voice">SOUND ON</button>
+      </div>
+      <div class="admin-stats" id="adminStats"></div>
+    </div>
+    <!-- Active bar: player on block -->
+    <div id="adminActive" class="admin-bar admin-active-bar" style="display:none">
+      <div class="admin-player-info">
+        <span class="admin-player-cat" id="adminPlayerCat"></span>
+        <span class="admin-player-name" id="adminPlayerName"></span>
+      </div>
+      <div class="admin-bid-strip">
+        <button class="admin-bid-btn" id="adminBidMinus10">-10</button>
+        <button class="admin-bid-btn" id="adminBidDec">-?</button>
+        <!-- Direct entry: type an exact bid and press Enter -->
+        <input type="number" step="0.5" class="admin-bid-amount" id="adminBidDisplay" title="Type an exact bid and press Enter" />
+        <button class="admin-bid-btn admin-bid-up" id="adminBidInc">+?</button>
+        <button class="admin-bid-btn admin-bid-up" id="adminBidPlus10">+10</button>
+        <button class="admin-bid-btn admin-bid-up" id="adminBidPlus25">+25</button>
+      </div>
+      <div class="admin-actions-strip">
+        <button class="admin-btn admin-btn-red" id="adminPassBtn">PASS</button>
+        <button class="admin-btn admin-btn-purple" id="adminUnsoldSpinBtn" title="Spin the wheel to assign this player to a team">Unsold&rarr;Spin</button>
+        <select class="admin-team-sel admin-team-sel-wide" id="adminTeamSel"><option value="">Select Team...</option></select>
+        <button class="admin-btn admin-btn-green" id="adminSoldBtn">SOLD!</button>
+        <button class="admin-btn admin-btn-gray" id="adminNextBtn">Next Player</button>
+        <button class="admin-btn admin-btn-gray" id="adminUndoBtn2">Undo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFETTI — fired on every completed sale -->
+  <div id="confettiLayer" class="confetti-layer" aria-hidden="true"></div>
+
+  <!-- SPIN WHEEL — player draw, and team assignment for unsold players -->
+  <div id="spinModal" class="spin-modal" style="display:none">
+    <div class="spin-inner">
+      <div class="spin-head">
+        <span class="spin-title" id="spinTitle">DRAW PLAYER</span>
+        <button class="admin-btn admin-btn-gray" id="spinClose">Cancel</button>
+      </div>
+      <div class="spin-body">
+        <div class="spin-stage">
+          <div class="spin-pointer"></div>
+          <div class="spin-wheel" id="spinWheel"></div>
+        </div>
+        <aside class="spin-side">
+          <div class="spin-side-head">
+            <span id="spinSideTitle">INCLUDE IN DRAW</span>
+            <label class="spin-all"><input type="checkbox" id="spinAll" checked /> All</label>
+          </div>
+          <div class="spin-list" id="spinList"></div>
+        </aside>
+      </div>
+      <div class="spin-foot">
+        <div class="spin-result" id="spinResult">&nbsp;</div>
+        <div class="spin-foot-btns">
+          <button class="admin-btn admin-btn-purple" id="spinGo">SPIN</button>
+          <button class="admin-btn admin-btn-green" id="spinConfirm" style="display:none">Confirm Selection</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PLAYER PICK MODAL -->
+  <div id="playerPickModal" class="player-pick-modal" style="display:none">
+    <div class="player-pick-inner">
+      <div class="player-pick-header">
+        <span class="player-pick-title">SELECT PLAYER</span>
+        <div class="player-pick-actions">
+          <button class="admin-btn admin-btn-amber" id="modalRandomBtn">Random</button>
+          <button class="admin-btn admin-btn-gray" id="playerPickClose">Cancel</button>
+        </div>
+      </div>
+      <input type="text" id="playerPickSearch" class="player-pick-search" placeholder="Search by name or category..." />
+      <div class="player-pick-list" id="playerPickList"></div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='auction_display.js') }}?v=44"></script>
+</body>
+</html>

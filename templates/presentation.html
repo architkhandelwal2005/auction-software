@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Auction — Broadcast Presentation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script>
+        // Force the classic JSX runtime so the inline <script type="text/babel">
+        // compiles to React.createElement (no ESM `import` — this page is a classic script).
+        Babel.registerPreset('classic-react', { presets: [[Babel.availablePresets['react'], { runtime: 'classic' }]] });
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800;900&family=Oswald:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; overflow: hidden; }
+        body { font-family: 'Inter', sans-serif; background: #05060a; color: #fff; }
+        #root { height: 100vh; width: 100vw; }
+        .font-anton { font-family: 'Anton', sans-serif; letter-spacing: 0.01em; }
+        .font-oswald { font-family: 'Oswald', sans-serif; }
+        .font-rajdhani { font-family: 'Rajdhani', sans-serif; }
+        .tabnum { font-variant-numeric: tabular-nums; }
+
+        /* ─────────── Core keyframes ─────────── */
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeDown { from { opacity: 0; transform: translateY(-40px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideL { from { opacity: 0; transform: translateX(-70px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes slideR { from { opacity: 0; transform: translateX(70px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes zoomPop { 0% { opacity: 0; transform: scale(0.3); } 70% { opacity: 1; transform: scale(1.06); } 100% { opacity: 1; transform: scale(1); } }
+        @keyframes slamIn { 0% { opacity: 0; transform: translateY(90px) scale(1.4); filter: blur(8px); } 55% { opacity: 1; transform: translateY(-10px) scale(1); filter: blur(0); } 78% { transform: translateY(4px); } 100% { transform: translateY(0); } }
+        @keyframes bidBump { 0% { transform: scale(1); } 40% { transform: scale(1.14); } 100% { transform: scale(1); } }
+        @keyframes floatY { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+        @keyframes spinSlow { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+        @keyframes shine { 0% { background-position: -250% 0; } 100% { background-position: 250% 0; } }
+        @keyframes ringPulse { 0% { box-shadow: 0 0 0 0 var(--pulse); } 70% { box-shadow: 0 0 0 34px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+        @keyframes stampIn { 0% { opacity: 0; transform: scale(2.6) rotate(-18deg); } 60% { opacity: 1; transform: scale(0.92) rotate(-11deg); } 100% { opacity: 1; transform: scale(1) rotate(-11deg); } }
+        @keyframes hammer { 0% { transform: rotate(-38deg); } 55% { transform: rotate(8deg); } 70% { transform: rotate(2deg); } 100% { transform: rotate(4deg); } }
+        @keyframes confetti { 0% { opacity: 1; transform: translateY(-10vh) rotate(0) scale(1); } 100% { opacity: 0; transform: translateY(105vh) rotate(760deg) scale(0.5); } }
+        @keyframes beamSweep { 0%,100% { opacity: 0.35; transform: translateX(-8%) skewX(-8deg); } 50% { opacity: 0.6; transform: translateX(8%) skewX(-8deg); } }
+        @keyframes flkr { 0%,100% { opacity: 0.5; } 50% { opacity: 0.85; } }
+        @keyframes crowdTwinkle { 0%,100% { opacity: 0.12; } 50% { opacity: 0.4; } }
+        @keyframes barGrow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+        @keyframes tickerMove { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+        @keyframes labelWipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+
+        .a-fadeIn { opacity: 0; animation: fadeIn .6s ease forwards; }
+        .a-fadeUp { opacity: 0; animation: fadeUp .7s cubic-bezier(.22,1,.36,1) forwards; }
+        .a-fadeDown { opacity: 0; animation: fadeDown .7s cubic-bezier(.22,1,.36,1) forwards; }
+        .a-slideL { opacity: 0; animation: slideL .6s cubic-bezier(.22,1,.36,1) forwards; }
+        .a-slideR { opacity: 0; animation: slideR .6s cubic-bezier(.22,1,.36,1) forwards; }
+        .a-zoomPop { opacity: 0; animation: zoomPop .8s cubic-bezier(.34,1.56,.64,1) forwards; }
+        .a-slamIn { opacity: 0; animation: slamIn .8s cubic-bezier(.22,1,.36,1) forwards; }
+        .a-bidBump { animation: bidBump .45s cubic-bezier(.34,1.56,.64,1); }
+        .a-stampIn { opacity: 0; animation: stampIn .6s cubic-bezier(.34,1.56,.64,1) forwards; }
+        .a-floatY { animation: floatY 5s ease-in-out infinite; }
+
+        .shine-text {
+            background-size: 250% auto; -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent; animation: shine 4s linear infinite;
+        }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        .glass { backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+        input[type=range]{ -webkit-appearance:none; height:4px; border-radius:99px; background:#3f3f46; }
+        input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:#fff; cursor:pointer; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel" data-presets="classic-react">
+        {% raw %}
+        const { useState, useEffect, useRef, useCallback, createContext, useContext } = React;
+
+        /* ══════════════════════════════════════════════════════════════
+           THEME SYSTEM
+           Each theme is a self-contained token pack. Add a sport by adding
+           an entry here — templates + states read purely from tokens, so
+           no template code changes are needed to support a new sport.
+        ══════════════════════════════════════════════════════════════ */
+        const THEMES = {
+            cricket: {
+                id: 'cricket',
+                name: 'Cricket',
+                emoji: '🏏',
+                accent: '#f5b642',      // gold
+                accentRGB: '245,182,66',
+                primary: '#1f9e57',     // pitch green
+                primaryRGB: '31,158,87',
+                secondary: '#1b6ec2',   // sky blue
+                secondaryRGB: '27,110,194',
+                ink: '#eafff2',
+                fontDisplay: "'Anton', sans-serif",
+                fontLabel: "'Oswald', sans-serif",
+                unit: 'L',
+                curr: '₹',
+                atmosphere: 'stadium',   // enables floodlights + crowd + pitch
+                bg: 'radial-gradient(ellipse 120% 90% at 50% -10%, #10502e 0%, #0a2f42 42%, #071726 72%, #04101c 100%)',
+                grass: true,
+                scoreboard: true,
+                statLabel: 'Career Stats',
+            },
+            multi_sport: {
+                id: 'multi_sport',
+                name: 'Multi-Sport',
+                emoji: '⭐',
+                accent: '#facc15',
+                accentRGB: '250,204,21',
+                primary: '#f59e0b',
+                primaryRGB: '245,158,11',
+                secondary: '#a855f7',
+                secondaryRGB: '168,85,247',
+                ink: '#faf7ef',
+                fontDisplay: "'Anton', sans-serif",
+                fontLabel: "'Oswald', sans-serif",
+                unit: 'L',
+                curr: '₹',
+                atmosphere: 'arena',
+                bg: 'radial-gradient(ellipse 120% 90% at 50% -10%, #2a2140 0%, #171525 45%, #0c0b16 100%)',
+                grass: false,
+                scoreboard: false,
+                statLabel: 'Key Stats',
+            },
+        };
+
+        const ThemeCtx = createContext(THEMES.cricket);
+        const useTheme = () => useContext(ThemeCtx);
+        const money = (t, v) => `${t.curr}${v}${t.unit}`;
+
+        /* ══════════════════════════════════════════════════════════════
+           TEMPLATE REGISTRY — add a template by registering here.
+        ══════════════════════════════════════════════════════════════ */
+        const TEMPLATES = [
+            { id: 'hero_reveal', name: 'Hero Reveal', icon: '🎬' },
+            { id: 'collectible_card', name: 'Collectible Card', icon: '🃏' },
+        ];
+
+        /* ══════════════════════════════════════════════════════════════
+           LIVE STATE MACHINE
+        ══════════════════════════════════════════════════════════════ */
+        const STATES = [
+            { id: 'splash',        label: 'Splash' },
+            { id: 'next_player',   label: 'Up Next' },
+            { id: 'player_reveal', label: 'Reveal' },
+            { id: 'bidding_open',  label: 'Bidding' },
+            { id: 'going_once',    label: 'Going Once' },
+            { id: 'going_twice',   label: 'Going Twice' },
+            { id: 'sold',          label: 'Sold' },
+            { id: 'unsold',        label: 'Unsold' },
+        ];
+
+        /* ══════════════════════════════════════════════════════════════
+           MOCK DATA
+        ══════════════════════════════════════════════════════════════ */
+        const TEAMS = [
+            { id: 't1', name: 'Mumbai Titans',   short: 'MT', color: '#1b6ec2', logo: '🦁' },
+            { id: 't2', name: 'Chennai Kings',   short: 'CK', color: '#f5b642', logo: '👑' },
+            { id: 't3', name: 'Bengaluru Bolts', short: 'BB', color: '#e23b3b', logo: '⚡' },
+            { id: 't4', name: 'Delhi Dynamos',   short: 'DD', color: '#5b3bd6', logo: '🔷' },
+        ];
+
+        const MOCK_PLAYERS = [
+            {
+                id: 'p1', name: 'Arjun Mehra', age: 26,
+                photo: 'https://images.unsplash.com/photo-1517649763962-0c623066013b?w=600&q=80',
+                sport: 'Cricket', role: 'Right-hand Batsman', category: 'Marquee',
+                basePrice: 200, previousTeam: 'Mumbai Titans', nationality: '🇮🇳 India',
+                stats: { Matches: 118, Runs: 4210, Average: 46.8, 'Strike Rate': 148.2, 'Fifties': 32 },
+            },
+            {
+                id: 'p2', name: 'Kabir Rao', age: 29,
+                photo: 'https://images.unsplash.com/photo-1552058544-f2b08422138a?w=600&q=80',
+                sport: 'Cricket', role: 'Right-arm Fast Bowler', category: 'Bowler',
+                basePrice: 150, previousTeam: 'Delhi Dynamos', nationality: '🇮🇳 India',
+                stats: { Matches: 96, Wickets: 141, Economy: 7.4, 'Best': '5/22', 'Dot %': 41 },
+            },
+            {
+                id: 'p3', name: 'Liam Foster', age: 24,
+                photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=600&q=80',
+                sport: 'Cricket', role: 'All-Rounder', category: 'Overseas',
+                basePrice: 175, previousTeam: 'Bengaluru Bolts', nationality: '🇦🇺 Australia',
+                stats: { Matches: 74, Runs: 1680, Wickets: 63, 'Strike Rate': 139.5, Catches: 40 },
+            },
+        ];
+
+        /* ══════════════════════════════════════════════════════════════
+           SMALL SHARED PIECES
+        ══════════════════════════════════════════════════════════════ */
+        const Photo = ({ src, name, className, style }) => {
+            const [err, setErr] = useState(false);
+            useEffect(() => setErr(false), [src]);
+            const initials = (name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+            if (src && !err) return <img src={src} alt={name} onError={() => setErr(true)} className={className} style={{ objectFit: 'cover', ...style }} />;
+            return (
+                <div className={className} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(160deg,#3f3f46,#18181b)', ...style }}>
+                    <span className="font-anton" style={{ fontSize: '4rem', color: 'rgba(255,255,255,.55)' }}>{initials}</span>
+                </div>
+            );
+        };
+
+        const TeamCrest = ({ team, size = 56, ring = true }) => (
+            <div className="flex items-center justify-center shrink-0" style={{
+                width: size, height: size, borderRadius: 16, fontSize: size * 0.5,
+                background: `linear-gradient(150deg, ${team.color}, ${team.color}bb)`,
+                boxShadow: ring ? `0 0 0 2px rgba(255,255,255,.15), 0 8px 24px ${team.color}66` : 'none',
+            }}>{team.logo}</div>
+        );
+
+        const Chip = ({ children, color, className = '' }) => (
+            <span className={`inline-flex items-center gap-1.5 font-oswald font-semibold uppercase tracking-[0.18em] ${className}`}
+                  style={{ fontSize: '.72rem', padding: '.32rem .85rem', borderRadius: 999, color,
+                           background: `${color}1f`, border: `1px solid ${color}55` }}>{children}</span>
+        );
+
+        /* ─── Theme-aware full-bleed background w/ atmosphere ─── */
+        const StageBackground = () => {
+            const t = useTheme();
+            return (
+                <div className="absolute inset-0 overflow-hidden" style={{ background: t.bg }}>
+                    {/* floodlight beams */}
+                    {t.atmosphere !== 'none' && <>
+                        <div className="absolute -top-40 left-[12%] w-[38vw] h-[130vh] origin-top"
+                             style={{ background: `linear-gradient(180deg, rgba(${t.accentRGB},.16), transparent 62%)`,
+                                      transform: 'skewX(-8deg)', animation: 'beamSweep 9s ease-in-out infinite', filter: 'blur(6px)' }} />
+                        <div className="absolute -top-40 right-[12%] w-[38vw] h-[130vh] origin-top"
+                             style={{ background: `linear-gradient(180deg, rgba(${t.secondaryRGB},.16), transparent 62%)`,
+                                      transform: 'skewX(8deg)', animation: 'beamSweep 11s ease-in-out infinite reverse', filter: 'blur(6px)' }} />
+                    </>}
+                    {/* crowd twinkle band */}
+                    {t.atmosphere === 'stadium' && (
+                        <div className="absolute inset-x-0 top-[8%] h-[26%]" style={{
+                            backgroundImage: `radial-gradient(1.5px 1.5px at 20px 30px, rgba(255,255,255,.5), transparent),
+                                radial-gradient(1.5px 1.5px at 120px 70px, rgba(${t.accentRGB},.6), transparent),
+                                radial-gradient(1.5px 1.5px at 220px 40px, rgba(255,255,255,.4), transparent),
+                                radial-gradient(1.5px 1.5px at 320px 90px, rgba(${t.secondaryRGB},.6), transparent)`,
+                            backgroundSize: '360px 120px', animation: 'crowdTwinkle 4s ease-in-out infinite', opacity: .3 }} />
+                    )}
+                    {/* mowed-grass pitch */}
+                    {t.grass && (
+                        <div className="absolute inset-x-0 bottom-0 h-[34%]" style={{
+                            background: `repeating-linear-gradient(105deg, rgba(31,158,87,.20) 0 60px, rgba(20,110,60,.24) 60px 120px)`,
+                            maskImage: 'linear-gradient(to top, #000 20%, transparent)',
+                            WebkitMaskImage: 'linear-gradient(to top, #000 20%, transparent)' }} />
+                    )}
+                    {/* vignette */}
+                    <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse 90% 80% at 50% 42%, transparent 40%, rgba(0,0,0,.65) 100%)' }} />
+                    {/* grain */}
+                    <div className="absolute inset-0 opacity-[0.05] pointer-events-none" style={{
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")` }} />
+                </div>
+            );
+        };
+
+        /* ─── Sequenced reveal hook: returns current step, advancing on entry ─── */
+        const useReveal = (active, steps, speed = 850) => {
+            const [step, setStep] = useState(active ? 0 : steps);
+            useEffect(() => {
+                if (!active) { setStep(steps); return; }
+                setStep(0);
+                const timers = [];
+                for (let i = 1; i <= steps; i++) timers.push(setTimeout(() => setStep(i), i * speed));
+                return () => timers.forEach(clearTimeout);
+            }, [active, steps, speed]);
+            return step;
+        };
+
+        /* ══════════════════════════════════════════════════════════════
+           BIDDING HUD — shared across templates for live-bid states
+        ══════════════════════════════════════════════════════════════ */
+        const BiddingHUD = ({ player, bid, phase }) => {
+            const t = useTheme();
+            const bumpRef = useRef(null);
+            const [bumpKey, setBumpKey] = useState(0);
+            useEffect(() => { setBumpKey(k => k + 1); }, [bid.amount]);
+            const lead = bid.leadingTeam;
+            const tension = phase === 'going_once' ? 1 : phase === 'going_twice' ? 2 : 0;
+
+            return (
+                <div className="w-full flex flex-col gap-4">
+                    {/* current bid */}
+                    <div className="relative rounded-3xl p-6 glass overflow-hidden"
+                         style={{ background: 'rgba(8,10,16,.55)', border: `1px solid rgba(${t.accentRGB},.35)`,
+                                  boxShadow: `0 0 60px rgba(${t.accentRGB},.12)` }}>
+                        {tension > 0 && (
+                            <div className="absolute inset-0 pointer-events-none"
+                                 style={{ '--pulse': `rgba(${t.accentRGB},.35)`, animation: 'ringPulse 1s ease-out infinite', borderRadius: 24 }} />
+                        )}
+                        <div className="flex items-center justify-between">
+                            <span className="font-oswald uppercase tracking-[0.3em] text-xs" style={{ color: `rgba(${t.accentRGB},.9)` }}>
+                                {tension === 0 ? 'Current Bid' : tension === 1 ? '⚠ Going Once' : '⚠ Going Twice'}
+                            </span>
+                            <span className="font-oswald uppercase tracking-widest text-[.65rem] text-white/40">
+                                Base {money(t, player.basePrice)}
+                            </span>
+                        </div>
+                        <div key={bumpKey} className="font-anton leading-none mt-1 tabnum a-bidBump"
+                             style={{ fontSize: 'clamp(3.5rem, 9vw, 7rem)', color: t.accent,
+                                      textShadow: `0 0 50px rgba(${t.accentRGB},.5)` }}>
+                            {money(t, bid.amount)}
+                        </div>
+                    </div>
+
+                    {/* leading team */}
+                    <div className="rounded-3xl p-5 glass flex items-center gap-4"
+                         style={{ background: `linear-gradient(100deg, ${lead.color}33, rgba(8,10,16,.55))`,
+                                  border: `1px solid ${lead.color}66` }}>
+                        <TeamCrest team={lead} size={64} />
+                        <div className="min-w-0 flex-1">
+                            <div className="font-oswald uppercase tracking-[0.2em] text-[.65rem] text-white/50">Highest Bidder</div>
+                            <div className="font-anton text-3xl truncate" style={{ color: '#fff' }}>{lead.name}</div>
+                        </div>
+                        <div className="text-4xl a-floatY">🔨</div>
+                    </div>
+                </div>
+            );
+        };
+
+        /* ══════════════════════════════════════════════════════════════
+           TEMPLATE 1 — HERO REVEAL
+        ══════════════════════════════════════════════════════════════ */
+        const HeroReveal = ({ player, state, bid }) => {
+            const t = useTheme();
+            const revealing = state === 'player_reveal';
+            const step = useReveal(revealing, 5);
+            const s = revealing ? step : 5;  // fully shown in bidding states
+            const showBid = ['bidding_open', 'going_once', 'going_twice'].includes(state);
+            const statEntries = Object.entries(player.stats).slice(0, 5);
+
+            return (
+                <div className="relative w-full h-full flex items-center justify-center px-[5vw]">
+                    <div className="w-full max-w-[1500px] grid grid-cols-12 gap-8 items-center">
+                        {/* LEFT — portrait */}
+                        <div className="col-span-12 lg:col-span-5 flex justify-center">
+                            <div className={`relative ${s >= 1 ? 'a-zoomPop' : 'opacity-0'}`}>
+                                <div className="absolute -inset-6 rounded-[2.5rem] blur-2xl opacity-50"
+                                     style={{ background: `radial-gradient(circle, ${t.accent}, transparent 70%)` }} />
+                                <div className="absolute -inset-2 rounded-[2rem]"
+                                     style={{ background: `conic-gradient(from 0deg, ${t.accent}, ${t.secondary}, ${t.primary}, ${t.accent})`,
+                                              animation: 'spinSlow 8s linear infinite', filter: 'blur(2px)' }} />
+                                <div className="relative rounded-[1.7rem] overflow-hidden"
+                                     style={{ width: 'min(38vw, 440px)', height: 'min(50vw, 560px)', boxShadow: '0 30px 80px rgba(0,0,0,.6)' }}>
+                                    <Photo src={player.photo} name={player.name} className="w-full h-full" />
+                                    <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,.75), transparent 45%)' }} />
+                                    <div className="absolute bottom-4 left-4 flex items-center gap-2">
+                                        <Chip color={t.accent}>{player.nationality}</Chip>
+                                        <Chip color="#fff">Age {player.age}</Chip>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* RIGHT — details */}
+                        <div className="col-span-12 lg:col-span-7">
+                            <div className={`mb-3 ${s >= 2 ? 'a-slideL' : 'opacity-0'}`}>
+                                <Chip color={t.accent} className="!text-sm !tracking-[0.3em]">{player.category}</Chip>
+                                <span className="ml-3 font-oswald uppercase tracking-[0.2em] text-white/60 text-sm">{player.role}</span>
+                            </div>
+                            <h1 className={`font-anton uppercase leading-[0.92] ${s >= 3 ? 'a-slamIn' : 'opacity-0'}`}
+                                style={{ fontSize: 'clamp(3rem, 8vw, 7rem)', textShadow: `0 6px 30px rgba(${t.accentRGB},.4)` }}>
+                                {player.name}
+                            </h1>
+
+                            {/* stat strip */}
+                            <div className={`mt-6 ${s >= 4 ? 'a-slideR' : 'opacity-0'}`}>
+                                <div className="font-oswald uppercase tracking-[0.25em] text-[.68rem] text-white/45 mb-2">{t.statLabel}</div>
+                                <div className="flex flex-wrap gap-3">
+                                    {statEntries.map(([k, v]) => (
+                                        <div key={k} className="rounded-2xl px-4 py-2.5 glass"
+                                             style={{ background: 'rgba(8,10,16,.5)', border: `1px solid rgba(${t.accentRGB},.2)` }}>
+                                            <div className="font-anton text-2xl tabnum leading-none" style={{ color: t.accent }}>{v}</div>
+                                            <div className="font-oswald uppercase tracking-wider text-[.6rem] text-white/50 mt-1">{k}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* base / prev-team OR live bid */}
+                            <div className={`mt-7 ${s >= 5 ? 'a-fadeUp' : 'opacity-0'}`}>
+                                {showBid ? (
+                                    <BiddingHUD player={player} bid={bid} phase={state} />
+                                ) : (
+                                    <div className="flex flex-wrap items-center gap-6">
+                                        <div>
+                                            <div className="font-oswald uppercase tracking-[0.2em] text-[.62rem] text-white/45">Base Price</div>
+                                            <div className="font-anton text-5xl" style={{ color: t.accent }}>{money(t, player.basePrice)}</div>
+                                        </div>
+                                        <div className="h-10 w-px bg-white/15" />
+                                        <div>
+                                            <div className="font-oswald uppercase tracking-[0.2em] text-[.62rem] text-white/45">Previous Team</div>
+                                            <div className="font-oswald text-xl text-white/90">{player.previousTeam}</div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        /* ══════════════════════════════════════════════════════════════
+           TEMPLATE 2 — COLLECTIBLE CARD
+        ══════════════════════════════════════════════════════════════ */
+        const CollectibleCard = ({ player, state, bid }) => {
+            const t = useTheme();
+            const revealing = state === 'player_reveal';
+            const step = useReveal(revealing, 5);
+            const s = revealing ? step : 5;
+            const showBid = ['bidding_open', 'going_once', 'going_twice'].includes(state);
+            const statEntries = Object.entries(player.stats).slice(0, 4);
+
+            return (
+                <div className="relative w-full h-full flex items-center justify-center gap-10 px-[5vw]">
+                    {/* THE CARD */}
+                    <div className={`relative ${s >= 1 ? 'a-zoomPop' : 'opacity-0'}`}>
+                        <div className="absolute -inset-3 rounded-[2rem] opacity-70 blur-md"
+                             style={{ background: `conic-gradient(from 0deg, ${t.accent}, ${t.secondary}, ${t.primary}, ${t.accent})`,
+                                      animation: 'spinSlow 10s linear infinite' }} />
+                        <div className="relative rounded-[1.7rem] overflow-hidden flex flex-col"
+                             style={{ width: 'min(34vw, 400px)', height: 'min(52vw, 610px)',
+                                      background: 'linear-gradient(165deg, #14161f, #0a0b12)',
+                                      border: `2px solid rgba(${t.accentRGB},.5)`, boxShadow: '0 30px 90px rgba(0,0,0,.7)' }}>
+                            {/* holo shine */}
+                            <div className="absolute inset-0 pointer-events-none opacity-40" style={{
+                                background: `linear-gradient(115deg, transparent 30%, rgba(${t.accentRGB},.35) 48%, transparent 62%)`,
+                                backgroundSize: '250% 250%', animation: 'shine 5s linear infinite' }} />
+                            {/* header band */}
+                            <div className="flex items-center justify-between px-5 py-3"
+                                 style={{ background: `linear-gradient(100deg, ${t.accent}, ${t.primary})` }}>
+                                <span className="font-anton uppercase text-black text-lg tracking-wide">{player.category}</span>
+                                <span className="font-anton text-black/80 text-sm">{t.emoji} {player.sport}</span>
+                            </div>
+                            {/* portrait */}
+                            <div className="relative flex-1 overflow-hidden">
+                                <Photo src={player.photo} name={player.name} className="w-full h-full" />
+                                <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(10,11,18,.98) 4%, transparent 55%)' }} />
+                                <div className="absolute top-3 right-3 rounded-full flex items-center justify-center font-anton"
+                                     style={{ width: 54, height: 54, background: `rgba(${t.accentRGB},.92)`, color: '#000', fontSize: '.8rem', textAlign: 'center', lineHeight: 1 }}>
+                                    {player.age}<br/>YRS
+                                </div>
+                                {/* name plate */}
+                                <div className="absolute bottom-0 inset-x-0 px-5 pb-4">
+                                    <div className="font-oswald uppercase tracking-[0.2em] text-[.6rem]" style={{ color: t.accent }}>{player.role}</div>
+                                    <div className="font-anton uppercase leading-none" style={{ fontSize: 'clamp(1.6rem,3vw,2.6rem)' }}>{player.name}</div>
+                                </div>
+                            </div>
+                            {/* stat rail */}
+                            <div className="grid grid-cols-4 divide-x divide-white/10 border-t border-white/10">
+                                {statEntries.map(([k, v]) => (
+                                    <div key={k} className="py-3 text-center">
+                                        <div className="font-anton text-xl tabnum" style={{ color: t.accent }}>{v}</div>
+                                        <div className="font-oswald uppercase text-[.5rem] tracking-wide text-white/45">{k}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* SIDE PANEL */}
+                    <div className="hidden lg:block w-[30vw] max-w-[460px]">
+                        <div className={`mb-2 ${s >= 2 ? 'a-slideR' : 'opacity-0'}`}>
+                            <Chip color={t.accent} className="!tracking-[0.3em]">Now Presenting</Chip>
+                        </div>
+                        <h1 className={`font-anton uppercase leading-[0.9] mb-4 ${s >= 3 ? 'a-slamIn' : 'opacity-0'}`}
+                            style={{ fontSize: 'clamp(2.5rem,5vw,4.5rem)' }}>{player.name}</h1>
+                        <div className={`flex items-center gap-3 mb-6 ${s >= 4 ? 'a-fadeUp' : 'opacity-0'}`}>
+                            <Chip color="#fff">{player.nationality}</Chip>
+                            <span className="font-oswald text-white/60 text-sm uppercase tracking-wider">Ex — {player.previousTeam}</span>
+                        </div>
+                        <div className={`${s >= 5 ? 'a-fadeUp' : 'opacity-0'}`}>
+                            {showBid ? (
+                                <BiddingHUD player={player} bid={bid} phase={state} />
+                            ) : (
+                                <div className="rounded-3xl p-6 glass"
+                                     style={{ background: 'rgba(8,10,16,.5)', border: `1px solid rgba(${t.accentRGB},.25)` }}>
+                                    <div className="font-oswald uppercase tracking-[0.2em] text-[.62rem] text-white/45">Base Price</div>
+                                    <div className="font-anton text-6xl" style={{ color: t.accent }}>{money(t, player.basePrice)}</div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const TEMPLATE_COMPONENTS = { hero_reveal: HeroReveal, collectible_card: CollectibleCard };
+
+        /* ══════════════════════════════════════════════════════════════
+           STATE SCREENS (template-agnostic)
+        ══════════════════════════════════════════════════════════════ */
+        const SplashScreen = ({ eventName }) => {
+            const t = useTheme();
+            return (
+                <div className="relative w-full h-full flex flex-col items-center justify-center text-center px-8">
+                    <div className="a-fadeDown text-8xl mb-4 a-floatY">{t.emoji}</div>
+                    <div className="a-fadeUp" style={{ animationDelay: '.15s' }}>
+                        <div className="font-oswald uppercase tracking-[0.6em] text-sm mb-3" style={{ color: t.accent }}>Presents</div>
+                    </div>
+                    <h1 className="font-anton uppercase leading-none shine-text a-fadeUp" style={{
+                        fontSize: 'clamp(3rem, 11vw, 10rem)', animationDelay: '.25s',
+                        backgroundImage: `linear-gradient(100deg, #fff, ${t.accent}, #fff, ${t.secondary}, #fff)` }}>
+                        {eventName}
+                    </h1>
+                    <div className="a-fadeUp mt-6 flex items-center gap-4" style={{ animationDelay: '.4s' }}>
+                        <div className="h-px w-16" style={{ background: `linear-gradient(90deg, transparent, ${t.accent})` }} />
+                        <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-red-500" style={{ animation: 'flkr 1.2s infinite' }} />
+                            <span className="font-oswald uppercase tracking-[0.4em] text-white/80 text-sm">Live Auction</span>
+                        </div>
+                        <div className="h-px w-16" style={{ background: `linear-gradient(90deg, ${t.accent}, transparent)` }} />
+                    </div>
+                </div>
+            );
+        };
+
+        const NextPlayerScreen = ({ player, index, total }) => {
+            const t = useTheme();
+            return (
+                <div className="relative w-full h-full flex flex-col items-center justify-center text-center px-8">
+                    <div className="a-fadeDown font-oswald uppercase tracking-[0.5em] text-lg mb-6" style={{ color: t.accent }}>
+                        Lot {String(index + 1).padStart(2, '0')} / {String(total).padStart(2, '0')} — Coming Up
+                    </div>
+                    <div className="relative a-zoomPop mb-8">
+                        <div className="absolute -inset-4 rounded-full blur-2xl opacity-60" style={{ background: t.accent }} />
+                        <div className="relative rounded-full overflow-hidden a-floatY"
+                             style={{ width: 220, height: 220, border: `4px solid ${t.accent}`, boxShadow: '0 20px 60px rgba(0,0,0,.6)' }}>
+                            <Photo src={player.photo} name={player.name} className="w-full h-full" />
+                        </div>
+                    </div>
+                    <h1 className="font-anton uppercase leading-none a-slamIn" style={{ fontSize: 'clamp(2.5rem,8vw,6rem)' }}>{player.name}</h1>
+                    <div className="a-fadeUp mt-4 flex items-center gap-3" style={{ animationDelay: '.3s' }}>
+                        <Chip color={t.accent} className="!text-sm">{player.category}</Chip>
+                        <Chip color="#fff" className="!text-sm">{player.role}</Chip>
+                    </div>
+                </div>
+            );
+        };
+
+        const SoldScreen = ({ player, bid }) => {
+            const t = useTheme();
+            const team = bid.leadingTeam;
+            const confetti = Array.from({ length: 60 });
+            return (
+                <div className="relative w-full h-full flex flex-col items-center justify-center text-center px-8 overflow-hidden">
+                    {confetti.map((_, i) => {
+                        const c = [t.accent, team.color, '#fff', t.secondary][i % 4];
+                        return <div key={i} className="absolute top-0" style={{
+                            left: `${(i * 137) % 100}%`, width: 9, height: 14, background: c, borderRadius: 2,
+                            animation: `confetti ${2.2 + (i % 5) * 0.4}s linear ${(i % 10) * 0.15}s infinite` }} />;
+                    })}
+                    <div className="a-stampIn mb-6" style={{ '--pulse': `${team.color}88` }}>
+                        <div className="font-anton uppercase text-black px-10 py-3 rounded-2xl"
+                             style={{ fontSize: 'clamp(3rem,10vw,8rem)', background: t.accent,
+                                      boxShadow: `0 0 80px rgba(${t.accentRGB},.6)`, transform: 'rotate(-11deg)' }}>
+                            SOLD!
+                        </div>
+                    </div>
+                    <div className="a-fadeUp flex items-center gap-4 mb-5" style={{ animationDelay: '.35s' }}>
+                        <Photo src={player.photo} name={player.name} className="rounded-full" style={{ width: 74, height: 74, border: `3px solid ${t.accent}` }} />
+                        <div className="text-left">
+                            <div className="font-oswald uppercase tracking-widest text-white/50 text-xs">{player.role}</div>
+                            <div className="font-anton uppercase text-4xl leading-none">{player.name}</div>
+                        </div>
+                    </div>
+                    <div className="a-fadeUp rounded-3xl px-10 py-6 glass flex items-center gap-6" style={{
+                        animationDelay: '.5s', background: `linear-gradient(100deg, ${team.color}44, rgba(8,10,16,.6))`,
+                        border: `1px solid ${team.color}88` }}>
+                        <TeamCrest team={team} size={72} />
+                        <div className="text-left">
+                            <div className="font-oswald uppercase tracking-widest text-white/50 text-xs">Sold To</div>
+                            <div className="font-anton text-4xl leading-none">{team.name}</div>
+                        </div>
+                        <div className="h-14 w-px bg-white/20" />
+                        <div className="text-left">
+                            <div className="font-oswald uppercase tracking-widest text-white/50 text-xs">Final Price</div>
+                            <div className="font-anton text-5xl leading-none" style={{ color: t.accent }}>{money(t, bid.amount)}</div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const UnsoldScreen = ({ player }) => {
+            const t = useTheme();
+            return (
+                <div className="relative w-full h-full flex flex-col items-center justify-center text-center px-8">
+                    <div className="a-stampIn mb-8">
+                        <div className="font-anton uppercase px-12 py-3 rounded-2xl"
+                             style={{ fontSize: 'clamp(2.5rem,9vw,7rem)', color: '#a1a1aa',
+                                      border: '5px solid #52525b', transform: 'rotate(-11deg)',
+                                      background: 'rgba(24,24,27,.6)', letterSpacing: '.05em' }}>
+                            UNSOLD
+                        </div>
+                    </div>
+                    <div className="a-fadeUp flex items-center gap-4 opacity-80" style={{ animationDelay: '.3s' }}>
+                        <Photo src={player.photo} name={player.name} className="rounded-full grayscale" style={{ width: 68, height: 68, border: '3px solid #52525b' }} />
+                        <div className="text-left">
+                            <div className="font-anton uppercase text-3xl leading-none text-zinc-300">{player.name}</div>
+                            <div className="font-oswald uppercase tracking-widest text-zinc-500 text-xs mt-1">Base {money(t, player.basePrice)} — No bids</div>
+                        </div>
+                    </div>
+                    <p className="a-fadeUp font-oswald uppercase tracking-[0.3em] text-zinc-600 text-sm mt-8" style={{ animationDelay: '.45s' }}>
+                        Returns to the pool
+                    </p>
+                </div>
+            );
+        };
+
+        /* ─── Scoreboard-style status bar (cricket accent) ─── */
+        const StatusTicker = ({ eventName, stateLabel }) => {
+            const t = useTheme();
+            const items = [`${t.emoji} ${eventName}`, 'LIVE AUCTION', stateLabel.toUpperCase(), 'BROADCAST FEED'];
+            const row = [...items, ...items];
+            return (
+                <div className="absolute bottom-0 inset-x-0 h-11 flex items-center overflow-hidden border-t"
+                     style={{ background: t.scoreboard ? 'linear-gradient(90deg, #0a1420, #0d1f14)' : 'rgba(8,10,16,.8)',
+                              borderColor: `rgba(${t.accentRGB},.3)` }}>
+                    <div className="px-4 h-full flex items-center font-anton uppercase text-black text-sm shrink-0 z-10"
+                         style={{ background: t.accent }}>{t.scoreboard ? '● REC' : 'LIVE'}</div>
+                    <div className="flex whitespace-nowrap" style={{ animation: 'tickerMove 22s linear infinite' }}>
+                        {row.map((it, i) => (
+                            <span key={i} className="font-oswald uppercase tracking-[0.3em] text-white/70 text-sm px-8 flex items-center gap-8">
+                                {it}<span style={{ color: t.accent }}>◆</span>
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        /* ══════════════════════════════════════════════════════════════
+           PRESENTER CONTROL BAR
+        ══════════════════════════════════════════════════════════════ */
+        const Controls = ({ open, setOpen, themeId, setThemeId, templateId, setTemplateId,
+                            state, setState, playerIdx, setPlayerIdx, players, bid, setBid, fs }) => {
+            const t = THEMES[themeId];
+            if (!open) return (
+                <button onClick={() => setOpen(true)}
+                    className="fixed bottom-14 right-5 z-50 w-11 h-11 rounded-full glass flex items-center justify-center text-white/80 hover:text-white"
+                    style={{ background: 'rgba(8,10,16,.7)', border: `1px solid rgba(${t.accentRGB},.4)` }}>⚙</button>
+            );
+            return (
+                <div className="fixed bottom-0 inset-x-0 z-50 glass border-t"
+                     style={{ background: 'rgba(6,7,12,.92)', borderColor: `rgba(${t.accentRGB},.3)` }}>
+                    <div className="max-w-[1500px] mx-auto px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-3">
+                        <div className="flex items-center gap-2">
+                            <span className="font-oswald uppercase tracking-widest text-[.6rem] text-white/40">Theme</span>
+                            {Object.values(THEMES).map(th => (
+                                <button key={th.id} onClick={() => setThemeId(th.id)}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                    style={themeId === th.id ? { background: th.accent, color: '#000' } : { background: 'rgba(255,255,255,.06)', color: '#a1a1aa' }}>
+                                    {th.emoji} {th.name}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="font-oswald uppercase tracking-widest text-[.6rem] text-white/40">Template</span>
+                            {TEMPLATES.map(tp => (
+                                <button key={tp.id} onClick={() => setTemplateId(tp.id)}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+                                    style={templateId === tp.id ? { background: t.accent, color: '#000' } : { background: 'rgba(255,255,255,.06)', color: '#a1a1aa' }}>
+                                    {tp.icon} {tp.name}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="font-oswald uppercase tracking-widest text-[.6rem] text-white/40">Player</span>
+                            <button onClick={() => setPlayerIdx((playerIdx - 1 + players.length) % players.length)}
+                                className="w-7 h-7 rounded-lg bg-white/6 text-white/70 hover:bg-white/12">‹</button>
+                            <span className="font-oswald text-white text-sm w-28 text-center truncate">{players[playerIdx].name}</span>
+                            <button onClick={() => setPlayerIdx((playerIdx + 1) % players.length)}
+                                className="w-7 h-7 rounded-lg bg-white/6 text-white/70 hover:bg-white/12">›</button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="font-oswald uppercase tracking-widest text-[.6rem] text-white/40">Bid</span>
+                            <button onClick={() => setBid(b => ({ ...b, amount: Math.max(players[playerIdx].basePrice, b.amount - 25) }))}
+                                className="w-7 h-7 rounded-lg bg-white/6 text-white/70 hover:bg-white/12">−</button>
+                            <span className="font-oswald tabnum text-white text-sm w-14 text-center">{money(t, bid.amount)}</span>
+                            <button onClick={() => setBid(b => ({ ...b, amount: b.amount + 25 }))}
+                                className="w-7 h-7 rounded-lg bg-white/6 text-white/70 hover:bg-white/12">+</button>
+                            <select value={bid.leadingTeam.id} onChange={e => setBid(b => ({ ...b, leadingTeam: TEAMS.find(x => x.id === e.target.value) }))}
+                                className="bg-white/6 text-white text-xs rounded-lg px-2 py-1.5 outline-none">
+                                {TEAMS.map(tm => <option key={tm.id} value={tm.id} className="bg-zinc-900">{tm.logo} {tm.name}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-1 justify-end">
+                            <button onClick={fs} className="px-3 py-1.5 rounded-lg bg-white/6 text-white/70 hover:bg-white/12 text-xs">⛶ Fullscreen</button>
+                            <button onClick={() => setOpen(false)} className="px-3 py-1.5 rounded-lg bg-white/6 text-white/70 hover:bg-white/12 text-xs">✕ Hide</button>
+                        </div>
+                    </div>
+                    {/* state stepper */}
+                    <div className="border-t border-white/10 px-5 py-2.5 flex items-center gap-1.5 overflow-x-auto hide-scroll">
+                        {STATES.map((st, i) => (
+                            <button key={st.id} onClick={() => setState(st.id)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5"
+                                style={state === st.id ? { background: t.accent, color: '#000' } : { background: 'rgba(255,255,255,.05)', color: '#a1a1aa' }}>
+                                <span className="opacity-60">{i + 1}</span>{st.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        /* ══════════════════════════════════════════════════════════════
+           ROOT APP
+        ══════════════════════════════════════════════════════════════ */
+        function PresentationApp() {
+            const [themeId, setThemeId] = useState('cricket');
+            const [templateId, setTemplateId] = useState('hero_reveal');
+            const [state, setState] = useState('splash');
+            const [playerIdx, setPlayerIdx] = useState(0);
+            const [ctrlOpen, setCtrlOpen] = useState(true);
+            const players = MOCK_PLAYERS;
+            const player = players[playerIdx];
+            const [bid, setBid] = useState({ amount: player.basePrice + 75, leadingTeam: TEAMS[0] });
+            const theme = THEMES[themeId];
+            const eventName = 'Premier Auction 2026';
+
+            // reset bid baseline when player changes
+            useEffect(() => { setBid(b => ({ ...b, amount: player.basePrice + 75 })); }, [playerIdx]);
+
+            const toggleFs = useCallback(() => {
+                if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+                else document.exitFullscreen?.().catch(() => {});
+            }, []);
+
+            // keyboard: ←/→ states, C toggle controls, F fullscreen
+            useEffect(() => {
+                const onKey = (e) => {
+                    if (e.target.tagName === 'SELECT') return;
+                    const idx = STATES.findIndex(s => s.id === state);
+                    if (e.key === 'ArrowRight') setState(STATES[Math.min(STATES.length - 1, idx + 1)].id);
+                    else if (e.key === 'ArrowLeft') setState(STATES[Math.max(0, idx - 1)].id);
+                    else if (e.key.toLowerCase() === 'c') setCtrlOpen(o => !o);
+                    else if (e.key.toLowerCase() === 'f') toggleFs();
+                };
+                window.addEventListener('keydown', onKey);
+                return () => window.removeEventListener('keydown', onKey);
+            }, [state, toggleFs]);
+
+            const Template = TEMPLATE_COMPONENTS[templateId];
+            const inPlayerFlow = ['player_reveal', 'bidding_open', 'going_once', 'going_twice'].includes(state);
+
+            const renderStage = () => {
+                if (state === 'splash') return <SplashScreen eventName={eventName} />;
+                if (state === 'next_player') return <NextPlayerScreen player={player} index={playerIdx} total={players.length} />;
+                if (state === 'sold') return <SoldScreen player={player} bid={bid} />;
+                if (state === 'unsold') return <UnsoldScreen player={player} />;
+                if (inPlayerFlow) return <Template player={player} state={state} bid={bid} />;
+                return null;
+            };
+
+            return (
+                <ThemeCtx.Provider value={theme}>
+                    <div className="relative w-full h-full overflow-hidden" style={{ color: theme.ink }}>
+                        <StageBackground />
+                        {/* top brand bar */}
+                        <div className="absolute top-0 inset-x-0 h-14 flex items-center justify-between px-6 z-20">
+                            <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg"
+                                     style={{ background: `rgba(${theme.accentRGB},.15)`, border: `1px solid rgba(${theme.accentRGB},.4)` }}>{theme.emoji}</div>
+                                <div>
+                                    <div className="font-anton uppercase text-lg leading-none" style={{ color: theme.accent }}>{eventName}</div>
+                                    <div className="font-oswald uppercase tracking-[0.3em] text-[.55rem] text-white/40 mt-0.5">{theme.name} · Broadcast</div>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-red-500" style={{ animation: 'flkr 1.2s infinite' }} />
+                                <span className="font-oswald uppercase tracking-[0.3em] text-red-400 text-xs">On Air</span>
+                            </div>
+                        </div>
+
+                        {/* STAGE (keyed for re-mount → fresh animations per state/player/template) */}
+                        <div key={`${state}-${playerIdx}-${templateId}`} className="absolute inset-0 flex items-center justify-center">
+                            {renderStage()}
+                        </div>
+
+                        <StatusTicker eventName={eventName} stateLabel={STATES.find(s => s.id === state).label} />
+
+                        <Controls open={ctrlOpen} setOpen={setCtrlOpen} themeId={themeId} setThemeId={setThemeId}
+                            templateId={templateId} setTemplateId={setTemplateId} state={state} setState={setState}
+                            playerIdx={playerIdx} setPlayerIdx={setPlayerIdx} players={players} bid={bid} setBid={setBid} fs={toggleFs} />
+                    </div>
+                </ThemeCtx.Provider>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<PresentationApp />);
+        {% endraw %}
+    </script>
+</body>
+</html>

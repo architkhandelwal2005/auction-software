@@ -51,7 +51,7 @@
 </head>
 <body class="min-h-screen">
     <div id="root"></div>
-    <script type="text/babel">
+    {% raw %}<script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
         const SPORT_THEMES = {
@@ -197,6 +197,20 @@
             const stats = data.stats || {};
             const categoriesStats = stats.categories || [];
             const eventName = data.config?.event_name || 'Live Auction';
+            const orgName = data.config?.organisation_name || '';
+            const orgLogo = data.config?.org_logo || '';
+
+            // Theme for the spectator screen. `auction_sport` is what the admin
+            // picks on the stage; `sport_theme` is the setup-wizard preset.
+            // Without this the whole view threw "currentTheme is not defined".
+            const rawTheme = String(
+                state.auction_sport || data.config?.sport_theme || 'cricket'
+            ).toLowerCase().trim();
+            const currentTheme =
+                SPORT_THEMES[rawTheme] ||
+                SPORT_THEMES[rawTheme.replace(/[\s-]+/g, '_')] ||
+                (rawTheme === 'multi' ? SPORT_THEMES.multi_sport : null) ||
+                SPORT_THEMES.cricket;
 
             
             const getTickerContent = () => {
@@ -246,11 +260,14 @@
                         
                         <div className="flex justify-between items-start md:items-center w-full">
                             <div className="flex items-center gap-3 md:gap-4">
-                                <div className="w-10 h-10 md:w-11 md:h-11 rounded-2xl flex items-center justify-center text-lg md:text-xl shadow-lg shrink-0 border"
-                                     style={{ background: `${currentTheme.accent}20`, borderColor: `${currentTheme.accent}40`, color: currentTheme.accent, boxShadow: `0 0 20px ${currentTheme.accent}20` }}>
-                                     {currentTheme.emoji}
-                                </div>
+                                {orgLogo
+                                    ? <img src={orgLogo} alt="" className="w-10 h-10 md:w-11 md:h-11 rounded-2xl object-contain shrink-0 bg-white/5 p-1 border" style={{ borderColor: `${currentTheme.accent}40` }} />
+                                    : <div className="w-10 h-10 md:w-11 md:h-11 rounded-2xl flex items-center justify-center text-lg md:text-xl shadow-lg shrink-0 border"
+                                         style={{ background: `${currentTheme.accent}20`, borderColor: `${currentTheme.accent}40`, color: currentTheme.accent, boxShadow: `0 0 20px ${currentTheme.accent}20` }}>
+                                         {currentTheme.emoji}
+                                      </div>}
                                 <div className="min-w-0">
+                                    {orgName && <div className="text-[0.6rem] md:text-[0.7rem] font-extrabold uppercase tracking-widest truncate" style={{color: currentTheme.accent, opacity: .8}}>{orgName}</div>}
                                     <h1 className="fredoka text-lg md:text-xl font-bold truncate" style={{color: currentTheme.accent}}>{eventName}</h1>
                                     <div className="flex items-center gap-1.5 md:gap-2 mt-0.5">
                                         <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse shrink-0"></div>

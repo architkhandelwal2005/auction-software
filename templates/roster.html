@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Player Roster — Auction</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Nunito', sans-serif; margin: 0; }
+        .fredoka { font-family: 'Fredoka', sans-serif; }
+        .grotesk { font-family: 'Space Grotesk', sans-serif; }
+        @keyframes cardIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+        .card-in { animation: cardIn .4s ease both; }
+        @media print {
+            .no-print { display: none !important; }
+            body { background: #fff !important; }
+            .print-card { break-inside: avoid; box-shadow: none !important; border: 1px solid #ddd !important; }
+            .print-page { background: #fff !important; color: #111 !important; }
+            .print-ink { color: #111 !important; }
+            .print-muted { color: #555 !important; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        {% raw %}
+        const { useState, useEffect } = React;
+
+        const SPORT_THEMES = {
+            cricket:    { emoji: '🏏', accent: '#f59e0b', bg: 'radial-gradient(ellipse at 50% 0%, #1a3a1a 0%, #0a1f0a 45%, #050d05 100%)' },
+            football:   { emoji: '⚽', accent: '#22c55e', bg: 'radial-gradient(ellipse at 50% 0%, #0a2e0a 0%, #061a06 45%, #030d03 100%)' },
+            badminton:  { emoji: '🏸', accent: '#3b82f6', bg: 'radial-gradient(ellipse at 50% 0%, #0a1a3a 0%, #060f2a 45%, #030818 100%)' },
+            pickleball: { emoji: '🏓', accent: '#14b8a6', bg: 'radial-gradient(ellipse at 50% 0%, #0a2a2a 0%, #061a1a 45%, #030d0d 100%)' },
+            basketball: { emoji: '🏀', accent: '#f97316', bg: 'radial-gradient(ellipse at 50% 0%, #2a1a0a 0%, #1a0f06 45%, #0d0803 100%)' },
+            esports:    { emoji: '🎮', accent: '#a855f7', bg: 'radial-gradient(ellipse at 50% 0%, #1a0a2e 0%, #0f061a 45%, #08030d 100%)' },
+            art:        { emoji: '🎨', accent: '#ef4444', bg: 'radial-gradient(ellipse at 50% 0%, #2a0a0a 0%, #1a0606 45%, #0d0303 100%)' },
+            multi_sport:{ emoji: '⭐', accent: '#f59e0b', bg: 'radial-gradient(ellipse at 50% 0%, #18181b 0%, #0d0d0f 45%, #050506 100%)' },
+        };
+        const resolveTheme = (raw) => {
+            const k = String(raw || 'cricket').toLowerCase().trim();
+            return SPORT_THEMES[k] || SPORT_THEMES[k.replace(/[\s-]+/g, '_')] || (k === 'multi' ? SPORT_THEMES.multi_sport : null) || SPORT_THEMES.cricket;
+        };
+
+        const PALETTE = ['#f59e0b','#3b82f6','#10b981','#8b5cf6','#ec4899','#f97316','#06b6d4','#14b8a6','#ef4444','#84cc16','#a855f7','#6366f1'];
+        const catColor = (c) => { if(!c) return '#71717a'; let h=0; for(let i=0;i<c.length;i++) h=c.charCodeAt(i)+((h<<5)-h); return PALETTE[Math.abs(h)%PALETTE.length]; };
+        const initials = (n) => String(n||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase() || '?';
+
+        const HIDE_ATTRS = /^(name|player\s*name|full\s*name|photo|photo\s*url|photo\s*preview|image|base\s*price|price|category|role|id|player\s*id|mobile|mobile\s*(no|number)|phone|contact|email|whatsapp|address)$/i;
+
+        function PlayerCard({ p, theme, idx }) {
+            const [imgErr, setImgErr] = useState(false);
+            const cc = catColor(p.category);
+            const attrs = (p.attributes && typeof p.attributes === 'object') ? p.attributes : {};
+            const chips = Object.entries(attrs)
+                .filter(([k, v]) => v != null && String(v).trim() !== '' && !HIDE_ATTRS.test(k.trim()))
+                .slice(0, 3);
+            return (
+                <div className="print-card card-in bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden hover:border-white/25 transition"
+                     style={{ animationDelay: `${Math.min(idx * 25, 600)}ms` }}>
+                    <div className="flex gap-3 p-3">
+                        <div className="relative w-16 h-16 flex-shrink-0 rounded-xl overflow-hidden"
+                             style={{ background: `${cc}22`, border: `1px solid ${cc}55` }}>
+                            {p.photo_url && !imgErr
+                                ? <img src={p.photo_url} onError={()=>setImgErr(true)} className="w-full h-full object-cover" />
+                                : <div className="w-full h-full flex items-center justify-center fredoka font-bold text-lg" style={{color: cc}}>{initials(p.name)}</div>}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                                <h3 className="fredoka font-bold text-white print-ink text-[15px] leading-tight truncate">{p.name}</h3>
+                                <span className="grotesk font-bold text-sm whitespace-nowrap" style={{color: theme.accent}}>₹{p.base_price}L</span>
+                            </div>
+                            <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide"
+                                  style={{ background: `${cc}22`, color: cc }}>{p.category || 'General'}</span>
+                            {chips.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                    {chips.map(([k, v], i) => (
+                                        <span key={i} className="text-[10px] font-semibold text-zinc-400 print-muted bg-white/5 px-1.5 py-0.5 rounded">
+                                            {String(v).slice(0, 18)}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function Roster() {
+            const [data, setData] = useState(null);
+            const [q, setQ] = useState('');
+            const [catFilter, setCatFilter] = useState('all');
+
+            useEffect(() => {
+                Promise.all([
+                    fetch('/api/players').then(r => r.json()).catch(() => []),
+                    fetch('/api/config').then(r => r.json()).catch(() => ({})),
+                ]).then(([players, cfgWrap]) => {
+                    setData({ players: Array.isArray(players) ? players : [], config: cfgWrap.config || {} });
+                });
+            }, []);
+
+            if (!data) return (
+                <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-white">
+                    <div className="text-center"><div className="text-5xl mb-3 animate-bounce">📋</div><p className="fredoka text-lg text-zinc-400">Preparing roster…</p></div>
+                </div>
+            );
+
+            const cfg = data.config;
+            const theme = resolveTheme(cfg.auction_sport || cfg.sport_theme);
+            const eventName = cfg.event_name || 'Player Auction';
+            const orgName = cfg.organisation_name || '';
+            const orgLogo = cfg.org_logo || '';
+            const players = data.players;
+
+            const cats = [...new Set(players.map(p => p.category).filter(Boolean))];
+            const filtered = players.filter(p => {
+                const okQ = !q || (p.name || '').toLowerCase().includes(q.toLowerCase());
+                const okC = catFilter === 'all' || p.category === catFilter;
+                return okQ && okC;
+            });
+            const groups = {};
+            filtered.forEach(p => { const c = p.category || 'General'; (groups[c] = groups[c] || []).push(p); });
+            const groupKeys = Object.keys(groups).sort();
+            const totalBase = players.reduce((s, p) => s + (parseFloat(p.base_price) || 0), 0);
+
+            let flatIdx = 0;
+
+            return (
+                <div className="print-page min-h-screen text-white" style={{ background: theme.bg }}>
+                    <div className="fixed inset-0 pointer-events-none" style={{ background: `radial-gradient(circle at 50% -10%, ${theme.accent}14 0%, transparent 55%)` }}></div>
+
+                    <div className="relative max-w-6xl mx-auto px-6 py-8">
+                        <div className="no-print flex items-center justify-between mb-6">
+                            <a href="/admin" className="text-sm font-bold text-zinc-400 hover:text-white flex items-center gap-2">
+                                <i className="fa-solid fa-arrow-left"></i> Dashboard
+                            </a>
+                            <button onClick={() => window.print()} className="px-5 py-2.5 rounded-xl text-sm font-bold text-black flex items-center gap-2 shadow-lg"
+                                    style={{ background: theme.accent }}>
+                                <i className="fa-solid fa-print"></i> Print / Save as PDF
+                            </button>
+                        </div>
+
+                        <div className="text-center mb-8 pb-8 border-b" style={{ borderColor: `${theme.accent}33` }}>
+                            {orgLogo
+                                ? <img src={orgLogo} alt="" className="h-20 mx-auto mb-4 object-contain" />
+                                : <div className="text-5xl mb-3">{theme.emoji}</div>}
+                            {orgName && <div className="text-sm font-bold uppercase tracking-[0.25em] mb-2" style={{ color: theme.accent }}>{orgName}</div>}
+                            <h1 className="fredoka text-4xl md:text-5xl font-bold text-white print-ink">{eventName}</h1>
+                            <p className="text-zinc-400 print-muted font-bold text-sm mt-2 tracking-wide">
+                                PLAYER ROSTER · {players.length} PLAYERS · {cats.length} CATEGORIES
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3 mb-6">
+                            {[
+                                { l: 'Total Players', v: players.length },
+                                { l: 'Categories', v: cats.length },
+                                { l: 'Total Base Value', v: `₹${totalBase.toFixed(0)}L` },
+                            ].map((s, i) => (
+                                <div key={i} className="print-card rounded-2xl p-4 text-center border" style={{ background: `${theme.accent}0d`, borderColor: `${theme.accent}33` }}>
+                                    <div className="fredoka text-2xl font-bold print-ink" style={{ color: theme.accent }}>{s.v}</div>
+                                    <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 print-muted mt-1">{s.l}</div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="no-print flex flex-wrap items-center gap-2 mb-6">
+                            <div className="relative flex-1 min-w-[200px]">
+                                <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm"></i>
+                                <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search players…"
+                                       className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-2.5 text-sm font-semibold text-white outline-none focus:border-white/30" />
+                            </div>
+                            <button onClick={()=>setCatFilter('all')} className={`px-3 py-2 rounded-lg text-xs font-bold transition ${catFilter==='all'?'text-black':'text-zinc-300 bg-white/5'}`}
+                                    style={catFilter==='all'?{background:theme.accent}:{}}>All</button>
+                            {cats.map(c => (
+                                <button key={c} onClick={()=>setCatFilter(c)} className={`px-3 py-2 rounded-lg text-xs font-bold transition ${catFilter===c?'text-black':'text-zinc-300 bg-white/5'}`}
+                                        style={catFilter===c?{background:catColor(c)}:{}}>{c}</button>
+                            ))}
+                        </div>
+
+                        {players.length === 0 ? (
+                            <div className="text-center py-20 text-zinc-500 font-bold">No players uploaded yet.</div>
+                        ) : groupKeys.map(cat => (
+                            <div key={cat} className="mb-8">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <span className="w-3 h-3 rounded-full" style={{ background: catColor(cat) }}></span>
+                                    <h2 className="fredoka font-bold text-lg text-white print-ink">{cat}</h2>
+                                    <span className="text-xs font-bold text-zinc-500">{groups[cat].length} players</span>
+                                    <div className="flex-1 h-px" style={{ background: `${catColor(cat)}33` }}></div>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {groups[cat].map(p => <PlayerCard key={p.id} p={p} theme={theme} idx={flatIdx++} />)}
+                                </div>
+                            </div>
+                        ))}
+
+                        <div className="text-center text-xs text-zinc-600 print-muted pt-6 pb-2 border-t mt-8" style={{ borderColor: `${theme.accent}22` }}>
+                            {orgName ? `${orgName} · ` : ''}{eventName} · Generated {new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<Roster />);
+        {% endraw %}
+    </script>
+</body>
+</html>

@@ -1,6 +1,95 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for
-import sqlite3, os, webbrowser, csv, io, uuid, json
+from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for, g
+import sqlite3, os, webbrowser, csv, io, uuid, json, re, threading
+import urllib.request as _ureq
 from threading import Timer
+
+# ── Load .env (DATABASE_URL, etc.) ──────────────────────────────────────────
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'))
+except ImportError:
+    pass
+
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+USE_PG = bool(DATABASE_URL)
+
+SHEETS_WEBHOOK = os.environ.get(
+    'SHEETS_WEBHOOK',
+    'https://script.google.com/macros/s/AKfycbwDEpBKxUPlZG5mT1ea8w-C3csMiJT13m1ofK9n9SNoy5DzkBoVfURocIjkjGSVbek/exec'
+)
+
+# ── PostgreSQL thin wrapper (speaks the same API as sqlite3) ─────────────────
+def _pg_sql(sql):
+    """Convert SQLite SQL dialect → PostgreSQL."""
+    sql = sql.replace('?', '%s')
+    def _upsert(m):
+        tbl, cols_raw, vals = m.group(1), m.group(2), m.group(3)
+        cols = [c.strip() for c in cols_raw.split(',')]
+        updates = ', '.join(f'{c}=EXCLUDED.{c}' for c in cols[1:])
+        tail = f'UPDATE SET {updates}' if updates else 'NOTHING'
+        return f'INSERT INTO {tbl} ({cols_raw}) VALUES ({vals}) ON CONFLICT ({cols[0]}) DO {tail}'
+    sql = re.sub(
+        r'INSERT\s+OR\s+REPLACE\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)',
+        _upsert, sql, flags=re.IGNORECASE)
+    # Double-quoted string literals → single-quoted (SQLite allows both; PG does not)
+    sql = re.sub(r'"([^"]*)"', r"'\1'", sql)
+    return sql
+
+class _PGCur:
+    def __init__(self, raw):
+        self._c = raw
+        self.lastrowid = None
+
+    def execute(self, sql, params=()):
+        converted = _pg_sql(sql)
+        self._c.execute(converted, params or ())
+        if re.match(r'\s*INSERT\b', sql, re.IGNORECASE):
+            try:
+                self._c.execute('SELECT lastval()')
+                row = self._c.fetchone()
+                if row:
+                    self.lastrowid = list(row.values())[0]
+            except Exception:
+                pass
+        return self
+
+    def fetchone(self):  return self._c.fetchone()
+    def fetchall(self):  return self._c.fetchall()
+    def __iter__(self):  return iter(self.fetchall())
+    def __getitem__(self, k): return self.fetchall()[k]
+
+class _PGConn:
+    def __init__(self, raw):
+        self._r = raw
+        self._closed = False
+
+    def cursor(self):
+        import psycopg2.extras
+        return _PGCur(self._r.cursor(cursor_factory=psycopg2.extras.RealDictCursor))
+
+    def execute(self, sql, params=()):
+        c = self.cursor(); c.execute(sql, params); return c
+
+    def commit(self):   self._r.commit()
+    def rollback(self): self._r.rollback()
+    def close(self):
+        if not self._closed:
+            try: self._r.close()
+            except Exception: pass
+            self._closed = True
+
+# ── Google Sheets async push ─────────────────────────────────────────────────
+def _sheets_push(payload):
+    try:
+        data = json.dumps(payload).encode()
+        req = _ureq.Request(SHEETS_WEBHOOK, data=data,
+                            headers={'Content-Type': 'application/json'}, method='POST')
+        _ureq.urlopen(req, timeout=10)
+    except Exception as e:
+        print(f'[Sheets] sync error: {e}', flush=True)
+
+def sheets_push_async(payload):
+    threading.Thread(target=_sheets_push, args=(payload,), daemon=True).start()
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = 'super_secret_auction_pro_key_2026'
@@ -9,92 +98,116 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'upload
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def get_db():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    if 'db' not in g:
+        if USE_PG:
+            import psycopg2
+            g.db = _PGConn(psycopg2.connect(DATABASE_URL))
+        else:
+            g.db = sqlite3.connect(DB_FILE, timeout=20, check_same_thread=False)
+            g.db.row_factory = sqlite3.Row
+            g.db.execute("PRAGMA foreign_keys = ON")
+    return g.db
+
+@app.teardown_appcontext
+def close_db(exception=None):
+    db = g.pop('db', None)
+    if db is not None:
+        if exception:
+            try: db.rollback()
+            except Exception: pass
+        try: db.close()
+        except Exception: pass
 
 def init_db():
-    conn = get_db()
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS config (
-        key TEXT PRIMARY KEY, value TEXT
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS category_rules (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        category TEXT NOT NULL,
-        base_price REAL DEFAULT 0,
-        min_per_team INTEGER DEFAULT 0,
-        max_per_team INTEGER DEFAULT 99
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS teams (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        total_budget REAL NOT NULL,
-        remaining_budget REAL NOT NULL,
-        color TEXT DEFAULT '#3b82f6',
-        logo_url TEXT
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS players (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        category TEXT,
-        base_price REAL DEFAULT 0,
-        status TEXT DEFAULT 'unsold',
-        team_id INTEGER,
-        sold_price REAL,
-        photo_url TEXT,
-        sold_at TIMESTAMP,
-        FOREIGN KEY (team_id) REFERENCES teams (id)
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS auction_state (
-        key TEXT PRIMARY KEY, value TEXT
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS action_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        action_type TEXT NOT NULL,
-        player_id INTEGER NOT NULL,
-        player_name TEXT,
-        old_team_id INTEGER,
-        new_team_id INTEGER,
-        old_sold_price REAL,
-        new_sold_price REAL,
-        old_status TEXT,
-        new_status TEXT,
-        base_price REAL,
-        category TEXT,
-        photo_url TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
+    if USE_PG:
+        _init_db_pg()
+    else:
+        _init_db_sqlite()
 
-    # Auto-migrate any missing columns
+def _init_db_sqlite():
+    conn = sqlite3.connect(DB_FILE, timeout=20)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except Exception:
+        pass
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS category_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, category TEXT NOT NULL,
+        base_price REAL DEFAULT 0, min_per_team INTEGER DEFAULT 0, max_per_team INTEGER DEFAULT 99)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS teams (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+        total_budget REAL NOT NULL, remaining_budget REAL NOT NULL,
+        color TEXT DEFAULT '#3b82f6', logo_url TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS players (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, category TEXT,
+        base_price REAL DEFAULT 0, status TEXT DEFAULT 'unsold', team_id INTEGER,
+        sold_price REAL, photo_url TEXT, sold_at TIMESTAMP,
+        FOREIGN KEY (team_id) REFERENCES teams (id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS auction_state (key TEXT PRIMARY KEY, value TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS action_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, action_type TEXT NOT NULL,
+        player_id INTEGER NOT NULL, player_name TEXT, old_team_id INTEGER, new_team_id INTEGER,
+        old_sold_price REAL, new_sold_price REAL, old_status TEXT, new_status TEXT,
+        base_price REAL, category TEXT, photo_url TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     team_cols = [r[1] for r in c.execute("PRAGMA table_info(teams)").fetchall()]
     if 'logo_url' not in team_cols:
         c.execute("ALTER TABLE teams ADD COLUMN logo_url TEXT")
-
     player_cols = [r[1] for r in c.execute("PRAGMA table_info(players)").fetchall()]
-    if 'photo_url' not in player_cols:
-        c.execute("ALTER TABLE players ADD COLUMN photo_url TEXT")
-    if 'sold_at' not in player_cols:
-        c.execute("ALTER TABLE players ADD COLUMN sold_at TIMESTAMP")
-    if 'attributes' not in player_cols:
-        c.execute("ALTER TABLE players ADD COLUMN attributes TEXT")
-
-    # Seed default config if empty
+    for col, typ in [('photo_url', 'TEXT'), ('sold_at', 'TIMESTAMP'), ('attributes', 'TEXT')]:
+        if col not in player_cols:
+            c.execute(f"ALTER TABLE players ADD COLUMN {col} {typ}")
     cfg_count = c.execute("SELECT COUNT(*) as c FROM config").fetchone()['c']
     if cfg_count == 0:
-        defaults = {
-            'event_name': 'Premier Auction 2026',
-            'common_base_price': '50',
-            'min_players_per_team': '10',
-            'bid_increment': '2.5',
-            'setup_done': 'false'
-        }
-        for k, v in defaults.items():
+        for k, v in {'event_name': 'Premier Auction 2026', 'common_base_price': '50',
+                     'min_players_per_team': '10', 'bid_increment': '2.5', 'setup_done': 'false'}.items():
             c.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (k, v))
-
     conn.commit()
     conn.close()
+
+def _init_db_pg():
+    import psycopg2
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute("CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)")
+    cur.execute("""CREATE TABLE IF NOT EXISTS category_rules (
+        id SERIAL PRIMARY KEY, category TEXT NOT NULL,
+        base_price DOUBLE PRECISION DEFAULT 0,
+        min_per_team INTEGER DEFAULT 0, max_per_team INTEGER DEFAULT 99)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS teams (
+        id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+        total_budget DOUBLE PRECISION NOT NULL, remaining_budget DOUBLE PRECISION NOT NULL,
+        color TEXT DEFAULT '#3b82f6', logo_url TEXT)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS players (
+        id SERIAL PRIMARY KEY, name TEXT NOT NULL, category TEXT,
+        base_price DOUBLE PRECISION DEFAULT 0, status TEXT DEFAULT 'unsold',
+        team_id INTEGER REFERENCES teams(id), sold_price DOUBLE PRECISION,
+        photo_url TEXT, sold_at TIMESTAMP, attributes TEXT)""")
+    cur.execute("CREATE TABLE IF NOT EXISTS auction_state (key TEXT PRIMARY KEY, value TEXT)")
+    cur.execute("""CREATE TABLE IF NOT EXISTS action_history (
+        id SERIAL PRIMARY KEY, action_type TEXT NOT NULL, player_id INTEGER NOT NULL,
+        player_name TEXT, old_team_id INTEGER, new_team_id INTEGER,
+        old_sold_price DOUBLE PRECISION, new_sold_price DOUBLE PRECISION,
+        old_status TEXT, new_status TEXT, base_price DOUBLE PRECISION,
+        category TEXT, photo_url TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+    # Idempotent column additions
+    for stmt in [
+        "ALTER TABLE teams ADD COLUMN IF NOT EXISTS logo_url TEXT",
+        "ALTER TABLE players ADD COLUMN IF NOT EXISTS photo_url TEXT",
+        "ALTER TABLE players ADD COLUMN IF NOT EXISTS sold_at TIMESTAMP",
+        "ALTER TABLE players ADD COLUMN IF NOT EXISTS attributes TEXT",
+    ]:
+        cur.execute(stmt)
+    # Seed config
+    cur.execute("SELECT COUNT(*) FROM config")
+    if cur.fetchone()[0] == 0:
+        for k, v in {'event_name': 'Premier Auction 2026', 'common_base_price': '50',
+                     'min_players_per_team': '10', 'bid_increment': '2.5', 'setup_done': 'false'}.items():
+            cur.execute("INSERT INTO config (key, value) VALUES (%s, %s) ON CONFLICT (key) DO NOTHING", (k, v))
+    conn.commit()
+    conn.close()
+    print('[DB] PostgreSQL schema ready.', flush=True)
 
 # Initialize DB on load
 init_db()
@@ -133,6 +246,21 @@ def team_dashboard(team_id):
 def live_view():
     return render_template('live_view.html')
 
+@app.route('/presentation')
+@app.route('/stage')
+def presentation_view():
+    return render_template('presentation.html')
+
+@app.route('/cricket_auction')
+def cricket_auction_view():
+    return render_template('cricket_auction.html')
+
+@app.route('/roster')
+def roster_view():
+    """Themed player-roster confirmation page. Also reachable from the setup
+    wizard's review step; kept as a standalone URL for reprinting later."""
+    return render_template('roster.html')
+
 @app.route('/logout')
 def logout():
     session.clear()
@@ -149,7 +277,7 @@ def auth_login():
             session['user'] = 'admin'
             session['role'] = 'admin'
             return jsonify({'success': True, 'url': '/admin'})
-        return jsonify({'error': 'Incorrect admin password (hint: admin)'}), 401
+        return jsonify({'error': 'Incorrect admin password'}), 401
         
     elif role == 'team':
         team_id = data.get('team_id')
@@ -172,7 +300,7 @@ def auth_login():
             session['team_id'] = team_id
             return jsonify({'success': True, 'url': f'/team/{team_id}'})
         else:
-            return jsonify({'error': f'Incorrect password (hint: {expected_pass})'}), 401
+            return jsonify({'error': 'Incorrect password'}), 401
             
     elif role == 'spectator':
         session['user'] = 'spectator'
@@ -343,11 +471,34 @@ def add_team():
 
 @app.route('/api/teams/edit', methods=['POST'])
 def edit_team():
-    data = request.json
+    data = request.json or {}
+    # Accept either `id` or `team_id`; a mismatch used to return a 500.
+    tid = data.get('id', data.get('team_id'))
+    if tid is None:
+        return jsonify({'error': 'Team id required'}), 400
+
     conn = get_db()
     c = conn.cursor()
+    row = c.execute('SELECT * FROM teams WHERE id=?', (tid,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': 'Team not found'}), 404
+
+    name = data.get('name', row['name'])
+    if not str(name or '').strip():
+        conn.close()
+        return jsonify({'error': 'Name cannot be empty'}), 400
+    try:
+        total = float(data['total_budget']) if data.get('total_budget') is not None else row['total_budget']
+    except (TypeError, ValueError):
+        conn.close()
+        return jsonify({'error': 'total_budget must be a number'}), 400
+    color = data.get('color', row['color'] or '#3b82f6')
+
+    # Changing the total purse shifts the remaining purse by the same delta,
+    # so money already committed to signed players is preserved.
     c.execute('UPDATE teams SET name=?, remaining_budget=remaining_budget+(? - total_budget), total_budget=?, color=? WHERE id=?',
-              (data['name'], data['total_budget'], data['total_budget'], data.get('color', '#3b82f6'), data['id']))
+              (name, total, total, color, tid))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -385,10 +536,37 @@ def add_player():
 
 @app.route('/api/players/edit', methods=['POST'])
 def edit_player():
-    data = request.json
+    data = request.json or {}
+    # Accept either `id` or `player_id` — the rest of the API uses `player_id`,
+    # and a mismatch used to raise a KeyError and return a 500.
+    pid = data.get('id', data.get('player_id'))
+    if pid is None:
+        return jsonify({'error': 'Player id required'}), 400
+
     conn = get_db()
-    conn.execute('UPDATE players SET name=?, category=?, base_price=? WHERE id=?',
-              (data['name'], data.get('category', ''), data.get('base_price', 0), data['id']))
+    row = conn.execute('SELECT * FROM players WHERE id=?', (pid,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': 'Player not found'}), 404
+
+    # Only overwrite the fields actually supplied; leave the rest untouched.
+    name = data.get('name', row['name'])
+    category = data.get('category', row['category'])
+    try:
+        base_price = float(data['base_price']) if data.get('base_price') is not None else row['base_price']
+    except (TypeError, ValueError):
+        conn.close()
+        return jsonify({'error': 'base_price must be a number'}), 400
+    if not str(name or '').strip():
+        conn.close()
+        return jsonify({'error': 'Name cannot be empty'}), 400
+
+    if data.get('photo_url') is not None:
+        conn.execute('UPDATE players SET name=?, category=?, base_price=?, photo_url=? WHERE id=?',
+                     (name, category, base_price, data['photo_url'], pid))
+    else:
+        conn.execute('UPDATE players SET name=?, category=?, base_price=? WHERE id=?',
+                     (name, category, base_price, pid))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -1112,20 +1290,39 @@ def set_auction_state():
     c = conn.cursor()
     for k, v in data.items():
         c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES (?, ?)', (k, str(v)))
+    # Clear sold/passed overlay when a new player goes on the block
+    if data.get('current_player'):
+        c.execute("DELETE FROM auction_state WHERE key IN ('auction_status','last_sold_player','last_sold_price','last_sold_team_name','last_sold_team_color','last_sold_photo','last_passed_player','last_passed_photo')")
     conn.commit()
     conn.close()
     return jsonify({'success': True})
 
 @app.route('/api/sell_player', methods=['POST'])
 def sell_player():
-    data = request.json
-    pid, tid, price = data['player_id'], data['team_id'], data['sold_price']
+    data = request.json or {}
+    pid, tid = data.get('player_id'), data.get('team_id')
+    if pid is None or tid is None:
+        return jsonify({'error': 'player_id and team_id are required'}), 400
+    try:
+        price = float(data.get('sold_price'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'sold_price must be a number'}), 400
+    if price < 0:
+        return jsonify({'error': 'sold_price cannot be negative'}), 400
+
     conn = get_db()
     c = conn.cursor()
     player = c.execute('SELECT * FROM players WHERE id=?', (pid,)).fetchone()
     if not player:
         conn.close()
         return jsonify({'error': 'Player not found'}), 404
+    if not c.execute('SELECT 1 FROM teams WHERE id=?', (tid,)).fetchone():
+        conn.close()
+        return jsonify({'error': 'Team not found'}), 404
+    # Selling an already-sold player would double-charge and corrupt undo history
+    if player['status'] == 'sold':
+        conn.close()
+        return jsonify({'error': '%s is already sold. Undo the previous sale first.' % player['name']}), 409
 
     # Record in action_history for multi-level undo
     c.execute('''INSERT INTO action_history 
@@ -1133,12 +1330,29 @@ def sell_player():
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         ('sell', pid, player['name'], player['team_id'], tid, player['sold_price'], price, player['status'], 'sold', player['base_price'], player['category'], player['photo_url']))
 
+    team = c.execute('SELECT * FROM teams WHERE id=?', (tid,)).fetchone()
     c.execute('UPDATE players SET status="sold", team_id=?, sold_price=?, sold_at=CURRENT_TIMESTAMP WHERE id=?', (tid, price, pid))
     c.execute('UPDATE teams SET remaining_budget=remaining_budget-? WHERE id=?', (price, tid))
-    # Clear auction state
-    c.execute('DELETE FROM auction_state')
+    # Clear player-specific auction state but preserve stage settings (sport, template mode)
+    c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
+    # Write SOLD state so Cinematic Stage can show the sold overlay
+    c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('auction_status', 'sold')")
+    c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_sold_player', ?)", (player['name'],))
+    c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_sold_price', ?)", (str(price),))
+    c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_sold_team_name', ?)", (team['name'] if team else '',))
+    c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_sold_team_color', ?)", (team['color'] if team else '#3b82f6',))
+    c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_sold_photo', ?)", (player['photo_url'] or '',))
     conn.commit()
     conn.close()
+    # Push to Google Sheets in background (non-blocking)
+    sheets_push_async({
+        'player_name': player['name'],
+        'category':    player['category'] or '',
+        'base_price':  player['base_price'],
+        'sold_price':  price,
+        'team_name':   team['name'] if team else '',
+        'sold_at':     str(__import__('datetime').datetime.now()),
+    })
     return jsonify({'success': True})
 
 @app.route('/api/undo', methods=['POST'])
@@ -1153,13 +1367,17 @@ def undo_last_sale():
         act = dict(last_action)
         pid = act['player_id']
 
-        if act['action_type'] == 'sell':
+        if act['action_type'] in ('sell',):
             # Refund buying team
             if act['new_team_id'] and act['new_sold_price']:
                 c.execute('UPDATE teams SET remaining_budget=remaining_budget+? WHERE id=?', (act['new_sold_price'], act['new_team_id']))
             # Restore player old status/team/price
             c.execute('UPDATE players SET status=?, team_id=?, sold_price=?, sold_at=NULL WHERE id=?',
                       (act['old_status'] or 'unsold', act['old_team_id'], act['old_sold_price'], pid))
+
+        elif act['action_type'] == 'pass':
+            # Restore player to unsold — no money involved
+            c.execute('UPDATE players SET status="unsold", team_id=NULL, sold_price=NULL WHERE id=?', (pid,))
 
         elif act['action_type'] == 'edit_sale':
             # Revert team balances
@@ -1175,8 +1393,8 @@ def undo_last_sale():
         c.execute('DELETE FROM action_history WHERE id=?', (act['id'],))
 
         # Restore player to live auction_state so they immediately appear under the hammer!
-        c.execute('DELETE FROM auction_state')
-        c.execute('INSERT INTO auction_state (key, value) VALUES ("current_player", ?)', (act['player_name'] or '',))
+        c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
+        c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES ("current_player", ?)', (act['player_name'] or '',))
         restored_bid = act['new_sold_price'] if act['new_sold_price'] is not None else act['base_price'] or 0
         c.execute('INSERT INTO auction_state (key, value) VALUES ("current_bid", ?)', (str(restored_bid),))
         c.execute('INSERT INTO auction_state (key, value) VALUES ("category", ?)', (act['category'] or '',))
@@ -1207,8 +1425,8 @@ def undo_last_sale():
         c.execute('UPDATE players SET status="unsold", team_id=NULL, sold_price=NULL, sold_at=NULL WHERE id=?', (last['id'],))
 
         # Restore to auction state
-        c.execute('DELETE FROM auction_state')
-        c.execute('INSERT INTO auction_state (key, value) VALUES ("current_player", ?)', (last['name'],))
+        c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
+        c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES ("current_player", ?)', (last['name'],))
         restored_bid = last['sold_price'] or last['base_price'] or 0
         c.execute('INSERT INTO auction_state (key, value) VALUES ("current_bid", ?)', (str(restored_bid),))
         c.execute('INSERT INTO auction_state (key, value) VALUES ("category", ?)', (last['category'] or '',))
@@ -1291,11 +1509,79 @@ def reset_auction():
     c = conn.cursor()
     c.execute('UPDATE players SET status="unsold", team_id=NULL, sold_price=NULL, sold_at=NULL')
     c.execute('UPDATE teams SET remaining_budget=total_budget')
-    c.execute('DELETE FROM auction_state')
+    c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
     c.execute('DELETE FROM action_history')
     conn.commit()
     conn.close()
     return jsonify({'success': True})
+
+# ─── Google Sheets sync ───
+@app.route('/api/sheets/sync_all', methods=['POST'])
+def sheets_sync_all():
+    """Push every sold player to Google Sheets (full re-sync)."""
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT p.name, p.category, p.base_price, p.sold_price, t.name as team_name, p.sold_at
+        FROM players p JOIN teams t ON p.team_id = t.id
+        WHERE p.status = 'sold' ORDER BY p.sold_at
+    ''').fetchall()
+    conn.close()
+    count = 0
+    for r in rows:
+        rd = dict(r)
+        sheets_push_async({
+            'player_name': rd['name'],
+            'category':    rd['category'] or '',
+            'base_price':  rd['base_price'],
+            'sold_price':  rd['sold_price'],
+            'team_name':   rd['team_name'] or '',
+            'sold_at':     str(rd['sold_at'] or ''),
+        })
+        count += 1
+    return jsonify({'success': True, 'synced': count})
+
+# ─── DB migration (SQLite → PostgreSQL) ───
+@app.route('/api/db/migrate_to_pg', methods=['POST'])
+def migrate_to_pg():
+    """Copy all data from local auction.db into the configured PostgreSQL database."""
+    if not USE_PG:
+        return jsonify({'error': 'DATABASE_URL not configured'}), 400
+    try:
+        import psycopg2
+        src = sqlite3.connect(DB_FILE, timeout=20)
+        src.row_factory = sqlite3.Row
+        dst = psycopg2.connect(DATABASE_URL)
+        dc = dst.cursor()
+
+        tables = ['config', 'category_rules', 'teams', 'players', 'auction_state', 'action_history']
+        counts = {}
+        for tbl in tables:
+            rows = src.execute(f'SELECT * FROM {tbl}').fetchall()
+            if not rows:
+                counts[tbl] = 0
+                continue
+            cols = rows[0].keys()
+            col_str = ', '.join(cols)
+            ph = ', '.join(['%s'] * len(cols))
+            conflict = ''
+            if tbl in ('config', 'auction_state'):
+                conflict = ' ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value'
+            dc.executemany(
+                f'INSERT INTO {tbl} ({col_str}) VALUES ({ph}){conflict}',
+                [tuple(r) for r in rows]
+            )
+            counts[tbl] = len(rows)
+
+        # Reset sequences so auto-increment stays correct
+        for tbl, col in [('teams','id'), ('players','id'), ('category_rules','id'), ('action_history','id')]:
+            dc.execute(f"SELECT setval(pg_get_serial_sequence('{tbl}','{col}'), COALESCE((SELECT MAX({col}) FROM {tbl}), 1))")
+
+        dst.commit()
+        dst.close()
+        src.close()
+        return jsonify({'success': True, 'migrated': counts})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # ─── Stats ───
 @app.route('/api/stats', methods=['GET'])
@@ -1303,7 +1589,7 @@ def get_stats():
     conn = get_db()
     total = conn.execute('SELECT COUNT(*) as c FROM players').fetchone()['c']
     sold = conn.execute('SELECT COUNT(*) as c FROM players WHERE status="sold"').fetchone()['c']
-    unsold = conn.execute('SELECT COUNT(*) as c FROM players WHERE status="unsold"').fetchone()['c']
+    unsold = conn.execute("SELECT COUNT(*) as c FROM players WHERE status IN ('unsold','passed')").fetchone()['c']
     spent = conn.execute('SELECT COALESCE(SUM(sold_price),0) as s FROM players WHERE status="sold"').fetchone()['s']
     
     # Category spending analytics
@@ -1327,10 +1613,14 @@ def get_stats():
         
     conn.close()
     return jsonify({
-        'total_players': total, 
-        'sold': sold, 
-        'unsold': unsold, 
-        'total_spent': spent, 
+        'total_players': total,
+        'sold': sold,
+        'unsold': unsold,
+        'total_spent': spent,
+        # `live_data.stats` reports the same figures as `total`/`spent`.
+        # Both spellings are served here so either convention works.
+        'total': total,
+        'spent': spent,
         'categories': cat_analytics
     })
 
@@ -1352,6 +1642,26 @@ def upload_banner():
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'banner_url': url})
+
+@app.route('/api/config/logo', methods=['POST'])
+def upload_org_logo():
+    """Organisation logo — shown in the header of every page. Mirrors the
+    banner uploader; stored under the config key `org_logo`."""
+    if 'logo' not in request.files:
+        return jsonify({'error': 'No file'}), 400
+    file = request.files['logo']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'png'
+    fname = f"org_logo_{uuid.uuid4().hex[:8]}.{ext}"
+    fpath = os.path.join(UPLOAD_FOLDER, fname)
+    file.save(fpath)
+    url = f"/uploads/{fname}"
+    conn = get_db()
+    conn.execute('INSERT OR REPLACE INTO config (key, value) VALUES ("org_logo", ?)', (url,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'logo_url': url})
 
 @app.route('/api/teams/logo/<int:team_id>', methods=['POST'])
 def upload_team_logo(team_id):
@@ -1428,15 +1738,16 @@ def get_live_data():
         ORDER BY p.sold_at DESC
     ''').fetchall()
     
-    # Unsold players
+    # Unsold + passed players (both available for re-auction)
     unsold = conn.execute('''
-        SELECT id, name, category, base_price, photo_url, attributes
-        FROM players WHERE status = 'unsold'
-        ORDER BY name ASC
+        SELECT id, name, category, base_price, photo_url, attributes, status
+        FROM players WHERE status IN ('unsold', 'passed')
+        ORDER BY status ASC, name ASC
     ''').fetchall()
     
     # Stats & Top Highlights
     total_count = conn.execute('SELECT COUNT(*) as c FROM players').fetchone()['c']
+    passed_count = conn.execute("SELECT COUNT(*) as c FROM players WHERE status='passed'").fetchone()['c']
     total_spent = conn.execute('SELECT COALESCE(SUM(sold_price), 0) as s FROM players WHERE status="sold"').fetchone()['s']
     top_buys = conn.execute('''
         SELECT p.name, p.sold_price, p.category, p.photo_url, p.attributes, t.name as team_name, t.color as team_color, t.logo_url as team_logo
@@ -1479,6 +1790,9 @@ def get_live_data():
     return jsonify({
         'config': config,
         'auction_state': state,
+        # Category quotas — the live display uses these to warn when a team has
+        # already filled its maximum slots for the player's category.
+        'category_rules': [dict(r) for r in rules],
         'teams': teams_result,
         'sold_players': [parse_p(p) for p in sold],
         'unsold_players': [parse_p(p) for p in unsold],
@@ -1486,6 +1800,7 @@ def get_live_data():
             'total': total_count,
             'sold': len(sold),
             'unsold': len(unsold),
+            'passed': passed_count,
             'spent': total_spent,
             'top_buys': [dict(b) for b in top_buys],
             'categories': cat_analytics
@@ -1750,20 +2065,29 @@ def pass_player():
     player_id = data.get('player_id')
     if not player_id:
         return jsonify({'error': 'Player ID required'}), 400
-        
+
     conn = get_db()
     c = conn.cursor()
-    # Mark player as passed (in unsold list)
+    player = c.execute('SELECT * FROM players WHERE id=?', (player_id,)).fetchone()
+    if not player:
+        conn.close()
+        return jsonify({'error': 'Player not found'}), 404
+
+    c.execute('''INSERT INTO action_history
+        (action_type, player_id, player_name, old_status, new_status, base_price, category, photo_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+        ('pass', player_id, player['name'], player['status'], 'passed',
+         player['base_price'], player['category'], player['photo_url']))
+
     c.execute('UPDATE players SET status="passed", team_id=NULL, sold_price=NULL WHERE id=?', (player_id,))
-    
-    # Log it
-    name = conn.execute('SELECT name FROM players WHERE id=?', (player_id,)).fetchone()['name']
-    c.execute('INSERT INTO action_history (action_type, details) VALUES (?, ?)', 
-              ('passed', f'{name} was passed and moved to Unsold List'))
-              
+    # Clear current player from stage + write UNSOLD state for Cinematic Stage overlay
+    c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
+    c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('auction_status', 'passed')")
+    c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_passed_player', ?)", (player['name'],))
+    c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_passed_photo', ?)", (player['photo_url'] or '',))
     conn.commit()
     conn.close()
-    return jsonify({'success': True})
+    return jsonify({'success': True, 'player_name': player['name']})
 
 @app.route('/api/action/revive', methods=['POST'])
 def revive_player():
@@ -1786,28 +2110,26 @@ def revive_player():
 
 @app.route('/api/action/bargain_bin', methods=['POST'])
 def bargain_bin():
+    conn = get_db()
     try:
-        conn = get_db()
         c = conn.cursor()
-        
-        # Get all unsold players
-        c.execute("SELECT id, base_price FROM players WHERE status='unsold'")
-        unsold = c.fetchall()
-        
+        unsold = c.execute("SELECT id, base_price FROM players WHERE status='unsold'").fetchall()
         count = 0
         for p in unsold:
-            pid = p['id']
-            old_price = p['base_price']
-            new_price = max(1, old_price / 2) # Halve price, min 1 Lakh
-            c.execute("UPDATE players SET status='pool', base_price=? WHERE id=?", (new_price, pid))
+            new_price = max(1, round(p['base_price'] / 2.0, 1))
+            c.execute("UPDATE players SET base_price=? WHERE id=?", (new_price, p['id']))
             count += 1
-            
         conn.commit()
         return jsonify({'success': True, 'count': count})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
 
 if __name__ == '__main__':
     init_db()
     Timer(1, lambda: webbrowser.open_new('http://127.0.0.1:5000/')).start()
-    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+    # use_debugger=False disables the interactive Werkzeug pin console so crashed
+    # requests don't hold SQLite write locks open; error tracebacks still appear.
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False,
+            use_debugger=False, threaded=True)

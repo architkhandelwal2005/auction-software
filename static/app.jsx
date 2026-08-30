@@ -29,6 +29,14 @@ const speakCommentary = (text, enabled = true) => {
 const TEAM_COLORS = ['#3b82f6','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#06b6d4','#84cc16'];
 const PALETTE = ['#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#f97316', '#06b6d4', '#14b8a6', '#ef4444', '#84cc16', '#a855f7', '#6366f1'];
 
+const SPORT_TEMPLATE_OPTIONS = {
+    cricket:    [{id:'arena',label:'Arena Portrait'},{id:'collector',label:'Collector Card'},{id:'circular',label:'Circular Spotlight'},{id:'broadcast',label:'Broadcast Panel'},{id:'poster',label:'Photo Poster'}],
+    football:   [{id:'arena',label:'Arena Portrait'},{id:'broadcast',label:'Broadcast Panel'},{id:'poster',label:'Photo Poster'}],
+    badminton:  [{id:'arena',label:'Arena Portrait'},{id:'broadcast',label:'Broadcast Panel'}],
+    pickleball: [{id:'pb-hall',label:'Hall'},{id:'pb-sunset',label:'Sunset'},{id:'pb-press',label:'Press'}],
+    multi:      [{id:'arena',label:'Arena Portrait'},{id:'collector',label:'Collector Card'},{id:'broadcast',label:'Broadcast Panel'}],
+};
+
 // ═══════════════════════════════════════════════
 // MORE MENU (Overflow Dropdown for Secondary Actions)
 // ═══════════════════════════════════════════════
@@ -114,6 +122,42 @@ const SPORT_THEMES = {
         bg: 'linear-gradient(135deg, #070b14 0%, #0f172a 50%, #070b14 100%)',
         overlay: 'radial-gradient(circle at 50% 0%, rgba(245,158,11,0.04) 0%, transparent 60%)',
         cardStyle: 'spotlight' },
+};
+
+// Any hex accent → "r,g,b" for use in rgba(var(--accent-rgb), ...). Every
+// SPORT_THEMES entry (and any future one) resolves correctly here, unlike
+// the old 3-way ternary this replaced which silently fell back to blue
+// for teal/orange/purple/red themes.
+const hexToRgb = (hex) => {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');
+    return m ? `${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)}` : '245,158,11';
+};
+
+// Rich, sport-color-driven arena backdrop for the Live Hammer stage —
+// floodlight beams + crowd bokeh + vignette + grain, tinted by whichever
+// SPORT_THEMES accent is active. Purely decorative (no state), so it
+// upgrades every sport theme uniformly without hardcoding any one sport's
+// motifs into this general-purpose stage.
+const ArenaAtmosphere = ({ theme }) => {
+    const rgb = hexToRgb(theme.accent);
+    return (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="absolute inset-0" style={{ background: theme.overlay }} />
+            <div className="absolute -top-24 left-[12%] w-[26%] h-[130%] origin-top"
+                 style={{ background:`linear-gradient(180deg, rgba(${rgb},.16), transparent 60%)`, transform:'skewX(-8deg)', filter:'blur(8px)', animation:'arenaBeam 11s ease-in-out infinite' }} />
+            <div className="absolute -top-24 right-[12%] w-[26%] h-[130%] origin-top"
+                 style={{ background:`linear-gradient(180deg, rgba(${rgb},.16), transparent 60%)`, transform:'skewX(8deg)', filter:'blur(8px)', animation:'arenaBeam 13s ease-in-out infinite reverse' }} />
+            <div className="absolute inset-x-0 top-[6%] h-[26%]" style={{
+                backgroundImage:`radial-gradient(2px 2px at 24px 18px, rgba(255,255,255,.35), transparent),
+                    radial-gradient(2px 2px at 84px 48px, rgba(${rgb},.55), transparent),
+                    radial-gradient(2px 2px at 140px 24px, rgba(255,255,255,.28), transparent),
+                    radial-gradient(2px 2px at 190px 58px, rgba(${rgb},.4), transparent)`,
+                backgroundSize:'220px 76px', opacity:.5, animation:'arenaCrowd 5s ease-in-out infinite' }} />
+            <div className="absolute inset-0" style={{ background:'radial-gradient(ellipse 92% 80% at 50% 45%, transparent 30%, rgba(2,4,10,.6) 100%)' }} />
+            <div className="absolute inset-0 opacity-[.035]" style={{
+                backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")` }} />
+        </div>
+    );
 };
 
 const PresetsModal = ({ onLoadPreset, onClose }) => {
@@ -497,6 +541,10 @@ const SetupWizard = ({ onComplete }) => {
     const [uploadedFileName, setUploadedFileName] = useState('');
     const [uploading, setUploading] = useState(false);
     const [uploadedCount, setUploadedCount] = useState(0);
+    const [orgName, setOrgName] = useState('');
+    const [orgLogo, setOrgLogo] = useState('');
+    const [orgLogoUploading, setOrgLogoUploading] = useState(false);
+    const [importedPreview, setImportedPreview] = useState([]);
 
     // Step 2
     const [numTeams, setNumTeams] = useState(4);
@@ -544,6 +592,22 @@ const SetupWizard = ({ onComplete }) => {
     };
     const removeTeam = (i) => setTeams(teams.filter((_, idx) => idx !== i));
 
+    const handleOrgLogoUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setOrgLogoUploading(true);
+        const fd = new FormData();
+        fd.append('logo', file);
+        try {
+            const res = await fetch('/api/config/logo', { method: 'POST', body: fd });
+            const d = await res.json();
+            if (d.success) setOrgLogo(d.logo_url);
+            else alert(d.error || 'Logo upload failed');
+        } catch (err) { alert('Logo upload failed: ' + err); }
+        setOrgLogoUploading(false);
+        e.target.value = null;
+    };
+
     const handleWizardUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -558,6 +622,10 @@ const SetupWizard = ({ onComplete }) => {
             if (d.success) {
                 setUploadedCount(d.count);
                 setAnalysisResult(null); // reset analysis when new file uploaded
+                try {
+                    const pr = await fetch('/api/players').then(r => r.json());
+                    setImportedPreview(Array.isArray(pr) ? pr : []);
+                } catch (e) { setImportedPreview([]); }
             } else {
                 alert(d.error || 'Upload failed');
                 setUploadedFile(null);
@@ -613,7 +681,7 @@ const SetupWizard = ({ onComplete }) => {
         await fetch('/api/config', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                config: { event_name: eventName, bid_increment: bidIncrement, common_base_price: basePrice, setup_done: 'true', sport_theme: sportTheme },
+                config: { event_name: eventName, organisation_name: orgName, bid_increment: bidIncrement, common_base_price: basePrice, setup_done: 'true', sport_theme: sportTheme },
                 category_rules: categories.map(c => ({
                     category: c.category, base_price: basePrice,
                     min_per_team: c.per_team_min, max_per_team: c.per_team_max || 99,
@@ -695,6 +763,21 @@ const SetupWizard = ({ onComplete }) => {
                             <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider block mb-1.5">Event Name</label>
                             <input type="text" className="w-full bg-zinc-950 border border-zinc-700 p-3 rounded-2xl text-base font-bold text-white focus:border-amber-500 outline-none transition" value={eventName} onChange={e => setEventName(e.target.value)} placeholder="e.g. Greenpark Colony Auction 2026" />
                         </div>
+                        <div className="col-span-2">
+                            <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider block mb-1.5">Organisation Name <span className="text-zinc-600 normal-case font-semibold">(the host — shown on every screen)</span></label>
+                            <div className="flex gap-3">
+                                <input type="text" className="flex-1 bg-zinc-950 border border-zinc-700 p-3 rounded-2xl text-base font-bold text-white focus:border-amber-500 outline-none transition" value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="e.g. St. Xavier's College" />
+                                <label className={`flex items-center gap-2 px-4 rounded-2xl border-2 border-dashed cursor-pointer transition shrink-0 ${orgLogoUploading ? 'border-amber-500/50 bg-amber-500/5' : 'border-zinc-700 hover:border-amber-500/40 hover:bg-amber-500/5'}`}>
+                                    {orgLogoUploading
+                                        ? <i className="fa-solid fa-spinner animate-spin text-amber-400"></i>
+                                        : orgLogo
+                                            ? <img src={orgLogo} alt="logo" className="w-8 h-8 object-contain rounded" />
+                                            : <i className="fa-solid fa-image text-zinc-400"></i>}
+                                    <span className="text-xs font-bold text-zinc-400 whitespace-nowrap">{orgLogo ? 'Change Logo' : 'Upload Logo'}</span>
+                                    <input type="file" accept="image/*" className="hidden" onChange={handleOrgLogoUpload} />
+                                </label>
+                            </div>
+                        </div>
                         <div>
                             <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider block mb-1.5">Bid Increment (L)</label>
                             <input type="number" className="w-full bg-zinc-950 border border-zinc-700 p-3 rounded-2xl font-bold text-white focus:border-amber-500 outline-none transition" value={bidIncrement} onChange={e => setBidIncrement(parseFloat(e.target.value) || 0)} />
@@ -727,6 +810,39 @@ const SetupWizard = ({ onComplete }) => {
                                     </div></>}
                             <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleWizardUpload} />
                         </label>
+                    )}
+
+                    {uploadedCount > 0 && importedPreview.length > 0 && (
+                        <div className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.03] overflow-hidden">
+                            <div className="flex items-center justify-between px-4 py-3 border-b border-amber-500/15">
+                                <div>
+                                    <div className="fredoka font-bold text-white text-sm flex items-center gap-2"><i className="fa-solid fa-clipboard-check text-amber-400"></i> Review Roster</div>
+                                    <div className="text-[11px] text-zinc-500 mt-0.5">Confirm the imported data is correct before continuing</div>
+                                </div>
+                                <a href="/roster" target="_blank" rel="noopener" className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1.5 shrink-0">
+                                    Full themed roster <i className="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                                </a>
+                            </div>
+                            <div className="max-h-64 overflow-y-auto p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {importedPreview.slice(0, 40).map(pl => (
+                                    <div key={pl.id} className="flex items-center gap-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl px-2.5 py-2">
+                                        <div className="w-9 h-9 rounded-lg bg-zinc-800 overflow-hidden flex items-center justify-center shrink-0 text-[11px] font-bold text-zinc-400">
+                                            {pl.photo_url ? <img src={pl.photo_url} className="w-full h-full object-cover" /> : (String(pl.name||'?').trim()[0]||'?').toUpperCase()}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-xs font-bold text-white truncate">{pl.name}</div>
+                                            <div className="text-[10px] text-zinc-500 truncate">{pl.category || 'General'}</div>
+                                        </div>
+                                        <div className="text-xs font-bold text-amber-400 shrink-0">₹{pl.base_price}L</div>
+                                    </div>
+                                ))}
+                            </div>
+                            {importedPreview.length > 40 && (
+                                <div className="px-4 py-2 text-[11px] text-zinc-500 border-t border-zinc-800 text-center">
+                                    Showing 40 of {importedPreview.length}. <a href="/roster" target="_blank" rel="noopener" className="text-amber-400 font-bold">Open full roster →</a>
+                                </div>
+                            )}
+                        </div>
                     )}
 
                     <div className="bg-zinc-950 rounded-xl p-3.5 border border-zinc-800 text-xs space-y-1">
@@ -971,7 +1087,10 @@ function App() {
     const [showPresetsModal, setShowPresetsModal] = useState(false);
     const [revealPhase, setRevealPhase] = useState(6); // 0-6 phases. 6 = fully revealed (idle state)
     const [quickMode, setQuickMode] = useState(false); // Toggle to skip animations
-    
+    const [auctionSport, setAuctionSport] = useState('cricket');
+    const [templateMode, setTemplateMode] = useState('fixed');
+    const [fixedTemplate, setFixedTemplate] = useState('arena');
+
     // Derived theme properties from config
     const currentTheme = config?.sport_theme && SPORT_THEMES[config.sport_theme] 
         ? SPORT_THEMES[config.sport_theme] 
@@ -993,6 +1112,9 @@ function App() {
                 if (asRes.ok) {
                     const asData = await asRes.json();
                     setSavedAuctionState(asData.current_player ? asData : null);
+                    if (asData.auction_sport) setAuctionSport(asData.auction_sport);
+                    if (asData.auction_template_mode) setTemplateMode(asData.auction_template_mode);
+                    if (asData.auction_template) setFixedTemplate(asData.auction_template);
                 }
             } catch(e) {}
             
@@ -1041,6 +1163,14 @@ function App() {
         }
     };
 
+    const saveStageSettings = (sport, mode, template) => {
+        fetch('/api/auction/state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ auction_sport: sport, auction_template_mode: mode, auction_template: template })
+        });
+    };
+
     // CRUD
     const [newTeam,setNewTeam]=useState({name:'',total_budget:''});
     const [newPlayer,setNewPlayer]=useState({name:'',category:'',base_price:''});
@@ -1049,6 +1179,20 @@ function App() {
     const addPlayer = async e => { e.preventDefault(); await fetch('/api/players',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newPlayer.name,category:newPlayer.category,base_price:parseFloat(newPlayer.base_price||0)})}); setNewPlayer({name:'',category:'',base_price:''}); loadData(); };
     const updatePlayer = async e => { e.preventDefault(); await fetch('/api/players/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:editPlayer.id,name:editPlayer.name,category:editPlayer.category,base_price:parseFloat(editPlayer.base_price||0)})}); setEditPlayer(null); loadData(); };
     const uploadPhoto = async (pid,file) => { const fd=new FormData();fd.append('photo',file); await fetch(`/api/players/photo/${pid}`,{method:'POST',body:fd}); loadData(); };
+    // Go Live: optionally flag the welcome intro (both screens read it via
+    // polling), then open the cinematic stage. Resuming mid-auction skips it.
+    const goLive = async (withIntro) => {
+        SFX.click();
+        if (withIntro) {
+            try {
+                await fetch('/api/auction/state', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ show_intro: '1' })
+                });
+            } catch (e) { /* non-fatal — stage still opens */ }
+        }
+        window.open('/cricket_auction?admin=1', '_blank');
+    };
     const handleCSV = async e => { const file=e.target.files[0]; if(!file)return; const fd=new FormData();fd.append('file',file); const r=await fetch('/api/players/import',{method:'POST',body:fd}); const d=await r.json(); if(d.success){alert(`✅ Imported ${d.count} players!`);loadData();}else alert(d.error||'Failed'); e.target.value=null; };
 
     // Keyboard Shortcuts
@@ -1252,8 +1396,11 @@ function App() {
                 <div className="max-w-[1600px] mx-auto px-6 py-3 flex justify-between items-center gap-4">
                     {/* Left: Brand */}
                     <div className="flex items-center gap-3 shrink-0">
-                        <div className="w-9 h-9 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center text-base shadow-lg shadow-amber-500/20">🔨</div>
+                        {config.org_logo
+                            ? <img src={config.org_logo} alt="" className="w-9 h-9 rounded-xl object-contain bg-white/5 p-0.5" />
+                            : <div className="w-9 h-9 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center text-base shadow-lg shadow-amber-500/20">🔨</div>}
                         <div>
+                            {config.organisation_name && <div className="text-[0.6rem] text-amber-400 font-extrabold uppercase tracking-widest leading-none mb-0.5">{config.organisation_name}</div>}
                             <h1 className="fredoka text-lg font-bold text-white leading-none">{config.event_name||'Auction'}</h1>
                             <span className="text-[0.6rem] text-purple-400 font-extrabold uppercase tracking-widest">👑 Admin</span>
                         </div>
@@ -1284,6 +1431,12 @@ function App() {
                             <i className="fa-solid fa-tv text-sm"></i>
                         </button>
 
+                        {/* Cinematic Stage — admin auction control view */}
+                        <button onClick={()=>window.open('/cricket_auction?admin=1','_blank')} title="Open Cinematic Stage — Admin Auction View"
+                            className="w-9 h-9 rounded-xl border border-amber-500/50 bg-amber-500/15 text-amber-300 hover:text-white hover:bg-amber-500/30 hover:border-amber-500/70 flex items-center justify-center transition">
+                            <i className="fa-solid fa-clapperboard text-sm"></i>
+                        </button>
+
                         {/* Undo */}
                         <button onClick={undoLast}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 hover:text-yellow-400 hover:border-yellow-500/40 hover:bg-yellow-500/10 font-bold text-xs transition">
@@ -1306,14 +1459,14 @@ function App() {
 
                         {/* Primary CTA */}
                         {savedAuctionState?.current_player ? (
-                            <button onClick={resumeLiveAuction}
+                            <button onClick={()=>goLive(false)}
                                 className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-extrabold text-xs px-4 py-2 rounded-xl hover:scale-105 transition shadow-lg shadow-amber-500/20 flex items-center gap-1.5 uppercase tracking-wide">
-                                <i className="fa-solid fa-play"></i> Resume
+                                <i className="fa-solid fa-clapperboard"></i> Resume
                             </button>
                         ) : (
-                            <button onClick={()=>setView('auction')}
+                            <button onClick={()=>goLive(true)}
                                 className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-extrabold text-xs px-5 py-2 rounded-xl hover:scale-105 transition shadow-lg shadow-green-500/20 flex items-center gap-1.5 uppercase tracking-wide">
-                                <i className="fa-solid fa-play"></i> Go Live
+                                <i className="fa-solid fa-clapperboard"></i> Go Live
                             </button>
                         )}
                     </div>
@@ -1354,6 +1507,79 @@ function App() {
                             </div>
                         </div>)}
                     </div>}
+
+                    {/* Stage Setup */}
+                    <div className="bg-slate-900/60 rounded-2xl border border-slate-800 shadow-xl p-4 space-y-3">
+                        <h2 className="fredoka text-sm font-bold text-slate-300 flex items-center gap-2">
+                            <i className="fa-solid fa-clapperboard text-amber-400"></i> Stage Setup
+                            <span className="text-[0.55rem] font-bold text-slate-500 uppercase tracking-widest ml-1">Sport &amp; Template</span>
+                        </h2>
+                        <div className="flex flex-wrap gap-4 items-start">
+                            {/* Sport selector */}
+                            <div className="space-y-1.5">
+                                <div className="text-[0.6rem] text-slate-400 font-extrabold uppercase tracking-widest">Sport</div>
+                                <div className="flex gap-1.5 flex-wrap">
+                                    {[
+                                        {id:'cricket',icon:'🏏',label:'Cricket'},
+                                        {id:'football',icon:'⚽',label:'Football'},
+                                        {id:'badminton',icon:'🏸',label:'Badminton'},
+                                        {id:'pickleball',icon:'🎾',label:'Pickleball'},
+                                        {id:'multi',icon:'🏆',label:'Multi'},
+                                    ].map(s=>(
+                                        <button key={s.id}
+                                            onClick={()=>{
+                                                const opts = SPORT_TEMPLATE_OPTIONS[s.id] || SPORT_TEMPLATE_OPTIONS.cricket;
+                                                const defaultTpl = opts[0].id;
+                                                setAuctionSport(s.id);
+                                                setFixedTemplate(defaultTpl);
+                                                saveStageSettings(s.id, templateMode, defaultTpl);
+                                            }}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-bold text-xs transition ${auctionSport===s.id?'bg-amber-500/20 border-amber-500/50 text-amber-300':'bg-slate-950 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'}`}>
+                                            <span>{s.icon}</span> {s.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {/* Template mode */}
+                            <div className="space-y-1.5">
+                                <div className="text-[0.6rem] text-slate-400 font-extrabold uppercase tracking-widest">Template Mode</div>
+                                <div className="flex gap-1.5">
+                                    {[
+                                        {id:'fixed',icon:'fa-lock',label:'Fixed'},
+                                        {id:'random',icon:'fa-shuffle',label:'Random'},
+                                        {id:'sequential',icon:'fa-arrow-right-arrow-left',label:'Sequential'},
+                                    ].map(m=>(
+                                        <button key={m.id}
+                                            onClick={()=>{ setTemplateMode(m.id); saveStageSettings(auctionSport, m.id, fixedTemplate); }}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-bold text-xs transition ${templateMode===m.id?'bg-purple-500/20 border-purple-500/50 text-purple-300':'bg-slate-950 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'}`}>
+                                            <i className={`fa-solid ${m.icon}`}></i> {m.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {/* Fixed template picker — only shown in Fixed mode, sport-aware */}
+                            {templateMode === 'fixed' && (
+                                <div className="space-y-1.5">
+                                    <div className="text-[0.6rem] text-slate-400 font-extrabold uppercase tracking-widest">Template</div>
+                                    <div className="flex gap-1.5 flex-wrap">
+                                        {(SPORT_TEMPLATE_OPTIONS[auctionSport] || SPORT_TEMPLATE_OPTIONS.cricket).map(t=>(
+                                            <button key={t.id}
+                                                onClick={()=>{ setFixedTemplate(t.id); saveStageSettings(auctionSport, templateMode, t.id); }}
+                                                className={`px-3 py-1.5 rounded-xl border font-bold text-xs transition ${fixedTemplate===t.id?'bg-blue-500/20 border-blue-500/50 text-blue-300':'bg-slate-950 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'}`}>
+                                                {t.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <p className="text-[0.55rem] text-slate-600 font-bold">
+                            {templateMode==='random' ? 'Each new player gets a random template from the sport\'s pool — dramatic variety.' :
+                             templateMode==='sequential' ? 'Templates rotate in order through the sport\'s pool on each new player.' :
+                             `Every player uses the ${fixedTemplate.charAt(0).toUpperCase()+fixedTemplate.slice(1)} template.`}
+                            {' '} Changes are broadcast live to the Cinematic Stage.
+                        </p>
+                    </div>
 
                     {/* Franchises */}
                     <div>
@@ -1527,9 +1753,9 @@ function App() {
         // ═══════════════════════════════════════════════
     // AUCTION VIEW (Stadium Broadcast Theme)
     // ═══════════════════════════════════════════════
-    return <div className="flex flex-col lg:flex-row h-screen lg:overflow-hidden fixed inset-0 z-[100]" 
-                style={{ background: currentTheme.bg, '--accent-rgb': currentTheme.accent === '#f59e0b' ? '245,158,11' : currentTheme.accent === '#22c55e' ? '34,197,94' : '59,130,246' }}>
-        <div className="absolute inset-0 pointer-events-none" style={{ background: currentTheme.overlay }}></div>
+    return <div className="flex flex-col lg:flex-row h-screen lg:overflow-hidden fixed inset-0 z-[100]"
+                style={{ background: currentTheme.bg, '--accent-rgb': hexToRgb(currentTheme.accent) }}>
+        <ArenaAtmosphere theme={currentTheme} />
         <Confetti show={showConfetti} />
         {showWheel && <SpinWheel items={wheelMode==='player'?unsoldPlayers:teams} title={wheelMode==='player'?'🎯 Draw Player':'🎰 Pick Team'} onSelect={handleSpinSelect} onClose={()=>setShowWheel(false)} />}
         {showTeamRoster && <TeamRosterModal team={showTeamRoster} onClose={()=>setShowTeamRoster(null)} />}
@@ -1552,6 +1778,9 @@ function App() {
                     <button onClick={()=>window.open('/live', '_blank')} className="text-blue-300 hover:text-white font-bold text-xs bg-blue-500/15 px-3 py-1.5 rounded-xl border border-blue-500/30 hover:bg-blue-500/25 transition">
                         Public Screen ↗
                     </button>
+                    <button onClick={()=>window.open('/cricket_auction?admin=1', '_blank')} title="Open Cinematic Stage — Admin Auction View" className="text-amber-300 hover:text-white font-bold text-xs bg-amber-500/15 px-3 py-1.5 rounded-xl border border-amber-500/30 hover:bg-amber-500/25 transition">
+                        🎬 Cinematic Stage ↗
+                    </button>
                     <button onClick={undoLast} className="text-yellow-400 font-bold text-xs bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-800 hover:bg-slate-800 transition"><i className="fa-solid fa-rotate-left mr-1"></i>Undo</button>
                 </div>
             </header>
@@ -1560,20 +1789,27 @@ function App() {
                 {currentPlayer ? (
                     <div className="w-full max-w-4xl relative">
                         {/* The Trading Card Container */}
-                        <div className={`bg-slate-950/80 backdrop-blur-3xl border border-slate-700/50 rounded-3xl p-10 text-center relative overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.6)] mb-6 transition-all duration-1000 ${revealPhase >= 0 ? 'anim-cardGlow opacity-100' : 'opacity-0 scale-95'}`}>
-                            
+                        <div className={`bg-slate-950/80 backdrop-blur-3xl border border-white/10 rounded-[2rem] p-10 text-center relative overflow-hidden shadow-[0_30px_120px_rgba(0,0,0,0.65)] mb-6 transition-all duration-1000 ${revealPhase >= 0 ? 'anim-cardGlow opacity-100' : 'opacity-0 scale-95'}`}
+                             style={{ borderTop: `1px solid ${currentTheme.accent}55` }}>
+
                             {/* Watermark Background Emoji */}
                             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[15rem] opacity-5 pointer-events-none select-none grayscale" style={{animation: 'revealPulse 4s infinite'}}>{currentTheme.emoji}</div>
 
                             <div className="relative z-10 flex flex-col items-center">
-                                
+
+                                {/* Status Phase (Phase 1) */}
+                                <div className={`flex items-center gap-2 rounded-full px-4 py-1.5 mb-6 ${revealPhase >= 1 ? 'anim-fadeIn' : 'opacity-0'}`} style={{ background:`${currentTheme.accent}1f`, border:`1px solid ${currentTheme.accent}66` }}>
+                                    <span className="w-2 h-2 rounded-full" style={{ background: currentTheme.accent, animation:'statusDotPulse 1.4s infinite' }} />
+                                    <span className="fredoka uppercase text-xs font-bold tracking-[0.25em]" style={{ color: currentTheme.accent }}>Bidding Open</span>
+                                </div>
+
                                 {/* Photo Phase (Phase 3) */}
                                 <div className={`relative mb-6 ${revealPhase >= 3 ? 'anim-dramaticZoom' : 'opacity-0 hidden'}`}>
-                                    <div className="absolute inset-0 rounded-full blur-2xl opacity-40" style={{background: currentTheme.accent}}></div>
-                                    <div className="relative z-10 border-4 rounded-full overflow-hidden shadow-2xl" style={{borderColor: currentTheme.accent}}>
+                                    <div className="absolute -inset-3 rounded-full blur-3xl opacity-50" style={{background: currentTheme.accent}}></div>
+                                    <div className="relative z-10 rounded-full overflow-hidden shadow-2xl ring-4 ring-white/10" style={{ border:`4px solid ${currentTheme.accent}` }}>
                                         <PlayerPhoto url={currentPlayer.photo_url} name={currentPlayer.name} size={160} />
                                     </div>
-                                    
+
                                     {/* Category Phase (Phase 1) */}
                                     {currentPlayer.category && (
                                         <div className={`absolute -bottom-3 left-1/2 -translate-x-1/2 z-20 ${revealPhase >= 1 ? 'anim-slideInLeft' : 'opacity-0'}`}>
@@ -1586,24 +1822,25 @@ function App() {
 
                                 {/* Name Phase (Phase 4) */}
                                 <div className={`${revealPhase >= 4 ? 'anim-slamIn' : 'opacity-0'}`}>
-                                    <h2 className="fredoka text-6xl md:text-7xl font-black text-white tracking-tight uppercase" style={{textShadow: `0 4px 20px ${currentTheme.accent}40`}}>
+                                    <h2 className="fredoka text-6xl md:text-7xl font-black text-white tracking-tight uppercase" style={{textShadow: `0 4px 20px ${currentTheme.accent}55, 0 2px 8px rgba(0,0,0,.5)`}}>
                                         {currentPlayer.name}
                                     </h2>
                                 </div>
 
                                 {/* Base Price & Controls Phase (Phase 5) */}
                                 <div className={`mt-8 w-full ${revealPhase >= 5 ? 'anim-fadeInUp' : 'opacity-0'}`}>
-                                    <div className="mb-8">
-                                        <p className="fredoka text-slate-400 text-sm font-bold mb-2 uppercase tracking-[0.3em]">Current Live Bid</p>
-                                        <div className={`fredoka text-[7rem] leading-none font-black transition-transform duration-150 ${bidAnim?'scale-110':'scale-100'}`} style={{color: currentTheme.accent, textShadow: `0 0 40px ${currentTheme.accent}40`}}>
+                                    <div className="relative mb-8">
+                                        <p className="fredoka text-slate-400 text-sm font-bold mb-2 uppercase tracking-[0.35em]">Current Live Bid</p>
+                                        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-32 blur-3xl opacity-30 pointer-events-none" style={{ background: currentTheme.accent }} />
+                                        <div className={`relative fredoka text-[7rem] leading-none font-black transition-transform duration-150 ${bidAnim?'scale-110':'scale-100'}`} style={{color: currentTheme.accent, textShadow: `0 0 50px ${currentTheme.accent}66, 0 0 110px ${currentTheme.accent}33`}}>
                                             ₹{currentBid}L
                                         </div>
-                                        <p className="text-slate-500 font-bold text-xs mt-2">Base Price: ₹{currentPlayer.base_price}L</p>
+                                        <p className="inline-block mt-3 text-slate-400 font-bold text-xs px-3 py-1 rounded-full bg-white/5 border border-white/10">Base Price: ₹{currentPlayer.base_price}L</p>
                                     </div>
 
                                     <div className="flex justify-center items-center gap-3">
                                         {[-10,-bidIncrement].map(v=><button key={v} onClick={()=>{setCurrentBid(p=>Math.max(0,p+v));SFX.bid();}} className="bg-slate-800/80 hover:bg-slate-700 border border-slate-600 w-14 h-14 rounded-2xl fredoka font-bold text-white transition active:scale-90 text-lg backdrop-blur-md">{v}</button>)}
-                                        <input type="number" value={currentBid} onChange={e=>setCurrentBid(parseFloat(e.target.value)||0)} className="bg-slate-900 border-2 text-white text-center fredoka text-4xl font-bold rounded-2xl w-48 py-2 outline-none transition" style={{borderColor: currentTheme.accent}} />
+                                        <input type="number" value={currentBid} onChange={e=>setCurrentBid(parseFloat(e.target.value)||0)} className="bg-slate-900 border-2 text-white text-center fredoka text-4xl font-bold rounded-2xl w-48 py-2 outline-none transition shadow-[0_0_30px_rgba(0,0,0,.4)]" style={{borderColor: currentTheme.accent}} />
                                         {[bidIncrement,10,25].map(v=><button key={v} onClick={()=>{setCurrentBid(p=>p+v);SFX.bid();setBidAnim(true);setTimeout(()=>setBidAnim(false),150);}} className="bg-slate-800/80 hover:bg-slate-700 border border-slate-600 w-14 h-14 rounded-2xl fredoka font-bold text-white transition active:scale-90 text-lg backdrop-blur-md">+{v}</button>)}
                                     </div>
                                 </div>
@@ -1621,7 +1858,7 @@ function App() {
                                 <i className="fa-solid fa-dharmachakra text-xl text-orange-400 group-hover:animate-spin"></i>Unsold→Spin
                             </button>
 
-                            <div className="flex-1 flex gap-2 bg-slate-900/80 backdrop-blur-md border border-slate-700/50 p-2 rounded-2xl shadow-2xl">
+                            <div className="flex-1 flex gap-2 bg-slate-900/80 backdrop-blur-md border p-2 rounded-2xl shadow-2xl" style={{ borderColor: `${currentTheme.accent}40` }}>
                                 <select id="teamSel" className="flex-1 bg-slate-950/50 border border-slate-800 rounded-xl px-5 fredoka text-lg font-bold text-white outline-none cursor-pointer">
                                     <option value="">Select Buying Franchise...</option>
                                     {teams.map(t => {
@@ -1630,15 +1867,15 @@ function App() {
                                         const have = (t.players || []).filter(p => p.category === currentPlayer.category).length;
                                         const isUnderMax = !rule || have < rule.max_per_team;
                                         const isValid = isAffordable && isUnderMax;
-                                        
+
                                         let label = `${t.name} (₹${t.remaining_budget}L)`;
                                         if (!isAffordable) label += ` [❌ Low Purse]`;
                                         else if (!isUnderMax) label += ` [❌ Max Limit Reached]`;
-                                        
+
                                         return <option key={t.id} value={t.id} disabled={!isValid} className={!isValid ? 'text-red-400 bg-slate-950 font-normal' : 'text-white font-bold bg-slate-900'}>{label}</option>;
                                     })}
                                 </select>
-                                <button className="px-10 rounded-xl fredoka text-2xl font-bold text-white transition active:scale-95 flex items-center gap-3 shadow-xl" style={{background: currentTheme.accent, textShadow: '0 2px 4px rgba(0,0,0,0.3)'}} onClick={()=>{const s=document.getElementById('teamSel').value;if(!s){alert('Please pick a franchise!');return;}handleSold(s);}}>
+                                <button className="px-10 rounded-xl fredoka text-2xl font-bold text-white transition active:scale-95 flex items-center gap-3" style={{background: currentTheme.accent, textShadow: '0 2px 4px rgba(0,0,0,0.3)', boxShadow: `0 8px 30px ${currentTheme.accent}55`}} onClick={()=>{const s=document.getElementById('teamSel').value;if(!s){alert('Please pick a franchise!');return;}handleSold(s);}}>
                                     <i className="fa-solid fa-gavel"></i>SOLD!
                                 </button>
                             </div>
@@ -1646,9 +1883,10 @@ function App() {
                     </div>
                 ) : (
                     <div className="flex flex-col items-center gap-8 anim-float">
-                        <div className="w-32 h-32 rounded-full flex items-center justify-center border-2 shadow-[0_0_60px_rgba(var(--accent-rgb),0.3)] backdrop-blur-md" style={{borderColor: currentTheme.accent, background: `${currentTheme.accent}20`}}>
-                            <span className="text-6xl filter drop-shadow-xl">{currentTheme.emoji}</span>
+                        <div className="w-36 h-36 rounded-full flex items-center justify-center border-2 shadow-[0_0_80px_rgba(var(--accent-rgb),0.35)] backdrop-blur-md" style={{borderColor: currentTheme.accent, background: `${currentTheme.accent}20`}}>
+                            <span className="text-7xl filter drop-shadow-xl">{currentTheme.emoji}</span>
                         </div>
+                        <p className="fredoka uppercase text-sm font-bold tracking-[0.3em] text-slate-500 -mt-4">Waiting for next player</p>
                         <div className="flex gap-4">
                             <button onClick={()=>{setWheelMode('player');setShowWheel(true);}} className="group bg-slate-900/80 backdrop-blur-md border-2 border-slate-700/50 hover:border-white/50 px-10 py-5 rounded-3xl flex items-center gap-4 hover:bg-slate-800 transition shadow-2xl">
                                 <i className="fa-solid fa-dharmachakra text-3xl group-hover:animate-spin" style={{color: currentTheme.accent}}></i>

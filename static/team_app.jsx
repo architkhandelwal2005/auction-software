@@ -30,6 +30,27 @@ const TeamApp = () => {
         try {
             const res = await fetch('/api/live_data');
             const data = await res.json();
+            // /api/live_data returns the player on the block inside `auction_state`
+            // as flat strings (current_player is a NAME, not an object). The views
+            // below want a player object, so build one here.
+            const st = data.auction_state || {};
+            const name = (st.current_player || '').trim();
+            data.current_bid = parseFloat(st.current_bid) || 0;
+            if (name) {
+                const pool = data.unsold_players || [];
+                const match = pool.find(p => p.name === name);
+                data.current_player = {
+                    id: match ? match.id : null,
+                    name: name,
+                    category: st.category || (match ? match.category : '') || '',
+                    base_price: parseFloat(st.base_price) || (match ? match.base_price : 0) || 0,
+                    photo_url: st.photo_url || (match ? match.photo_url : '') || '',
+                    attributes: match ? match.attributes : {},
+                    status: match ? match.status : 'unsold',
+                };
+            } else {
+                data.current_player = null;
+            }
             setLiveData(data);
         } catch (err) {
             console.error("Error fetching live data", err);
@@ -76,7 +97,9 @@ const TeamApp = () => {
         };
     });
 
-    const isBiddingActive = liveData && liveData.current_player && liveData.current_player.status === 'unsold';
+    // A player is on the block whenever the auctioneer has staged one; the pool
+    // lookup may miss (e.g. a revived player), so don't require a status match.
+    const isBiddingActive = !!(liveData && liveData.current_player && liveData.current_player.name);
 
     return (
         <div className="min-h-screen bg-[#09090b] text-white flex flex-col font-nunito pb-10">
@@ -89,7 +112,10 @@ const TeamApp = () => {
                         </div>
                         <div>
                             <h1 className="fredoka text-2xl md:text-3xl font-bold">{team.name}</h1>
-                            <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mt-1">Team Dashboard</div>
+                            <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mt-1 flex items-center gap-1.5">
+                                {config.org_logo && <img src={config.org_logo} alt="" className="w-4 h-4 object-contain rounded" />}
+                                <span className="truncate">{config.event_name || 'Team Dashboard'}{config.organisation_name ? ' · ' + config.organisation_name : ''}</span>
+                            </div>
                         </div>
                     </div>
                     

@@ -48,13 +48,15 @@
             const categories = stats.categories || [];
             const eventName = config.event_name || 'Cricket Auction 2026';
             const bannerUrl = config.event_banner;
+            const orgName = config.organisation_name || '';
+            const orgLogo = config.org_logo || '';
 
             return (
                 <div className="max-w-5xl mx-auto space-y-8">
                     {/* Top Action Bar (hidden when printing) */}
                     <div className="no-print bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex justify-between items-center">
                         <div className="flex items-center gap-3">
-                            <a href="/" className="text-blue-600 hover:text-blue-800 font-bold text-sm flex items-center gap-1.5">
+                            <a href="/admin" className="text-blue-600 hover:text-blue-800 font-bold text-sm flex items-center gap-1.5">
                                 <i className="fa-solid fa-arrow-left"></i> Dashboard
                             </a>
                             <span className="text-gray-300">|</span>
@@ -80,9 +82,13 @@
                         )}
                         <div className="flex justify-between items-start border-b border-gray-200 pb-6">
                             <div>
+                                <div className="flex items-center gap-3 mb-2">
+                                    {orgLogo && <img src={orgLogo} alt="" className="h-11 w-11 object-contain rounded-lg border border-gray-200 p-0.5" />}
+                                    {orgName && <span className="text-sm font-extrabold uppercase tracking-widest text-amber-600">{orgName}</span>}
+                                </div>
                                 <h1 className="fredoka text-3xl font-bold text-gray-900">{eventName}</h1>
                                 <p className="text-gray-500 font-bold text-sm mt-1">Official Auction Summary & Squad Balance Sheet</p>
-                                <p className="text-xs text-gray-400 mt-1 font-semibold">Generated on: {new Date().toLocaleDateString('en-US', { dateStyle: 'full', timeStyle: 'short' })}</p>
+                                <p className="text-xs text-gray-400 mt-1 font-semibold">Generated on: {new Date().toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}</p>
                             </div>
                             <div className="text-right">
                                 <span className="inline-block bg-green-100 text-green-800 font-bold px-3 py-1 rounded-full text-xs uppercase tracking-wider">

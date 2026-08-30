@@ -5,3 +5,7 @@ __pycache__/
 .system_generated/
 scratch/
 cloudflared.exe
+.env
+*.db
+*.db.bak*
+*.db.preaudit
