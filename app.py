@@ -45,12 +45,18 @@ class _PGCur:
         self._c.execute(converted, params or ())
         if re.match(r'\s*INSERT\b', sql, re.IGNORECASE):
             try:
+                self._c.execute('SAVEPOINT _lastval')
                 self._c.execute('SELECT lastval()')
                 row = self._c.fetchone()
                 if row:
                     self.lastrowid = list(row.values())[0]
+                self._c.execute('RELEASE SAVEPOINT _lastval')
             except Exception:
-                pass
+                try:
+                    self._c.execute('ROLLBACK TO SAVEPOINT _lastval')
+                    self._c.execute('RELEASE SAVEPOINT _lastval')
+                except Exception:
+                    pass
         return self
 
     def fetchone(self):  return self._c.fetchone()
