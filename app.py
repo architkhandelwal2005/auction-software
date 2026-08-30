@@ -359,6 +359,8 @@ def save_config():
 def restart_setup():
     data = request.json or {}
     wipe_all = data.get('wipe_all', False)
+    if wipe_all and data.get('password') != 'Wipe@123':
+        return jsonify({'error': 'Incorrect password'}), 403
     conn = get_db()
     c = conn.cursor()
     c.execute('INSERT OR REPLACE INTO config (key, value) VALUES ("setup_done", "false")')

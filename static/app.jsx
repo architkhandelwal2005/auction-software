@@ -1347,10 +1347,12 @@ function App() {
     const undoLast = async () => { SFX.undo(); const r=await fetch('/api/undo',{method:'POST'}); const d=await r.json(); if(d.success){alert(`↩️ Undid: ${d.player_name}`);loadData();}else alert(d.error||'Nothing to undo'); };
     
     const wipeAllAndRestart = async () => {
-        if(confirm('⚠️ START NEW AUCTION?\n\nThis will WIPE ALL players, teams, and settings to start fresh.\nAre you sure?')){
-            await fetch('/api/setup/restart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wipe_all:true})});
-            window.location.reload();
-        }
+        const pwd = prompt('⚠️ START NEW AUCTION\n\nThis will permanently wipe ALL players, teams, and settings.\n\nEnter wipe password to confirm:');
+        if(pwd === null) return;
+        const res = await fetch('/api/setup/restart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wipe_all:true, password:pwd})});
+        const json = await res.json();
+        if(!res.ok || json.error){ alert('Incorrect password. Wipe cancelled.'); return; }
+        window.location.reload();
     };
 
     const resetAuction = async () => { if(confirm('⚠️ Reset entire auction?')){await fetch('/api/reset',{method:'POST'});await loadData();setCurrentPlayer(null);} };
