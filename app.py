@@ -89,6 +89,23 @@ DB_FILE = 'auction.db'
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# Cache-busting version for front-end assets. Uses the newest mtime of the JSX
+# bundles so every deploy serves a fresh URL and browsers never run stale JS
+# (e.g. an old "Start Over" without the wipe-password prompt).
+def _asset_version():
+    base = os.path.dirname(os.path.abspath(__file__))
+    latest = 0.0
+    for rel in ('static/app.jsx', 'static/team_app.jsx', 'static/auction_display.js', 'static/auction_display.css'):
+        try:
+            latest = max(latest, os.path.getmtime(os.path.join(base, rel)))
+        except OSError:
+            pass
+    return str(int(latest))
+
+@app.context_processor
+def inject_asset_version():
+    return {'asset_v': _asset_version()}
+
 def get_db():
     if 'db' not in g:
         if USE_PG:
