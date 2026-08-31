@@ -2244,11 +2244,19 @@ def smart_analyze():
 
     # Persist the computed categories onto the imported player rows so that quota
     # counting, squad fulfilment and max-bid reserves all line up during the auction.
+    # Batch by label — one UPDATE per category (a handful) instead of one per
+    # player (hundreds). Hundreds of round-trips to a remote DB would otherwise
+    # time out the request ("Failed to fetch").
     if player_labels:
+        from collections import defaultdict
+        by_label = defaultdict(list)
+        for nm, lbl in player_labels.items():
+            by_label[lbl].append(nm)
         conn = get_db()
         cc = conn.cursor()
-        for nm, lbl in player_labels.items():
-            cc.execute('UPDATE players SET category=? WHERE name=?', (lbl, nm))
+        for lbl, names in by_label.items():
+            placeholders = ','.join(['?'] * len(names))
+            cc.execute('UPDATE players SET category=? WHERE name IN (%s)' % placeholders, [lbl] + names)
         conn.commit()
         conn.close()
 
