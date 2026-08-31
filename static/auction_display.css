@@ -2005,3 +2005,59 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 }
 .intro-overlay.is-visible .intro-bar i { animation: introBar 9s linear forwards; }
 @keyframes introBar { to { width: 100%; } }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TEMPLATE REDESIGN OVERRIDES (appended — highest precedence)
+   Goals: bigger player photos (~1.3x), bigger team purse panel (~1.35x),
+   removed bottom info strip (reclaim its space), and a single "must-have"
+   highlight line in place of the old stat clutter.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Reclaim the removed bottom info-strip space; widen player + purse columns. */
+.main-grid { top:110px; bottom:46px; grid-template-columns: 600px minmax(480px,1fr) 560px; gap:30px; }
+.player-info-strip { display:none !important; }
+
+/* ---- MUST-HAVE highlight line (shared) ---- */
+.mh { display:flex; align-items:flex-start; gap:9px; margin-top:14px;
+      font-family:var(--body-font); font-size:20px; line-height:1.32; font-weight:600;
+      color:#eef4fb; max-width:100%; }
+.mh .mh-star { color:var(--accent,#f5b72e); font-size:.95em; line-height:1.4; flex:none; }
+.mh .mh-val { display:block; }
+/* dark-on-cream contexts (poster print) need dark text */
+.tpl-poster .mh { color:#1a232b; }
+.tpl-poster .mh .mh-star { color:#b8860b; }
+.tpl-pb-sun .mh { color:#2a1c10; justify-content:center; text-align:center; }
+.tpl-pb-sun .mh .mh-star { color:#c47b1a; }
+
+/* ---- BIGGER PHOTOS (per template) ---- */
+.arena-photo { height:632px !important; }
+.tpl-collector { width:560px !important; height:872px !important; }
+.tpl-circular { width:640px !important; height:872px !important; }
+.circle-orbit { width:600px !important; height:600px !important; }
+.circle-photo { width:504px !important; height:504px !important; }
+.tpl-broadcast { width:712px !important; height:640px !important; grid-template-columns:312px 1fr !important; }
+.tpl-poster { width:590px !important; height:852px !important; }
+.poster-photo { height:616px !important; }
+.pbh-frame { width:484px !important; }
+.pbs-print { width:520px !important; }
+.tpl-pb-press { grid-template-columns:1fr !important; transform:scale(1.18); transform-origin:left center; }
+.tpl-pb-press .pbe-shot { width:448px !important; margin-bottom:22px !important; }
+.tpl-pb-press .pbe-photo { width:448px !important; height:560px !important; }
+.tpl-pb-press .pbe-name { max-width:560px; }
+.tpl-pb-press .mh { max-width:520px; }
+
+/* ---- BIGGER TEAM PURSE PANEL (~1.35x) ---- */
+.purse-panel { padding:26px 22px 22px !important; border-radius:26px !important; }
+.panel-title { font-size:22px !important; letter-spacing:3.4px !important; margin-bottom:20px !important; }
+.team-rows { gap:13px !important; }
+.team-row { min-height:112px !important; grid-template-columns:66px 1fr auto !important; gap:18px !important; padding:15px 18px !important; border-radius:18px !important; }
+
+/* Experience/category label styling for the simplified pickleball templates */
+.pbs-cat, .pbe-cat, .pbh-cat {
+  font-family:var(--display-font); font-weight:800; letter-spacing:2.4px;
+  font-size:17px; margin-top:9px; text-transform:uppercase;
+}
+.pbs-cat { color:#b5651d; text-align:center; }
+.pbe-cat { color:#c9ff3f; }
+.pbh-cat { color:#d9b06a; text-align:center; }
+.tpl-pb-sun .mh { margin-top:10px; font-size:18px; }

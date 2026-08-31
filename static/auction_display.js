@@ -179,6 +179,10 @@
   function renderTemplate(template) {
     let html = '';
 
+    // Shared "must-have" highlight line — the one player detail we show beyond
+    // name + experience. Hidden automatically when the sheet has no value.
+    const MH = '<div class="mh" data-musthave-block><span class="mh-star">★</span><span class="mh-val" data-slot="player.musthave"></span></div>';
+
     if (template === 'collector') {
       html = `
         <article class="tpl-collector" data-archetype="player">
@@ -188,18 +192,11 @@
               <div class="collector-type"><i class="ct-icon">★</i><span class="ct-label">PLAYER</span></div>
             </div>
             ${photoShell('collector-photo')}
-            <div class="collector-rolerail" data-slot="player.role">ROLE</div>
             <div class="collector-nameplate">
               <div class="collector-firstname"></div>
               <div class="collector-title" data-slot="player.name">PLAYER NAME</div>
             </div>
-            <div class="collector-data">
-              <div class="stat"><span>AGE</span><strong data-slot="player.age">--</strong></div>
-              <div class="stat"><span>STYLE</span><strong data-slot="player.style">--</strong></div>
-              <div class="stat"><span>BOWLING</span><strong data-slot="player.secondary">--</strong></div>
-              <div class="stat"><span>CITY / CLUB</span><strong data-slot="player.city">--</strong></div>
-            </div>
-            <div class="collector-price"><span>BASE PRICE</span><strong data-slot="player.base-price">₹ --</strong></div>
+            ${MH}
           </div>
         </article>`;
     } else if (template === 'circular') {
@@ -211,13 +208,7 @@
           </div>
           <div class="circle-plate">
             <div class="circle-name" data-slot="player.name">PLAYER NAME</div>
-            <div class="circle-sub" data-slot="player.role">ROLE / POSITION</div>
-          </div>
-          <div class="chip-row">
-            <div class="chip"><i>◷</i><div><span>AGE</span><b data-slot="player.age">--</b></div></div>
-            <div class="chip"><i>◆</i><div><span>STYLE</span><b data-slot="player.style">--</b></div></div>
-            <div class="chip"><i>◉</i><div><span>CITY</span><b data-slot="player.city">--</b></div></div>
-            <div class="chip"><i>#</i><div><span>LOT NO.</span><b data-slot="player.id">--</b></div></div>
+            ${MH}
           </div>
         </article>`;
     } else if (template === 'broadcast') {
@@ -225,16 +216,10 @@
         <article class="tpl-broadcast">
           ${photoShell('broadcast-photo')}
           <div class="broadcast-copy">
-            <div class="broadcast-eyebrow"><span data-slot="player.category">CATEGORY</span> • <span data-slot="player.id">PLAYER ID</span></div>
+            <div class="broadcast-eyebrow"><span data-slot="player.category">CATEGORY</span></div>
             <div class="broadcast-name" data-slot="player.name">PLAYER NAME</div>
-            <div class="broadcast-role" data-slot="player.role">ROLE / POSITION</div>
             <div class="broadcast-rule"></div>
-            <div class="broadcast-stats">
-              <div class="broadcast-stat"><span>AGE</span><strong data-slot="player.age">--</strong></div>
-              <div class="broadcast-stat"><span>STYLE</span><strong data-slot="player.style">--</strong></div>
-              <div class="broadcast-stat"><span>SECONDARY INFO</span><strong data-slot="player.secondary">--</strong></div>
-              <div class="broadcast-stat"><span>CITY / CLUB</span><strong data-slot="player.city">--</strong></div>
-            </div>
+            ${MH}
           </div>
         </article>`;
     } else if (template === 'poster') {
@@ -242,9 +227,9 @@
         <article class="tpl-poster">
           ${photoShell('poster-photo')}
           <div class="poster-copy">
-            <div class="poster-kicker"><span data-slot="player.category">CATEGORY</span><span data-slot="player.id">PLAYER ID</span></div>
+            <div class="poster-kicker"><span data-slot="player.category">CATEGORY</span></div>
             <div class="poster-name" data-slot="player.name">PLAYER NAME</div>
-            <div class="poster-role"><span data-slot="player.role">ROLE</span> • <span data-slot="player.city">CITY / CLUB</span></div>
+            ${MH}
           </div>
           <div class="poster-stamp">SPORTS<br>AUCTION<br>LIVE</div>
         </article>`;
@@ -258,12 +243,8 @@
             ${photoShell('pbs-photo')}
             <div class="pbs-caption">
               <div class="pbs-name" data-slot="player.name">PLAYER NAME</div>
-              <div class="pbs-role" data-slot="player.role">ROLE</div>
-              <div class="pbs-line">
-                <span data-slot="player.id">LOT</span>
-                <i></i><span><b data-slot="player.age">--</b> YRS</span>
-                <i></i><span data-slot="player.category">CATEGORY</span>
-              </div>
+              <div class="pbs-cat" data-slot="player.category">CATEGORY</div>
+              ${MH}
             </div>
           </div>
         </article>`;
@@ -274,17 +255,12 @@
          single volt accent lifted from the ball. */
       html = `
         <article class="tpl-pb tpl-pb-press">
-          <div class="pbe-rail"><span data-slot="player.id">LOT</span></div>
           <div class="pbe-body">
             <div class="pbe-shot">${photoShell('pbe-photo')}</div>
             <h2 class="pbe-name" data-slot="player.name">PLAYER NAME</h2>
             <div class="pbe-hair"></div>
-            <dl class="pbe-list">
-              <div class="pbe-item"><dt>ROLE</dt><dd data-slot="player.role">--</dd></div>
-              <div class="pbe-item"><dt>AGE</dt><dd data-slot="player.age">--</dd></div>
-              <div class="pbe-item"><dt>CATEGORY</dt><dd data-slot="player.category">--</dd></div>
-              <div class="pbe-item"><dt>CITY / CLUB</dt><dd data-slot="player.city">--</dd></div>
-            </dl>
+            <div class="pbe-cat" data-slot="player.category">CATEGORY</div>
+            ${MH}
           </div>
         </article>`;
 
@@ -298,17 +274,12 @@
             <span class="pbh-corner pbh-tl"></span><span class="pbh-corner pbh-tr"></span>
             <span class="pbh-corner pbh-bl"></span><span class="pbh-corner pbh-br"></span>
             ${photoShell('pbh-photo')}
-            <div class="pbh-lot" data-slot="player.id">LOT</div>
           </div>
           <div class="pbh-plaque">
             <div class="pbh-name" data-slot="player.name">PLAYER NAME</div>
             <div class="pbh-rule"><i></i><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46"/><g class="pbh-holes"><circle cx="50" cy="26" r="7"/><circle cx="50" cy="74" r="7"/><circle cx="26" cy="50" r="7"/><circle cx="74" cy="50" r="7"/><circle cx="33" cy="33" r="6"/><circle cx="67" cy="33" r="6"/><circle cx="33" cy="67" r="6"/><circle cx="67" cy="67" r="6"/></g></svg><i></i></div>
-            <div class="pbh-role" data-slot="player.role">ROLE</div>
-            <div class="pbh-meta">
-              <span><b data-slot="player.age">--</b> YRS</span>
-              <span data-slot="player.category">CATEGORY</span>
-              <span data-slot="player.city">CITY / CLUB</span>
-            </div>
+            <div class="pbh-cat" data-slot="player.category">CATEGORY</div>
+            ${MH}
           </div>
         </article>`;
     } else {
@@ -319,7 +290,7 @@
             <div class="category-badge" data-slot="player.category">CATEGORY</div>
             <div class="arena-plate">
               <div class="player-name" data-slot="player.name">PLAYER NAME</div>
-              <div class="player-subline"><b data-slot="player.id">PLAYER ID</b><span data-slot="player.role">ROLE / POSITION</span></div>
+              ${MH}
             </div>
           </div>
         </article>`;
@@ -342,8 +313,14 @@
     setSlot('player.style', p && p.style ? p.style : DASH);
     setSlot('player.secondary', p && p.secondary ? p.secondary : DASH);
     setSlot('player.city', p && p.city ? p.city : DASH);
+    setSlot('player.musthave', p && p.musthave ? p.musthave : '');
     setSlot('player.base-price', money(state.auction.basePrice));
     setSlot('player.base-price-footer', money(state.auction.basePrice));
+    // Hide the "must-have" highlight block entirely when the sheet has no such value.
+    playerZone.querySelectorAll('[data-musthave-block]').forEach(el => {
+      const val = (p && p.musthave || '').trim();
+      el.style.display = val ? '' : 'none';
+    });
 
     /* Pickleball chips/rails: drop entries with no value, and collapse
        duplicates — many sheets carry the same text in role and category. */
@@ -620,6 +597,9 @@
         style: (attrFind(attrs, /batting|\bbat\b|style/i) || '').toUpperCase(),
         secondary: (attrFind(attrs, /bowling|\bbowl\b/i) || '').toUpperCase(),
         city: (attrFind(attrs, /city|town|location|state|country|club/i) || '').toUpperCase(),
+        // "What makes you a must-have player" — the single highlight line shown
+        // on the card. Match common column names, else fall back to a strength.
+        musthave: (attrFind(attrs, /must.?have|must.?buy|x.?factor|usp|standout|stand.?out|special|strength|strong.?point|highlight|why.*(pick|buy|want)|superpower|super.?power|key.?trait/i) || ''),
         // Everything else the sheet carried, so templates can show real columns
         // instead of hard-coded fields the file may not have.
         attrs: attrs,
