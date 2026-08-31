@@ -1008,8 +1008,10 @@
     function showActive(player, bid) {
       adminPlayer = player;
       adminBid = bid;
-      adminPlayerCat.textContent  = (player.category || '').toUpperCase();
-      adminPlayerName.textContent = (player.name || '').toUpperCase();
+      // adminPlayerCat/adminPlayerName labels were removed from the admin bar
+      // in the template redesign (bid + actions now share one control panel).
+      if (adminPlayerCat)  adminPlayerCat.textContent  = (player.category || '').toUpperCase();
+      if (adminPlayerName) adminPlayerName.textContent = (player.name || '').toUpperCase();
       adminBidDisplay.value = adminBid;
       adminIdle.style.display = 'none';
       adminActive.style.display = '';
@@ -1388,7 +1390,7 @@
       }
     };
 
-    // Next Player
+    // Next Player — default is the spin wheel, not the search/select list.
     if (adminNextBtn) adminNextBtn.onclick = async () => {
       showIdle();
       await fetch('/api/auction/state', {
@@ -1396,7 +1398,7 @@
         body: JSON.stringify({ current_player: '', current_bid: 0, category: '', base_price: 0, photo_url: '' })
       });
       poll();
-      openPickModal();
+      openSpin('player');
     };
 
     /* ═══════════ SPIN WHEEL ═══════════
