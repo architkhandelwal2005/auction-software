@@ -435,6 +435,13 @@ def compute_max_bid(rem_budget, current_count, rules_list, config_dict):
     reserved_spots = needed_players - 1
     reserved_purse = round(reserved_spots * common_bp, 1)
     max_bid = max(0.0, round(rem_budget - reserved_purse, 1))
+    # Feasibility floor: a team must always be able to buy the current player at
+    # (at least) base price if it can afford it — otherwise a budget that is too
+    # small for the full squad makes every player unsellable. When the reserve
+    # would push the cap below base price, allow up to base price instead.
+    if rem_budget >= common_bp and max_bid < common_bp:
+        max_bid = common_bp
+        reserved_purse = round(rem_budget - max_bid, 1)
     return max_bid, target_squad, needed_players, reserved_spots, reserved_purse, common_bp
 
 

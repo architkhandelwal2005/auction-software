@@ -1386,7 +1386,7 @@
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ player_id: adminPlayer.id, team_id: parseInt(teamId), sold_price: adminBid })
         });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (!res.ok) { const j = await res.json().catch(()=>({})); throw new Error(j.error || ('HTTP ' + res.status)); }
         SFX.sold();
         confetti();
         say('Sold! ' + soldName + ' goes to ' + (team ? team.name : 'team') +
@@ -1546,7 +1546,7 @@
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ player_id: adminPlayer.id, team_id: parseInt(team.id), sold_price: price })
           });
-          if (!res.ok) throw new Error('HTTP ' + res.status);
+          if (!res.ok) { const j = await res.json().catch(()=>({})); throw new Error(j.error || ('HTTP ' + res.status)); }
           spinModal.style.display = 'none';
           SFX.sold();
           confetti();
