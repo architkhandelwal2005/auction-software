@@ -2109,6 +2109,30 @@ def smart_analyze():
             if nm:
                 player_labels[nm] = key
 
+        # Order groups sensibly: known skill/level words in logical order, age
+        # ranges low→high, else alphabetical — so the stage never shows a jumbled
+        # "Intermediate, Beginner, Advanced".
+        RANK = {w: i for i, w in enumerate([
+            'novice', 'beginner', 'basic', 'amateur', 'rookie', 'intermediate',
+            'medium', 'average', 'advanced', 'expert', 'pro', 'professional', 'elite', 'master'])}
+        def order_key(label):
+            parts = label.split(u' · ')
+            key = []
+            for p in parts:
+                pl = p.strip().lower()
+                if pl in RANK:
+                    key.append((0, RANK[pl]))
+                elif pl.startswith('under '):
+                    key.append((1, -1))
+                elif pl.endswith('+'):
+                    key.append((1, 9999))
+                elif pl[:2].isdigit():
+                    key.append((1, int(''.join(ch for ch in pl.split(u'–')[0] if ch.isdigit()) or 0)))
+                else:
+                    key.append((2, p.lower()))
+            return key
+        groups = OrderedDict(sorted(groups.items(), key=lambda kv: order_key(kv[0])))
+
         PALETTE = ['#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6', '#ef4444', '#06b6d4', '#f97316', '#84cc16', '#a855f7']
         for idx, (label, cnt) in enumerate(groups.items()):
             remainder = cnt % num_teams
