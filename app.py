@@ -1342,7 +1342,8 @@ def sell_player():
     if not player:
         conn.close()
         return jsonify({'error': 'Player not found'}), 404
-    if not c.execute('SELECT 1 FROM teams WHERE id=?', (tid,)).fetchone():
+    team = c.execute('SELECT * FROM teams WHERE id=?', (tid,)).fetchone()
+    if not team:
         conn.close()
         return jsonify({'error': 'Team not found'}), 404
     # Selling an already-sold player would double-charge and corrupt undo history
@@ -1376,7 +1377,6 @@ def sell_player():
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         ('sell', pid, player['name'], player['team_id'], tid, player['sold_price'], price, player['status'], 'sold', player['base_price'], player['category'], player['photo_url']))
 
-    team = c.execute('SELECT * FROM teams WHERE id=?', (tid,)).fetchone()
     c.execute('UPDATE players SET status="sold", team_id=?, sold_price=?, sold_at=CURRENT_TIMESTAMP WHERE id=?', (tid, price, pid))
     c.execute('UPDATE teams SET remaining_budget=remaining_budget-? WHERE id=?', (price, tid))
     # Clear player-specific auction state but preserve stage settings (sport, template mode)
