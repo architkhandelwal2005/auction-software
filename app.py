@@ -836,7 +836,8 @@ def parse_auction_file(file_storage, default_base_price=50.0):
             except (ValueError, TypeError):
                 bp = default_base_price
         photo = str(r.get(photo_col) or '').strip() if photo_col else ''
-        items.append({'name': name, 'category': cat, 'base_price': bp, 'photo_url': photo})
+        attrs = {k: v for k, v in r.items() if v is not None and str(v).strip() != '' and k not in [name_col, photo_col]}
+        items.append({'name': name, 'category': cat, 'base_price': bp, 'photo_url': photo, 'attributes': attrs})
 
     return items
 
@@ -1130,8 +1131,8 @@ def import_players():
 
     count = 0
     for it in items:
-        c.execute('INSERT INTO players (name, category, base_price, photo_url) VALUES (?, ?, ?, ?)',
-                  (it['name'], it['category'], it['base_price'], it['photo_url']))
+        c.execute('INSERT INTO players (name, category, base_price, photo_url, attributes) VALUES (?, ?, ?, ?, ?)',
+                  (it['name'], it['category'], it['base_price'], it['photo_url'], json.dumps(it.get('attributes') or {})))
         count += 1
 
     existing_rules = {r['category']: dict(r) for r in c.execute('SELECT * FROM category_rules').fetchall()}
@@ -1900,6 +1901,7 @@ def smart_analyze():
 
     age_col    = next((h for h in headers if col_details[h].get('is_age_candidate')), None)
     gender_col = next((h for h in headers if col_details[h].get('is_gender_candidate')), None)
+    name_col   = next((h for h in headers if col_details[h].get('is_name_candidate')), headers[0])
 
     player_data = []
     for row in dict_rows:
@@ -1910,7 +1912,12 @@ def smart_analyze():
                 age = int(float(row[age_col]))
             except Exception:
                 pass
-        player_data.append({'gender': gender or None, 'age': age})
+        pname = str(row.get(name_col) or '').strip()
+        player_data.append({'gender': gender or None, 'age': age, 'name': pname})
+
+    # name -> assigned category label, persisted to the DB so player records match
+    # the quota rules (this is what makes squad/quota counting work during the auction)
+    player_labels = {}
 
     def find_best_splits(ages, n_splits, n_teams):
         from itertools import combinations
@@ -2016,15 +2023,113 @@ def smart_analyze():
             
         return results
 
-    from collections import Counter
-    gender_counts = Counter(p['gender'] for p in player_data if p['gender'])
+    from collections import Counter, OrderedDict
     suggestions = []
+
+    # ── Generic multi-column split: the organiser chooses which column(s) to
+    # divide players by (gender, age, skill level, role, …). Numeric columns
+    # (e.g. age) are binned; categorical columns use their distinct values.
+    # Multiple columns produce the cross-product (e.g. "Male · 18–26"). ──
+    split_by = []
+    try:
+        split_by = json.loads(request.form.get('split_by', '[]')) or []
+    except Exception:
+        split_by = []
+    split_by = [c for c in split_by if c in headers]
+
+    if split_by:
+        try:
+            bins_map = json.loads(request.form.get('bins', '{}')) or {}
+        except Exception:
+            bins_map = {}
+
+        col_thresholds, col_is_numeric = {}, {}
+        for col in split_by:
+            det = col_details.get(col, {})
+            vals_num, numeric_ok = [], True
+            for row in dict_rows:
+                v = row.get(col)
+                if v is None or str(v).strip() == '':
+                    continue
+                try:
+                    vals_num.append(int(float(v)))
+                except Exception:
+                    numeric_ok = False
+                    break
+            # Treat as numeric (bin it) only when it's an age-like / continuous column
+            treat_numeric = numeric_ok and vals_num and (det.get('is_age_candidate') or len(set(vals_num)) > 6)
+            if treat_numeric:
+                nb = max(2, min(4, int(bins_map.get(col, num_splits))))
+                col_thresholds[col] = find_best_splits(vals_num, nb, num_teams) if len(vals_num) >= nb * num_teams else find_best_splits(vals_num, nb, 1)
+                col_is_numeric[col] = True
+            else:
+                col_thresholds[col] = None
+                col_is_numeric[col] = False
+
+        def bucket_label(col, raw):
+            if raw is None or str(raw).strip() == '':
+                return 'N/A'
+            if col_is_numeric[col]:
+                try:
+                    a = int(float(raw))
+                except Exception:
+                    return 'N/A'
+                boundaries = [None] + list(col_thresholds[col] or []) + [None]
+                for i in range(len(boundaries) - 1):
+                    lo, hi = boundaries[i], boundaries[i + 1]
+                    if (lo is None or a >= lo) and (hi is None or a < hi):
+                        if lo is None:   return 'Under ' + str(hi)
+                        if hi is None:   return str(lo) + '+'
+                        return str(lo) + u'–' + str(hi - 1)
+                return str(a)
+            return str(raw).strip().title()
+
+        groups = OrderedDict()
+        for row in dict_rows:
+            key = u' · '.join(bucket_label(col, row.get(col)) for col in split_by)
+            groups[key] = groups.get(key, 0) + 1
+            nm = str(row.get(name_col) or '').strip()
+            if nm:
+                player_labels[nm] = key
+
+        PALETTE = ['#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6', '#ef4444', '#06b6d4', '#f97316', '#84cc16', '#a855f7']
+        for idx, (label, cnt) in enumerate(groups.items()):
+            remainder = cnt % num_teams
+            min_t = cnt // num_teams
+            max_t = (min_t + 1) if remainder > 0 else min_t
+            is_exact = (remainder == 0)
+            desc = (f"{cnt} players ÷ {num_teams} teams = Exactly {min_t} per team" if is_exact
+                    else f"{cnt} players ÷ {num_teams} teams = {min_t} required (+{remainder} flex slots across teams)")
+            suggestions.append({
+                'category': label, 'count': cnt, 'is_exact': is_exact,
+                'remainder': remainder, 'per_team_min': min_t, 'per_team_max': max_t,
+                'base_price': base_price_val, 'color': PALETTE[idx % len(PALETTE)],
+                'description': desc, 'auto': True,
+            })
+        gender_counts = {}  # skip the auto gender/age branch below
+    else:
+        gender_counts = Counter(p['gender'] for p in player_data if p['gender'])
+
+    def age_label(age, thresholds, prefix):
+        if not thresholds or age is None:
+            return prefix
+        boundaries = [None] + list(thresholds) + [None]
+        for i in range(len(boundaries) - 1):
+            lo, hi = boundaries[i], boundaries[i + 1]
+            if (lo is None or age >= lo) and (hi is None or age < hi):
+                if lo is None:  return prefix + ' (Under ' + str(hi) + ')'
+                if hi is None:  return prefix + ' (' + str(lo) + '+)'
+                return prefix + ' (' + str(lo) + u'–' + str(hi - 1) + ')'
+        return prefix
 
     if gender_counts:
         for gender, g_count in sorted(gender_counts.items(), key=lambda x: -x[1]):
             ages_g = [p['age'] for p in player_data if p['gender'] == gender and p['age'] is not None]
             colors = GENDER_COLORS.get(gender, DEFAULT_COLORS)
             thresholds = find_best_splits(ages_g, num_splits, num_teams) if len(ages_g) >= num_splits * num_teams else []
+            for p in player_data:
+                if p['gender'] == gender and p['name']:
+                    player_labels[p['name']] = age_label(p['age'], thresholds, gender) if ages_g else gender
             if ages_g:
                 suggestions.extend(make_suggestions(ages_g, gender, colors, thresholds))
             else:
@@ -2044,10 +2149,16 @@ def smart_analyze():
         if no_gender:
             ng_ages = [p['age'] for p in no_gender if p['age'] is not None]
             thresholds = find_best_splits(ng_ages, num_splits, num_teams) if len(ng_ages) >= num_splits * num_teams else []
+            for p in no_gender:
+                if p['name']:
+                    player_labels[p['name']] = age_label(p['age'], thresholds, 'Open')
             suggestions.extend(make_suggestions(ng_ages, 'Open', DEFAULT_COLORS, thresholds))
-    else:
+    elif not split_by:
         all_ages = [p['age'] for p in player_data if p['age'] is not None]
         thresholds = find_best_splits(all_ages, num_splits, num_teams) if len(all_ages) >= num_splits * num_teams else []
+        for p in player_data:
+            if p['name']:
+                player_labels[p['name']] = age_label(p['age'], thresholds, 'Players')
         suggestions.extend(make_suggestions(all_ages, 'Players', DEFAULT_COLORS, thresholds))
 
     # Unequal division detection & prompts
@@ -2065,6 +2176,16 @@ def smart_analyze():
             'recommendation': f"Allowing 1 extra player (+1 flex slot) in affected categories ensures 100% of players are sold to a team."
         }
 
+    # Persist the computed categories onto the imported player rows so that quota
+    # counting, squad fulfilment and max-bid reserves all line up during the auction.
+    if player_labels:
+        conn = get_db()
+        cc = conn.cursor()
+        for nm, lbl in player_labels.items():
+            cc.execute('UPDATE players SET category=? WHERE name=?', (lbl, nm))
+        conn.commit()
+        conn.close()
+
     photo_cols = {h for h in headers if col_details[h].get('is_photo_candidate')}
     visible_cols = [h for h in headers if h not in photo_cols]
     preview = [{k: v for k, v in row.items() if k not in photo_cols} for row in dict_rows[:6]]
@@ -2080,6 +2201,7 @@ def smart_analyze():
         'unequal_prompt': unequal_prompt,
         'age_col': age_col,
         'gender_col': gender_col,
+        'split_by': split_by,
         'suggestions': suggestions,
         'preview': preview,
         'columns': visible_cols,

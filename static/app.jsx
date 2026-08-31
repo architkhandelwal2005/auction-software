@@ -560,6 +560,8 @@ const SetupWizard = ({ onComplete }) => {
     const [numTeams, setNumTeams] = useState(4);
     const [numSplits, setNumSplits] = useState(3);
     const [basePrice, setBasePrice] = useState(50);
+    const [splitColumns, setSplitColumns] = useState([]); // which Excel columns to divide players by
+    const [columnBins, setColumnBins] = useState({});     // {column: n_bins} for numeric columns
     const [analyzing, setAnalyzing] = useState(false);
     const [analysisResult, setAnalysisResult] = useState(null);
     const [analyzeError, setAnalyzeError] = useState('');
@@ -654,6 +656,41 @@ const SetupWizard = ({ onComplete }) => {
         e.target.value = null;
     };
 
+    // Build the list of columns the organiser can divide players by, from the
+    // already-imported preview. Detect numeric (age-like) vs categorical columns.
+    const splitCandidates = (() => {
+        if (!importedPreview.length) return [];
+        const skip = ['name','photo','id','category','base_price','photo_url','team_id','sold_price','status','sold_at'];
+        const cols = {};
+        importedPreview.forEach(p => {
+            const attrs = p.attributes || {};
+            Object.entries(attrs).forEach(([k, v]) => {
+                if (skip.includes(k.toLowerCase())) return;
+                if (v === null || v === undefined || String(v).trim() === '') return;
+                if (!cols[k]) cols[k] = { name: k, values: new Set(), allNumeric: true, filled: 0 };
+                cols[k].filled++;
+                cols[k].values.add(String(v).trim());
+                if (isNaN(parseFloat(v))) cols[k].allNumeric = false;
+            });
+        });
+        return Object.values(cols).map(c => {
+            const distinct = c.values.size;
+            const kl = c.name.toLowerCase();
+            const looksAge = /age|yr|year|dob|birth/.test(kl);
+            const numeric = (c.allNumeric && distinct > 6) || looksAge;
+            return { name: c.name, distinct, numeric, sample: [...c.values].slice(0, 4) };
+        }).sort((a, b) => a.name.localeCompare(b.name));
+    })();
+
+    const toggleSplitColumn = (col) => {
+        setAnalysisResult(null);
+        setSplitColumns(prev => {
+            const next = prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col];
+            return next;
+        });
+    };
+    const setBinsFor = (col, n) => { setAnalysisResult(null); setColumnBins(prev => ({ ...prev, [col]: n })); };
+
     const runAnalysis = async () => {
         if (!uploadedFile) {
             setAnalyzeError('Please upload a player file in Step 1 first.');
@@ -667,6 +704,8 @@ const SetupWizard = ({ onComplete }) => {
             fd.append('num_teams', numTeams);
             fd.append('num_splits', numSplits);
             fd.append('base_price', basePrice);
+            fd.append('split_by', JSON.stringify(splitColumns));
+            fd.append('bins', JSON.stringify(columnBins));
             const res = await fetch('/api/file/smart_analyze', { method: 'POST', body: fd });
             const d = await res.json();
             if (d.success) {
@@ -874,36 +913,54 @@ const SetupWizard = ({ onComplete }) => {
                     </div>
                 </div>}
 
-                {/* ── STEP 2: Teams + Smart Analysis ── */}
+                {/* ── STEP 2: Teams + Choose Split Columns ── */}
                 {step === 2 && <div className="space-y-5 anim-slideUp">
                     <div>
-                        <h2 className="fredoka text-xl font-bold text-white mb-1">Team Count & Smart Split</h2>
-                        <p className="text-zinc-400 text-xs">Choose the number of teams and how finely to split age groups — then run the analysis</p>
+                        <h2 className="fredoka text-xl font-bold text-white mb-1">Teams & How to Divide Players</h2>
+                        <p className="text-zinc-400 text-xs">Set the number of teams, then pick which detail(s) to divide players by — then run the analysis</p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider block mb-2">Number of Teams</label>
-                            <input type="number" min="2" max="20" className="w-full bg-zinc-950 border border-zinc-700 p-4 rounded-2xl text-3xl font-bold text-white text-center focus:border-amber-500 outline-none transition fredoka" value={numTeams} onChange={e => { setNumTeams(parseInt(e.target.value)||2); setAnalysisResult(null); }} />
-                        </div>
-                        <div>
-                            <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider block mb-2">Age Groups per Gender</label>
-                            <div className="flex flex-wrap gap-2">
-                                {[2, 3, 4].map(n => (
-                                    <button key={n} onClick={() => { setNumSplits(n); setAnalysisResult(null); }}
-                                        className={`flex-1 p-4 rounded-2xl fredoka text-2xl font-bold transition border-2 ${numSplits === n ? 'bg-amber-500/20 border-amber-500 text-amber-400' : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-600'}`}>
-                                        {n}
-                                    </button>
-                                ))}
+                    <div>
+                        <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider block mb-2">Number of Teams</label>
+                        <input type="number" min="2" max="20" className="w-full bg-zinc-950 border border-zinc-700 p-4 rounded-2xl text-3xl font-bold text-white text-center focus:border-amber-500 outline-none transition fredoka" value={numTeams} onChange={e => { setNumTeams(parseInt(e.target.value)||2); setAnalysisResult(null); }} />
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider block mb-1">Divide Players By</label>
+                        <p className="text-[0.68rem] text-zinc-500 mb-3">Pick one or more. Choosing two (e.g. Gender + Age) makes combined groups like “Male · 18–26”. Leave all unticked to auto-split by age &amp; gender.</p>
+                        {splitCandidates.length === 0 ? (
+                            <div className="bg-zinc-950 border border-dashed border-zinc-800 rounded-xl p-4 text-center text-zinc-500 text-xs font-bold">
+                                Upload a player file in Step 1 to see the columns you can divide by.
                             </div>
-                            <p className="text-[0.6rem] text-zinc-600 mt-1.5 text-center">e.g. 3 = Young / Mid / Senior</p>
-                        </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {splitCandidates.map(c => {
+                                    const on = splitColumns.includes(c.name);
+                                    return <div key={c.name} className={`rounded-xl border-2 transition ${on ? 'border-amber-500 bg-amber-500/10' : 'border-zinc-800 bg-zinc-950'}`}>
+                                        <button type="button" onClick={() => toggleSplitColumn(c.name)} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left">
+                                            <i className={`fa-solid ${on ? 'fa-square-check text-amber-400' : 'fa-square text-zinc-600'} text-sm`}></i>
+                                            <div className="min-w-0 flex-1">
+                                                <div className={`text-xs font-bold ${on ? 'text-amber-300' : 'text-zinc-300'}`}>{c.name}</div>
+                                                <div className="text-[0.6rem] text-zinc-500 truncate">{c.numeric ? `Number — will bin into age-style groups` : `${c.distinct} groups: ${c.sample.join(', ')}${c.distinct > 4 ? '…' : ''}`}</div>
+                                            </div>
+                                        </button>
+                                        {on && c.numeric && <div className="px-3.5 pb-2.5 flex items-center gap-2">
+                                            <span className="text-[0.6rem] text-zinc-500 font-bold uppercase">Groups:</span>
+                                            {[2,3,4].map(n => (
+                                                <button key={n} type="button" onClick={() => setBinsFor(c.name, n)}
+                                                    className={`w-8 h-7 rounded-lg text-xs font-bold transition ${(columnBins[c.name]||numSplits)===n ? 'bg-amber-500 text-black' : 'bg-zinc-900 text-zinc-400 border border-zinc-700'}`}>{n}</button>
+                                            ))}
+                                        </div>}
+                                    </div>;
+                                })}
+                            </div>
+                        )}
                     </div>
 
                     <button onClick={runAnalysis} disabled={analyzing || !uploadedFile}
                         className={`w-full py-4 rounded-2xl font-extrabold text-sm transition flex items-center justify-center gap-2 ${analyzing || !uploadedFile ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' : 'bg-gradient-to-r from-amber-500 to-orange-600 text-black hover:from-amber-400 hover:to-orange-500 shadow-lg shadow-amber-500/20 hover:scale-[1.02]'}`}>
                         {analyzing ? <><i className="fa-solid fa-spinner animate-spin"></i> Analysing {uploadedCount} players...</>
-                            : <><i className="fa-solid fa-wand-magic-sparkles"></i> Run Smart Analysis — {uploadedCount} players, {numTeams} teams, {numSplits}-way age split</>}
+                            : <><i className="fa-solid fa-wand-magic-sparkles"></i> Run Analysis — {uploadedCount} players, {numTeams} teams{splitColumns.length ? `, by ${splitColumns.join(' + ')}` : ', auto age & gender'}</>}
                     </button>
 
                     {analyzeError && <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-red-400 text-xs font-bold">{analyzeError}</div>}
