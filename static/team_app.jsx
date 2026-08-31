@@ -71,18 +71,14 @@ const TeamApp = () => {
         </div>;
     }
 
-    // ─── CALCULATE MAX BID & STRATEGY ───
-    const basePrice = parseFloat(config.common_base_price || 50);
-    const totalMinSlots = categories.reduce((sum, cat) => sum + (parseInt(cat.min_per_team) || 0), 0);
+    // ─── MAX BID & STRATEGY ───
+    // Use the server's authoritative values so the team page can never disagree
+    // with what the admin/auctioneer actually enforces on a sale.
+    const basePrice = team.common_base_price != null ? team.common_base_price : parseFloat(config.common_base_price || 50);
     const currentSquadSize = team.players ? team.players.length : 0;
-    const remainingSlots = Math.max(0, totalMinSlots - currentSquadSize);
-    
-    // If they have to buy 3 more players, they must reserve (3 - 1) * Base Price for the OTHER two players.
-    // Meaning they can spend (Remaining Budget) - (Reserved) on the CURRENT player.
-    const reservedFunds = remainingSlots > 0 ? (remainingSlots - 1) * basePrice : 0;
-    let maxBid = team.remaining_budget - reservedFunds;
-    if (maxBid < basePrice) maxBid = 0; // Bankrupt
-    if (remainingSlots === 0) maxBid = team.remaining_budget; // Can spend it all
+    const remainingSlots = team.needed_players != null ? team.needed_players : 0;
+    const reservedFunds = team.reserved_purse != null ? team.reserved_purse : 0;
+    const maxBid = team.max_allowed_bid != null ? team.max_allowed_bid : team.remaining_budget;
 
     // Strategy breakdown
     const strategy = categories.map(cat => {
@@ -127,7 +123,7 @@ const TeamApp = () => {
                         <div className="w-px h-10 bg-zinc-800"></div>
                         <div className="px-4 py-2 text-center">
                             <div className="text-xs font-extrabold text-zinc-500 uppercase tracking-wider mb-1">Squad</div>
-                            <div className="text-2xl fredoka font-bold text-white">{currentSquadSize} <span className="text-sm text-zinc-600">/ {totalMinSlots}</span></div>
+                            <div className="text-2xl fredoka font-bold text-white">{currentSquadSize} <span className="text-sm text-zinc-600">/ {team.target_squad_size != null ? team.target_squad_size : currentSquadSize}</span></div>
                         </div>
                         <button onClick={()=>window.location.href='/'} className="px-3 hover:text-red-400 transition" title="Logout">
                             <i className="fa-solid fa-power-off"></i>

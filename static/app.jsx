@@ -696,10 +696,13 @@ const SetupWizard = ({ onComplete }) => {
     };
 
     const finish = async () => {
+        // The true minimum squad size is the sum of every category's per-team minimum.
+        // This drives the Max-Allowed-Bid reserve calculation on the server.
+        const minSquad = categories.reduce((sum, c) => sum + (parseInt(c.per_team_min) || 0), 0);
         await fetch('/api/config', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                config: { event_name: eventName, organisation_name: orgName, bid_increment: bidIncrement, common_base_price: basePrice, setup_done: 'true', sport_theme: sportTheme, display_fields: JSON.stringify(displayFields) },
+                config: { event_name: eventName, organisation_name: orgName, bid_increment: bidIncrement, common_base_price: basePrice, setup_done: 'true', sport_theme: sportTheme, display_fields: JSON.stringify(displayFields), min_players_per_team: String(minSquad || 0) },
                 category_rules: categories.map(c => ({
                     category: c.category, base_price: basePrice,
                     min_per_team: c.per_team_min, max_per_team: c.per_team_max || 99,
@@ -1385,12 +1388,20 @@ function App() {
         const chosenTeam = teams.find(t => t.id == teamId);
         if(!chosenTeam) { alert('Please select a franchise!'); return; }
 
-        if(chosenTeam.remaining_budget < price) {
-            if(!confirm(`⚠️ WARNING: ${chosenTeam.name} has only ₹${chosenTeam.remaining_budget}L remaining, which is less than ₹${price}L! Proceed anyway?`)) {
-                return;
-            }
+        // Hard block: cannot exceed the team's max allowed bid (purse minus reserve
+        // for remaining required squad slots). This is enforced on the server too.
+        const maxBid = chosenTeam.max_allowed_bid != null ? chosenTeam.max_allowed_bid : chosenTeam.remaining_budget;
+        if(price > maxBid) {
+            const reserved = chosenTeam.reserved_purse || 0;
+            const base = chosenTeam.common_base_price || 0;
+            alert(`🚫 CANNOT SELL\n\n₹${price}L is above ${chosenTeam.name}'s max allowed bid of ₹${maxBid}L.` +
+                (reserved > 0
+                    ? `\n\nThey still need to fill ${chosenTeam.reserved_spots} more required slot(s) and must keep ₹${reserved}L reserved (₹${base}L base each).`
+                    : `\n\nThat is more than their remaining purse.`));
+            return;
         }
 
+        // Soft warning only: category max reached
         const rule = catRules.find(r => r.category === currentPlayer.category);
         const currentCatCount = (chosenTeam.players || []).filter(p => p.category === currentPlayer.category).length;
         if(rule && currentCatCount >= rule.max_per_team) {
@@ -1399,9 +1410,16 @@ function App() {
             }
         }
 
+        const res = await fetch('/api/sell_player',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:currentPlayer.id,team_id:parseInt(teamId),sold_price:price})});
+        const json = await res.json().catch(()=>({}));
+        if(!res.ok || json.error){
+            alert('🚫 Sale rejected: ' + (json.error || 'Unknown error'));
+            await loadData();
+            return;
+        }
+        // Only celebrate once the server has actually recorded the sale
         SFX.sold(); setShowConfetti(true); setTimeout(()=>setShowConfetti(false),2500);
         speakCommentary(`Sold! ${currentPlayer.name} goes to ${chosenTeam.name} for ${price} Lakhs!`, voiceEnabled);
-        await fetch('/api/sell_player',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:currentPlayer.id,team_id:parseInt(teamId),sold_price:price})});
         saveAuctionState(null, 0);
         await loadData(); setCurrentPlayer(null);
     };
@@ -1681,6 +1699,10 @@ function App() {
                                         <span className="text-slate-400 font-bold">{t.player_count||0} players</span>
                                         <span className={`font-extrabold ${pct>20?'text-green-400':'text-red-400'}`}>₹{t.remaining_budget}L</span>
                                     </div>
+                                    {t.max_allowed_bid != null && <div className="flex justify-between text-[0.65rem] mt-1.5 pt-1.5 border-t border-slate-800">
+                                        <span className="text-slate-500 font-bold uppercase tracking-wide">Max Bid</span>
+                                        <span className="font-extrabold text-amber-400">₹{t.max_allowed_bid}L{t.reserved_purse>0 && <span className="text-slate-600 font-semibold"> · ₹{t.reserved_purse}L held</span>}</span>
+                                    </div>}
                                     {t.fulfillment && t.fulfillment.length>0 && <div className="flex flex-wrap gap-1 mt-2">
                                         {t.fulfillment.filter(f=>f.min>0).map((f,fi)=><span key={fi} className={`text-[0.5rem] font-bold px-1.5 py-0.5 rounded-full ${f.met?'bg-green-500/20 text-green-400 border border-green-500/30':'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>{f.category}:{f.have}/{f.min}</span>)}
                                     </div>}
@@ -1986,6 +2008,10 @@ function App() {
                             <div className="text-right"><div className="text-[0.55rem] text-slate-500 font-bold uppercase">Purse</div><div className={`fredoka font-bold text-base ${pct>20?'text-green-400':'text-red-400'}`}>₹{t.remaining_budget}L</div></div>
                         </div>
                         <div className="bg-slate-800 rounded-full h-1.5 overflow-hidden mb-2"><div className={`h-full rounded-full transition-all ${pct>50?'bg-green-400':pct>20?'bg-yellow-400':'bg-red-400'}`} style={{width:`${pct}%`}}></div></div>
+                        {t.max_allowed_bid != null && <div className="flex justify-between items-center text-[0.6rem] mb-2">
+                            <span className="text-slate-500 font-bold uppercase">Max Bid</span>
+                            <span className="font-extrabold text-amber-400">₹{t.max_allowed_bid}L{t.reserved_purse>0 && <span className="text-slate-600"> ·₹{t.reserved_purse}L held</span>}</span>
+                        </div>}
                         {t.fulfillment && t.fulfillment.filter(f=>f.min>0).length>0 && <div className="flex flex-wrap gap-1">
                             {t.fulfillment.filter(f=>f.min>0).map((f,fi)=><span key={fi} className={`text-[0.45rem] font-bold px-1.5 py-0.5 rounded-full ${f.met?'bg-green-500/20 text-green-400 border border-green-500/30':'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>{f.category}:{f.have}/{f.min}{f.met?'✓':'!'}</span>)}
                         </div>}

@@ -377,6 +377,25 @@ def restart_setup():
     conn.close()
     return jsonify({'success': True})
 
+# ─── Helper: Max Allowed Bid (reserve enough purse for remaining required slots) ───
+def compute_max_bid(rem_budget, current_count, rules_list, config_dict):
+    """A team must keep enough purse to fill its remaining required squad slots at
+    base price. Max bid on the current player = purse − (remaining slots after this
+    one) × base price. Returns (max_bid, target_squad, needed_players, reserved_spots,
+    reserved_purse, common_bp)."""
+    total_min_required = sum(r['min_per_team'] for r in rules_list)
+    configured_min = int(config_dict.get('min_players_per_team') or config_dict.get('target_squad_size') or 0)
+    target_squad = configured_min if configured_min > 0 else (total_min_required if total_min_required > 0 else 10)
+    common_bp = float(config_dict.get('common_base_price') or config_dict.get('default_base_price') or 50.0)
+    needed_players = max(0, target_squad - current_count)
+    if needed_players <= 1:
+        return round(rem_budget, 1), target_squad, needed_players, 0, 0.0, common_bp
+    reserved_spots = needed_players - 1
+    reserved_purse = round(reserved_spots * common_bp, 1)
+    max_bid = max(0.0, round(rem_budget - reserved_purse, 1))
+    return max_bid, target_squad, needed_players, reserved_spots, reserved_purse, common_bp
+
+
 # ─── Helper: Format Team Metrics with Max Allowed Bid & Reserved Purse ───
 def format_team_metrics(team_dict, players_list, rules_list, config_dict):
     td = dict(team_dict)
@@ -407,29 +426,14 @@ def format_team_metrics(team_dict, players_list, rules_list, config_dict):
         })
     td['fulfillment'] = fulfillment
 
-    # Target squad size (configured or sum of category minimums or default 10)
-    configured_min = int(config_dict.get('min_players_per_team') or config_dict.get('target_squad_size') or 0)
-    target_squad = configured_min if configured_min > 0 else (total_min_required if total_min_required > 0 else 10)
-    td['target_squad_size'] = target_squad
-    needed_players = max(0, target_squad - len(players))
-    td['needed_players'] = needed_players
-
-    # Common base price
-    common_bp = float(config_dict.get('common_base_price') or config_dict.get('default_base_price') or 50.0)
-    td['common_base_price'] = common_bp
-
-    # Max Allowed Bid calculation:
-    # If a team needs N players (including current one), they must reserve (N-1)*base_price for the remaining spots
+    # Max Allowed Bid — single source of truth (shared with sell enforcement)
     rem_budget = float(td['remaining_budget'])
-    if needed_players <= 1:
-        max_bid = rem_budget
-        reserved_spots = 0
-        reserved_purse = 0.0
-    else:
-        reserved_spots = needed_players - 1
-        reserved_purse = round(reserved_spots * common_bp, 1)
-        max_bid = max(0.0, round(rem_budget - reserved_purse, 1))
+    max_bid, target_squad, needed_players, reserved_spots, reserved_purse, common_bp = \
+        compute_max_bid(rem_budget, len(players), rules_list, config_dict)
 
+    td['target_squad_size'] = target_squad
+    td['needed_players'] = needed_players
+    td['common_base_price'] = common_bp
     td['max_allowed_bid'] = max_bid
     td['reserved_spots'] = reserved_spots
     td['reserved_purse'] = reserved_purse
@@ -1327,6 +1331,26 @@ def sell_player():
     if player['status'] == 'sold':
         conn.close()
         return jsonify({'error': '%s is already sold. Undo the previous sale first.' % player['name']}), 409
+
+    # ── Enforce Max Allowed Bid (reserve purse for remaining required slots) ──
+    # This also guarantees the team's purse can never go negative.
+    rules = c.execute('SELECT * FROM category_rules').fetchall()
+    cfg_rows = c.execute('SELECT * FROM config').fetchall()
+    cfg = {r['key']: r['value'] for r in cfg_rows}
+    current_count = c.execute("SELECT COUNT(*) as n FROM players WHERE team_id=? AND status='sold'", (tid,)).fetchone()['n']
+    rem_budget = float(team['remaining_budget'])
+    max_bid, _tsq, _need, _rspots, reserved_purse, common_bp = \
+        compute_max_bid(rem_budget, current_count, [dict(r) for r in rules], cfg)
+    if price > max_bid + 1e-6:
+        conn.close()
+        if reserved_purse > 0:
+            msg = ('Bid ₹%gL exceeds %s\'s max allowed bid of ₹%gL. '
+                   'They must keep ₹%gL reserved to fill remaining squad slots at ₹%gL base each.'
+                   % (price, team['name'], max_bid, reserved_purse, common_bp))
+        else:
+            msg = ('Bid ₹%gL exceeds %s\'s remaining purse of ₹%gL.'
+                   % (price, team['name'], max_bid))
+        return jsonify({'error': msg}), 400
 
     # Record in action_history for multi-level undo
     c.execute('''INSERT INTO action_history 
