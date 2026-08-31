@@ -1200,7 +1200,10 @@
 
     /* ── random draw ── */
     async function randomDraw() {
-      await refreshPlayers();
+      // Use the in-memory player list (kept fresh by background polling) so the
+      // draw is instant. Only block on a fetch if we have nothing cached yet.
+      if (!adminUnsoldPlayers.length) await refreshPlayers();
+      else refreshPlayers();  // refresh in the background, don't make the user wait
       if (!adminUnsoldPlayers.length) { toast('No unsold players remaining!', 'err'); return; }
       const pick = adminUnsoldPlayers[Math.floor(Math.random() * adminUnsoldPlayers.length)];
       playerPickModal.style.display = 'none';
@@ -1237,9 +1240,14 @@
 
     async function openPickModal() {
       playerPickSearch.value = '';
-      playerPickList.innerHTML = '<div class="pick-empty">Loading players...</div>';
       playerPickModal.style.display = 'flex';
-      await refreshPlayers();
+      // Render immediately from the cached list; refresh in the background.
+      if (!adminUnsoldPlayers.length) {
+        playerPickList.innerHTML = '<div class="pick-empty">Loading players...</div>';
+        await refreshPlayers();
+      } else {
+        refreshPlayers();
+      }
       buildPlayerList('');
     }
 
@@ -1474,7 +1482,9 @@
       if (mode === 'player') {
         spinTitle.textContent = 'DRAW PLAYER';
         spinSideTitle.textContent = 'INCLUDE IN DRAW';
-        await refreshPlayers();
+        // Use the cached list for an instant wheel; only block if nothing cached.
+        if (!adminUnsoldPlayers.length) await refreshPlayers();
+        else refreshPlayers();  // background refresh, non-blocking
         spinItems = adminUnsoldPlayers.map((p, i) => ({
           id: p.id, label: p.name, color: WHEEL_COLORS[i % WHEEL_COLORS.length], raw: p
         }));
