@@ -225,13 +225,23 @@ const CatBadge = ({ category }) => {
     return <span className="text-[0.65rem] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full shadow-sm" style={{background:color+'25',color:color,border:`1px solid ${color}55`}}>{category || 'General'}</span>;
 };
 
-const PlayerAttributesBadges = ({ attributes, max = 5, className = "" }) => {
+const PlayerAttributesBadges = ({ attributes, displayFields = [], max = 5, className = "" }) => {
     if (!attributes || typeof attributes !== 'object') return null;
-    const entries = Object.entries(attributes).filter(([k, v]) => {
+    const HIDDEN = ['name','photo','id','category','base_price','photo_url','team_id','sold_price','status','sold_at'];
+    let entries = Object.entries(attributes).filter(([k, v]) => {
         if (v === null || v === undefined || String(v).trim() === '') return false;
-        const kl = k.toLowerCase();
-        return !['name', 'photo', 'id', 'category', 'base_price', 'photo_url', 'team_id', 'sold_price', 'status', 'sold_at'].includes(kl);
+        if (HIDDEN.includes(k.toLowerCase())) return false;
+        return true;
     });
+    if (displayFields.length > 0) {
+        const allowed = displayFields.map(f => f.toLowerCase());
+        entries = entries.filter(([k]) => allowed.includes(k.toLowerCase()));
+        entries.sort(([a], [b]) => {
+            const ai = displayFields.findIndex(f => f.toLowerCase() === a.toLowerCase());
+            const bi = displayFields.findIndex(f => f.toLowerCase() === b.toLowerCase());
+            return ai - bi;
+        });
+    }
     if (entries.length === 0) return null;
 
     return (
@@ -564,6 +574,14 @@ const SetupWizard = ({ onComplete }) => {
     const [newTeamName, setNewTeamName] = useState('');
     const [defaultBudget, setDefaultBudget] = useState(1000);
 
+    // Step 5
+    const [displayFields, setDisplayFields] = useState([]);
+    const STANDARD_FIELDS = ['Plays As', 'How They Rate Themselves', 'How Often They Play', 'Availability', 'Can Also Play As', 'City / Area', 'Nickname'];
+    const toggleDisplayField = (f) => setDisplayFields(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
+    const excelColumns = importedPreview.length > 0
+        ? Object.keys(importedPreview[0].attributes || {}).filter(k => !['name','photo','id','category','base_price','photo_url','team_id','sold_price','status','sold_at'].includes(k.toLowerCase()))
+        : [];
+
     const updateCat = (i, field, val) => {
         const c = [...categories];
         c[i] = { ...c[i], [field]: field === 'category' ? val : (parseFloat(val) || 0) };
@@ -681,7 +699,7 @@ const SetupWizard = ({ onComplete }) => {
         await fetch('/api/config', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                config: { event_name: eventName, organisation_name: orgName, bid_increment: bidIncrement, common_base_price: basePrice, setup_done: 'true', sport_theme: sportTheme },
+                config: { event_name: eventName, organisation_name: orgName, bid_increment: bidIncrement, common_base_price: basePrice, setup_done: 'true', sport_theme: sportTheme, display_fields: JSON.stringify(displayFields) },
                 category_rules: categories.map(c => ({
                     category: c.category, base_price: basePrice,
                     min_per_team: c.per_team_min, max_per_team: c.per_team_max || 99,
@@ -699,6 +717,7 @@ const SetupWizard = ({ onComplete }) => {
         { label: 'Teams & Analysis', icon: 'fa-wand-magic-sparkles', color: 'from-blue-500 to-cyan-600' },
         { label: 'Category Rules', icon: 'fa-list-check', color: 'from-amber-500 to-orange-500' },
         { label: 'Team Names', icon: 'fa-shield-halved', color: 'from-green-500 to-emerald-600' },
+        { label: 'Player Card', icon: 'fa-id-card', color: 'from-pink-500 to-rose-600' },
     ];
 
     const canNext1 = eventName.trim().length > 0;
@@ -721,7 +740,7 @@ const SetupWizard = ({ onComplete }) => {
                             </p>
                         </div>
                     </div>
-                    <span className="text-xs font-extrabold text-zinc-400 bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800">Step {step} / 4</span>
+                    <span className="text-xs font-extrabold text-zinc-400 bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800">Step {step} / 5</span>
                 </div>
                 <div className="flex gap-1.5">
                     {stepMeta.map((s, i) => (
@@ -1036,12 +1055,55 @@ const SetupWizard = ({ onComplete }) => {
                     </div>
                 </div>}
 
+                {/* ── STEP 5: Player Card Fields ── */}
+                {step === 5 && <div className="space-y-5 anim-slideUp">
+                    <div>
+                        <h2 className="fredoka text-xl font-bold text-white mb-1">Player Card Display</h2>
+                        <p className="text-zinc-400 text-xs">Pick what teams see on the player card during bidding. Blank values are automatically hidden.</p>
+                    </div>
+
+                    {excelColumns.length > 0 && <div>
+                        <p className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider mb-2">From your Excel file</p>
+                        <div className="grid grid-cols-2 gap-2">
+                            {excelColumns.map(f => (
+                                <button key={f} type="button" onClick={() => toggleDisplayField(f)}
+                                    className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border-2 text-left transition-all text-xs font-bold ${displayFields.includes(f) ? 'border-amber-500 bg-amber-500/10 text-amber-300' : 'border-zinc-700 bg-zinc-950 text-zinc-400 hover:border-zinc-500'}`}>
+                                    <i className={`fa-solid ${displayFields.includes(f) ? 'fa-square-check text-amber-400' : 'fa-square text-zinc-600'} text-sm`}></i>
+                                    {f}
+                                </button>
+                            ))}
+                        </div>
+                    </div>}
+
+                    <div>
+                        <p className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider mb-1">Standard fields</p>
+                        <p className="text-[0.65rem] text-zinc-600 mb-2">Add these columns to your Google Form / Excel to use them</p>
+                        <div className="grid grid-cols-2 gap-2">
+                            {STANDARD_FIELDS.filter(f => !excelColumns.includes(f)).map(f => (
+                                <button key={f} type="button" onClick={() => toggleDisplayField(f)}
+                                    className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border-2 text-left transition-all text-xs font-bold ${displayFields.includes(f) ? 'border-pink-500 bg-pink-500/10 text-pink-300' : 'border-zinc-800 bg-zinc-950/50 text-zinc-500 hover:border-zinc-600'}`}>
+                                    <i className={`fa-solid ${displayFields.includes(f) ? 'fa-square-check text-pink-400' : 'fa-square text-zinc-700'} text-sm`}></i>
+                                    {f}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {displayFields.length === 0 && <p className="text-xs text-zinc-600 text-center py-2">Nothing selected — only name and category will show on the card.</p>}
+                    {displayFields.length > 0 && <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
+                        <p className="text-[0.65rem] text-zinc-500 uppercase font-bold tracking-wider mb-2">Will show on card:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                            {displayFields.map(f => <span key={f} className="text-[0.65rem] bg-zinc-800 text-zinc-300 px-2.5 py-1 rounded-lg font-bold">{f}</span>)}
+                        </div>
+                    </div>}
+                </div>}
+
                 {/* ── Nav ── */}
                 <div className="flex justify-between mt-8 pt-6 border-t border-zinc-800">
                     {step > 1
                         ? <button onClick={() => setStep(s => s - 1)} className="text-zinc-400 hover:text-white font-bold transition flex items-center gap-2 text-sm"><i className="fa-solid fa-arrow-left"></i> Back</button>
                         : <div />}
-                    {step < 4
+                    {step < 5
                         ? <button
                             disabled={(step===1 && !canNext1) || (step===2 && !canNext2) || (step===3 && !canNext3)}
                             onClick={() => { SFX.click(); setStep(s => s + 1); }}

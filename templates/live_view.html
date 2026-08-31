@@ -114,13 +114,23 @@
             return <span className="text-[0.65rem] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full" style={{ background: color + '25', color: color, border: `1px solid ${color}50` }}>{category}</span>;
         };
 
-        const PlayerAttributesBadges = ({ attributes, max = 5, className = "" }) => {
+        const PlayerAttributesBadges = ({ attributes, displayFields = [], max = 5, className = "" }) => {
             if (!attributes || typeof attributes !== 'object') return null;
-            const entries = Object.entries(attributes).filter(([k, v]) => {
+            const HIDDEN = ['name','photo','id','category','base_price','photo_url','team_id','sold_price','status','sold_at'];
+            let entries = Object.entries(attributes).filter(([k, v]) => {
                 if (v === null || v === undefined || String(v).trim() === '') return false;
-                const kl = k.toLowerCase();
-                return !['name', 'photo', 'id', 'category', 'base_price', 'photo_url', 'team_id', 'sold_price', 'status', 'sold_at'].includes(kl);
+                if (HIDDEN.includes(k.toLowerCase())) return false;
+                return true;
             });
+            if (displayFields.length > 0) {
+                const allowed = displayFields.map(f => f.toLowerCase());
+                entries = entries.filter(([k]) => allowed.includes(k.toLowerCase()));
+                entries.sort(([a], [b]) => {
+                    const ai = displayFields.findIndex(f => f.toLowerCase() === a.toLowerCase());
+                    const bi = displayFields.findIndex(f => f.toLowerCase() === b.toLowerCase());
+                    return ai - bi;
+                });
+            }
             if (entries.length === 0) return null;
 
             return (
@@ -199,6 +209,8 @@
             const eventName = data.config?.event_name || 'Live Auction';
             const orgName = data.config?.organisation_name || '';
             const orgLogo = data.config?.org_logo || '';
+            let displayFields = [];
+            try { displayFields = JSON.parse(data.config?.display_fields || '[]'); } catch(e) {}
 
             // Theme for the spectator screen. `auction_sport` is what the admin
             // picks on the stage; `sport_theme` is the setup-wizard preset.
@@ -367,7 +379,7 @@
                                         {/* Attributes Row */}
                                         <div className="mt-8 border-t border-zinc-800 pt-6 relative z-10">
                                             <div className={`${revealPhase >= 2 ? 'anim-slideInRight' : 'opacity-0'}`}>
-                                                <PlayerAttributesBadges attributes={state.attributes} max={8} className="justify-start md:justify-center" />
+                                                <PlayerAttributesBadges attributes={state.attributes} displayFields={displayFields} max={8} className="justify-start md:justify-center" />
                                             </div>
                                         </div>
                                     </div>
@@ -495,7 +507,7 @@
                                                                     <div className="flex items-center gap-1 mt-0.5">
                                                                         {p.category && <CatBadge category={p.category} />}
                                                                     </div>
-                                                                    {p.attributes && <PlayerAttributesBadges attributes={p.attributes} max={2} className="mt-1" />}
+                                                                    {p.attributes && <PlayerAttributesBadges attributes={p.attributes} displayFields={displayFields} max={2} className="mt-1" />}
                                                                 </div>
                                                                 <div className="fredoka font-bold text-amber-400 text-xs">₹{p.sold_price}L</div>
                                                             </div>
@@ -548,7 +560,7 @@
                                             <PlayerPhoto url={p.photo_url} name={p.name} size={64} />
                                             <h4 className="font-extrabold text-white text-sm mt-3 line-clamp-1">{p.name}</h4>
                                             <div className="mt-1.5">{p.category && <CatBadge category={p.category} />}</div>
-                                            {p.attributes && <PlayerAttributesBadges attributes={p.attributes} max={2} className="mt-1.5 justify-center" />}
+                                            {p.attributes && <PlayerAttributesBadges attributes={p.attributes} displayFields={displayFields} max={2} className="mt-1.5 justify-center" />}
                                             <div className="mt-2 text-xs text-zinc-400 font-bold bg-zinc-950 px-3 py-1 rounded-full border border-zinc-800">
                                                 Base: <span className="text-white font-bold">₹{p.base_price}L</span>
                                             </div>
@@ -575,7 +587,7 @@
                                                     {p.category && <CatBadge category={p.category} />}
                                                     <span className="text-xs text-zinc-400 font-bold">→ {p.team_name}</span>
                                                 </div>
-                                                {p.attributes && <PlayerAttributesBadges attributes={p.attributes} max={2} className="mt-1" />}
+                                                {p.attributes && <PlayerAttributesBadges attributes={p.attributes} displayFields={displayFields} max={2} className="mt-1" />}
                                             </div>
                                             <div className="text-right">
                                                 <div className="text-[0.6rem] text-zinc-500 font-bold uppercase">Sold for</div>
