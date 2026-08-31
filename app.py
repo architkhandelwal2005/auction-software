@@ -265,7 +265,7 @@ def auth_login():
     password = data.get('password', '').strip()
     
     if role == 'admin':
-        if password.lower() == 'admin':
+        if password == 'admin@123':
             session['user'] = 'admin'
             session['role'] = 'admin'
             return jsonify({'success': True, 'url': '/admin'})

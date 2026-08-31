@@ -1414,7 +1414,10 @@ function App() {
         const res = await fetch('/api/setup/restart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wipe_all:true, password:pwd})});
         const json = await res.json();
         if(!res.ok || json.error){ alert('Incorrect password. Wipe cancelled.'); return; }
-        window.location.reload();
+        // Reset local state and go straight to the setup wizard (no reliance on reload/detection)
+        setTeams([]); setPlayers([]); setStats({}); setConfig({}); setCatRules([]);
+        setCurrentPlayer(null); setSavedAuctionState(null); setCurrentBid(0);
+        setView('wizard');
     };
 
     const resetAuction = async () => { if(confirm('⚠️ Reset entire auction?')){await fetch('/api/reset',{method:'POST'});await loadData();setCurrentPlayer(null);} };
