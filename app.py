@@ -65,10 +65,10 @@ class _PGConn:
     def commit(self):   self._r.commit()
     def rollback(self): self._r.rollback()
     def close(self):
-        if not self._closed:
-            try: self._r.close()
-            except Exception: pass
-            self._closed = True
+        # No-op: pooled connections are returned to the pool by the request
+        # teardown (close_db), never closed by endpoint code. Closing here would
+        # drain the pool one connection at a time.
+        self._closed = True
 
 # ── Google Sheets async push ─────────────────────────────────────────────────
 def _sheets_push(payload):
@@ -106,11 +106,23 @@ def _asset_version():
 def inject_asset_version():
     return {'asset_v': _asset_version()}
 
+# ── PostgreSQL connection pool ──
+# Reuse warm connections instead of opening a fresh one per request (a fresh
+# connect to a remote DB costs ~0.5s). This is the single biggest speed win for
+# the deployed/cloud app. Each gunicorn worker gets its own small pool.
+_pg_pool = None
+def _get_pg_pool():
+    global _pg_pool
+    if _pg_pool is None:
+        import psycopg2.pool
+        _pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 10, DATABASE_URL)
+    return _pg_pool
+
 def get_db():
     if 'db' not in g:
         if USE_PG:
-            import psycopg2
-            g.db = _PGConn(psycopg2.connect(DATABASE_URL))
+            raw = _get_pg_pool().getconn()
+            g.db = _PGConn(raw)
         else:
             g.db = sqlite3.connect(DB_FILE, timeout=20, check_same_thread=False)
             g.db.row_factory = sqlite3.Row
@@ -120,7 +132,20 @@ def get_db():
 @app.teardown_appcontext
 def close_db(exception=None):
     db = g.pop('db', None)
-    if db is not None:
+    if db is None:
+        return
+    if USE_PG:
+        # Always reset transaction state before returning to the pool, so a
+        # connection is never handed back "idle in transaction" (which would
+        # hold locks and stall the next request). Then return it to the pool
+        # instead of closing — this is what makes reuse fast.
+        try: db._r.rollback()
+        except Exception: pass
+        try: _get_pg_pool().putconn(db._r)
+        except Exception:
+            try: db._r.close()
+            except Exception: pass
+    else:
         if exception:
             try: db.rollback()
             except Exception: pass
