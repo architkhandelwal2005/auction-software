@@ -299,6 +299,7 @@
     playerZone.innerHTML = html;
 
     paintPlayer();
+    fitPlayerCard();
   }
 
 
@@ -355,6 +356,8 @@
       }
     }
     paintPhoto();
+    // Re-fit: the must-have line length changes the card height per player.
+    fitPlayerCard();
   }
 
   let lastPrice = null;
@@ -789,16 +792,38 @@
   }
 
   function fitStage() {
-    // The admin bar lives outside the stage at native size, so the canvas gets
-    // the space above it. Centre explicitly so it can never drift off-screen.
+    // The admin controls float over the stage as a compact bottom-right card,
+    // so the canvas gets the FULL window — the player template runs full screen.
     const panel = document.getElementById('adminPanel');
-    const reserved = (panel && panel.style.display !== 'none') ? panel.offsetHeight : 0;
-    const availH = Math.max(200, window.innerHeight - reserved);
+    const panelH = (panel && panel.style.display !== 'none') ? panel.offsetHeight : 0;
+    const availH = Math.max(200, window.innerHeight);
     const scale = Math.min(window.innerWidth / 1920, availH / 1080);
     stage.style.top = (availH / 2) + 'px';
     stage.style.transform = `translate(-50%,-50%) scale(${scale})`;
-    document.documentElement.style.setProperty('--admin-h', reserved + 'px');
+    document.documentElement.style.setProperty('--admin-h', panelH + 'px');
+    // Keep the stage content clear of the floating controls. The panel is in
+    // real pixels, the grid in 1920x1080 stage units — convert with the scale.
+    const clear = panelH ? Math.min(320, Math.round((panelH + 26) / scale)) : 44;
+    document.documentElement.style.setProperty('--grid-bottom', clear + 'px');
+    fitPlayerCard();
   }
+
+  /* Shrink the player card if it is taller/wider than its zone, so the photo
+     stays fully visible and vertically centred for every template and any
+     photo aspect. `zoom` is used rather than `transform` because several
+     templates already use transform for rotation/scale. */
+  function fitPlayerCard() {
+    const zone = document.getElementById('playerZone');
+    const art = zone && zone.firstElementChild;
+    if (!art) return;
+    art.style.zoom = '';
+    const zh = zone.clientHeight, zw = zone.clientWidth;
+    const ah = art.offsetHeight, aw = art.offsetWidth;
+    if (!zh || !zw || !ah || !aw) return;
+    const s = Math.min(1, zh / ah, zw / aw);
+    if (s < 0.999) art.style.zoom = s;
+  }
+  window.__fitPlayerCard = fitPlayerCard;
   // Expose so the admin panel can re-fit after it becomes visible / changes height
   window.__fitStage = fitStage;
 

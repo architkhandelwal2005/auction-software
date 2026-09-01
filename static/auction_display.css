@@ -2061,3 +2061,83 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 .pbe-cat { color:#c9ff3f; }
 .pbh-cat { color:#d9b06a; text-align:center; }
 .tpl-pb-sun .mh { margin-top:10px; font-size:18px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   FULL-SCREEN STAGE + COMPACT FLOATING ADMIN CONTROLS
+   The admin bar used to be a full-width strip that stole ~136px of window
+   height (shrinking the whole 1920x1080 canvas). It is now a compact card
+   floating at the bottom-right, so the player template gets the full screen.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Reclaim vertical space: content is centred in the taller grid, and the
+   bottom band is left clear for the floating controls + "presented by". */
+.main-grid { top:96px !important; bottom:var(--grid-bottom, 108px) !important; }
+
+/* ---- Player card: vertically centred, auto-scaled by fitPlayerCard() ---- */
+.player-zone { align-items:center !important; }
+.player-zone > * { max-width:100%; }
+
+/* ---- Team purse panel: always fits, whatever the team count ---- */
+.purse-panel {
+  align-self:stretch !important;
+  max-height:100% !important;
+  display:flex !important; flex-direction:column !important;
+  overflow:hidden !important;
+}
+.team-rows {
+  flex:1 1 auto !important; min-height:0 !important;
+  display:flex !important; flex-direction:column !important;
+  justify-content:center !important;
+  gap:11px !important; overflow:hidden !important;
+}
+.team-row {
+  flex:1 1 0 !important;
+  min-height:56px !important; max-height:116px !important;
+}
+
+/* "Presented by" sits in the clear bottom band, never over the price. */
+.presented-by { bottom:26px !important; }
+
+/* ---- COMPACT FLOATING ADMIN CARD (bottom-right) ---- */
+.admin-panel {
+  left:auto !important; right:14px !important; bottom:14px !important;
+  width:auto !important; max-width:min(96vw, 1180px);
+  border:1px solid rgba(255,255,255,.12) !important;
+  border-radius:16px !important;
+  box-shadow:0 18px 50px rgba(0,0,0,.6) !important;
+  background:rgba(4,10,22,.93) !important;
+}
+.admin-bar {
+  gap:9px !important; padding:9px 12px !important; min-height:0 !important;
+  flex-wrap:wrap !important; justify-content:flex-end !important;
+}
+/* Bid strip + action buttons share ONE compact row */
+.admin-active-bar { flex-wrap:wrap !important; justify-content:flex-end !important; gap:10px !important; }
+.admin-active-bar .admin-bid-strip { gap:5px !important; }
+.admin-active-bar .admin-actions-strip { gap:6px !important; }
+
+/* Smaller controls so the whole card stays out of the way */
+.admin-panel .admin-btn {
+  padding:7px 12px !important; font-size:11.5px !important;
+  letter-spacing:.4px !important; border-radius:9px !important;
+}
+.admin-panel .admin-bid-btn {
+  padding:6px 10px !important; font-size:12px !important; min-width:0 !important;
+  border-radius:8px !important;
+}
+.admin-panel .admin-bid-amount {
+  width:86px !important; font-size:19px !important; padding:4px 6px !important;
+  border-radius:9px !important;
+}
+.admin-panel .admin-team-sel {
+  padding:6px 9px !important; font-size:11.5px !important; border-radius:9px !important;
+}
+.admin-panel .admin-team-sel-wide { min-width:150px !important; }
+.admin-panel .admin-label { font-size:10px !important; letter-spacing:2px !important; }
+.admin-panel .admin-stats { margin-left:8px !important; font-size:10.5px !important; }
+
+/* The grid row must never exceed the grid container: without this the row is
+   sized by the tallest child (the player card), so the purse panel stretched
+   past the bottom of the stage and collided with the floating controls. */
+.main-grid { grid-template-rows:minmax(0,1fr) !important; align-items:center !important; }
+.main-grid > * { min-height:0 !important; }
