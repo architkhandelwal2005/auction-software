@@ -74,7 +74,7 @@ const TeamApp = () => {
     // ─── MAX BID & STRATEGY ───
     // Use the server's authoritative values so the team page can never disagree
     // with what the admin/auctioneer actually enforces on a sale.
-    const basePrice = team.common_base_price != null ? team.common_base_price : parseFloat(config.common_base_price || 50);
+    const basePrice = team.common_base_price != null ? team.common_base_price : parseFloat(config.common_base_price || 10);
     const currentSquadSize = team.players ? team.players.length : 0;
     const remainingSlots = team.needed_players != null ? team.needed_players : 0;
     const reservedFunds = team.reserved_purse != null ? team.reserved_purse : 0;

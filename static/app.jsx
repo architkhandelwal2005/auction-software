@@ -559,7 +559,7 @@ const SetupWizard = ({ onComplete }) => {
     // Step 2
     const [numTeams, setNumTeams] = useState(4);
     const [numSplits, setNumSplits] = useState(3);
-    const [basePrice, setBasePrice] = useState(50);
+    const [basePrice, setBasePrice] = useState(10);
     const [splitColumns, setSplitColumns] = useState([]); // which Excel columns to divide players by
     const [columnBins, setColumnBins] = useState({});     // {column: n_bins} for numeric columns
     const [analyzing, setAnalyzing] = useState(false);

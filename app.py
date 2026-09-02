@@ -194,7 +194,7 @@ def _init_db_sqlite():
             c.execute(f"ALTER TABLE players ADD COLUMN {col} {typ}")
     cfg_count = c.execute("SELECT COUNT(*) as c FROM config").fetchone()['c']
     if cfg_count == 0:
-        for k, v in {'event_name': 'Premier Auction 2026', 'common_base_price': '50',
+        for k, v in {'event_name': 'Premier Auction 2026', 'common_base_price': '10',
                      'min_players_per_team': '10', 'bid_increment': '2.5', 'setup_done': 'false'}.items():
             c.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (k, v))
     conn.commit()
@@ -236,7 +236,7 @@ def _init_db_pg():
     # Seed config
     cur.execute("SELECT COUNT(*) FROM config")
     if cur.fetchone()[0] == 0:
-        for k, v in {'event_name': 'Premier Auction 2026', 'common_base_price': '50',
+        for k, v in {'event_name': 'Premier Auction 2026', 'common_base_price': '10',
                      'min_players_per_team': '10', 'bid_increment': '2.5', 'setup_done': 'false'}.items():
             cur.execute("INSERT INTO config (key, value) VALUES (%s, %s) ON CONFLICT (key) DO NOTHING", (k, v))
     conn.commit()
@@ -428,7 +428,7 @@ def compute_max_bid(rem_budget, current_count, rules_list, config_dict):
     total_min_required = sum(r['min_per_team'] for r in rules_list)
     configured_min = int(config_dict.get('min_players_per_team') or config_dict.get('target_squad_size') or 0)
     target_squad = configured_min if configured_min > 0 else (total_min_required if total_min_required > 0 else 10)
-    common_bp = float(config_dict.get('common_base_price') or config_dict.get('default_base_price') or 50.0)
+    common_bp = float(config_dict.get('common_base_price') or config_dict.get('default_base_price') or 10.0)
     needed_players = max(0, target_squad - current_count)
     if needed_players <= 1:
         return round(rem_budget, 1), target_squad, needed_players, 0, 0.0, common_bp
@@ -860,7 +860,7 @@ def evaluate_row_category(row_dict, rule_config, default_category='General'):
     return fallback
 
 
-def parse_auction_file(file_storage, default_base_price=50.0):
+def parse_auction_file(file_storage, default_base_price=10.0):
     """Legacy parser preserved for simple imports"""
     headers, dict_rows, _ = read_raw_auction_file(file_storage)
     if not dict_rows:
@@ -974,7 +974,7 @@ def preview_categorization():
     name_col = data.get('name_column') or headers[0]
     photo_col = data.get('photo_column')
     base_price_col = data.get('base_price_column')
-    default_bp = float(data.get('default_base_price', 50))
+    default_bp = float(data.get('default_base_price', 10))
     rule_config = data.get('rule_config', {'mode': 'column', 'column': headers[1] if len(headers) > 1 else headers[0]})
 
     cat_counts = {}
@@ -1058,7 +1058,7 @@ def apply_and_launch():
     name_col = data.get('name_column') or headers[0]
     photo_col = data.get('photo_column')
     base_price_col = data.get('base_price_column')
-    default_bp = float(data.get('default_base_price', 50))
+    default_bp = float(data.get('default_base_price', 10))
     rule_config = data.get('rule_config', {'mode': 'column', 'column': headers[1] if len(headers) > 1 else headers[0]})
     user_cat_rules = {r['category']: r for r in data.get('category_rules', [])}
 
@@ -1161,7 +1161,7 @@ def import_players():
     conn = get_db()
     c = conn.cursor()
     cfg_bp_row = c.execute('SELECT value FROM config WHERE key="common_base_price"').fetchone()
-    default_bp = float(cfg_bp_row['value']) if cfg_bp_row else 50.0
+    default_bp = float(cfg_bp_row['value']) if cfg_bp_row else 10.0
 
     try:
         items = parse_auction_file(file, default_base_price=default_bp)
@@ -1266,7 +1266,7 @@ def load_preset():
     c.execute('UPDATE config SET value=? WHERE key="event_name"', (event_name,))
 
     cfg_bp_row = c.execute('SELECT value FROM config WHERE key="common_base_price"').fetchone()
-    default_bp = float(cfg_bp_row['value']) if cfg_bp_row else 50.0
+    default_bp = float(cfg_bp_row['value']) if cfg_bp_row else 10.0
 
     count = 0
     cat_counts = {}
@@ -1934,7 +1934,7 @@ def smart_analyze():
 
     num_teams  = max(1, int(request.form.get('num_teams', 4)))
     num_splits = max(2, min(4, int(request.form.get('num_splits', 3))))
-    base_price_val = float(request.form.get('base_price', 50.0))
+    base_price_val = float(request.form.get('base_price', 10.0))
 
     file = request.files['file']
     try:
