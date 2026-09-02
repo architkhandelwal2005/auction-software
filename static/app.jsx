@@ -570,6 +570,13 @@ const SetupWizard = ({ onComplete }) => {
     // Step 3
     const [categories, setCategories] = useState([]);
     const [newCat, setNewCat] = useState('');
+    // The squad size a team must fill (drives the Max-Bid reserve). This is a
+    // SEPARATE condition from category quotas: total players ÷ teams. Category
+    // minimums can under-count it whenever a category doesn't divide evenly
+    // (its leftover players become flex/max, not min) — so this must never be
+    // derived by summing category minimums.
+    const [targetSquadSize, setTargetSquadSize] = useState(0);
+    const [targetSquadTouched, setTargetSquadTouched] = useState(false);
 
     // Step 4
     const [teams, setTeams] = useState([]);
@@ -720,6 +727,14 @@ const SetupWizard = ({ onComplete }) => {
                     count: s.count,
                     description: s.description,
                 })));
+                // Target squad size = Total Players / Teams. Independent of category
+                // quotas, which can under-count it when a category doesn't divide
+                // evenly (see note on state declaration). Only set the default if
+                // the organiser hasn't typed their own value.
+                if (!targetSquadTouched) {
+                    const total = d.total_players || uploadedCount || 0;
+                    setTargetSquadSize(numTeams > 0 ? Math.floor(total / numTeams) : 0);
+                }
                 if (teams.length === 0) {
                     setTeams(Array.from({ length: numTeams }, (_, i) => ({
                         name: `Team ${i + 1}`,
@@ -735,13 +750,14 @@ const SetupWizard = ({ onComplete }) => {
     };
 
     const finish = async () => {
-        // The true minimum squad size is the sum of every category's per-team minimum.
-        // This drives the Max-Allowed-Bid reserve calculation on the server.
-        const minSquad = categories.reduce((sum, c) => sum + (parseInt(c.per_team_min) || 0), 0);
+        // Squad size (Total Players / Teams) drives the Max-Allowed-Bid reserve on
+        // the server. It is set independently in Step 3 — NOT summed from category
+        // minimums, which under-count it whenever a category has flex/leftover
+        // players (their remainder goes to max, not min).
         await fetch('/api/config', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                config: { event_name: eventName, organisation_name: orgName, bid_increment: bidIncrement, common_base_price: basePrice, setup_done: 'true', sport_theme: sportTheme, display_fields: JSON.stringify(displayFields), min_players_per_team: String(minSquad || 0) },
+                config: { event_name: eventName, organisation_name: orgName, bid_increment: bidIncrement, common_base_price: basePrice, setup_done: 'true', sport_theme: sportTheme, display_fields: JSON.stringify(displayFields), min_players_per_team: String(targetSquadSize || 0) },
                 category_rules: categories.map(c => ({
                     category: c.category, base_price: basePrice,
                     min_per_team: c.per_team_min, max_per_team: c.per_team_max || 99,
@@ -1050,6 +1066,32 @@ const SetupWizard = ({ onComplete }) => {
                     <div>
                         <h2 className="fredoka text-xl font-bold text-white mb-1">Review Category Rules</h2>
                         <p className="text-zinc-400 text-xs">Edit minimum players per team for each category. All base prices are ₹{basePrice}L (uniform).</p>
+                    </div>
+
+                    {/* Target Squad Size — SEPARATE from category quotas below. Drives the
+                        Max Allowed Bid reserve. Category minimums can add up to less than
+                        this whenever a category doesn't divide evenly (its remainder becomes
+                        flex/max, not min), so this is never derived from summing them. */}
+                    <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-2xl p-4">
+                        <div className="flex items-center justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                                <label className="text-xs font-extrabold text-indigo-300 uppercase tracking-wider block mb-1">Target Squad Size (per team)</label>
+                                <p className="text-[0.65rem] text-zinc-400 leading-tight">Total players ÷ teams. Every team must fill this many spots — separate from the category quotas below, which can leave flex slots unassigned.</p>
+                            </div>
+                            <input type="number" min="1" className="w-20 bg-zinc-950 border-2 border-indigo-500/50 rounded-xl py-2.5 text-2xl font-bold text-white text-center outline-none focus:border-indigo-400 fredoka shrink-0"
+                                value={targetSquadSize}
+                                onChange={e => { setTargetSquadTouched(true); setTargetSquadSize(parseInt(e.target.value) || 0); }} />
+                        </div>
+                        {(() => {
+                            const catMinSum = categories.reduce((s, c) => s + (parseInt(c.per_team_min) || 0), 0);
+                            if (catMinSum !== targetSquadSize) {
+                                return <p className="text-[0.65rem] text-amber-400 font-bold mt-2 flex items-center gap-1.5">
+                                    <i className="fa-solid fa-triangle-exclamation"></i>
+                                    Category minimums add up to {catMinSum}/team — the other {Math.max(0, targetSquadSize - catMinSum)} come from flex slots during the auction.
+                                </p>;
+                            }
+                            return null;
+                        })()}
                     </div>
 
                     <div className="grid grid-cols-[1fr_50px_50px_20px] md:grid-cols-[1fr_60px_60px_24px] gap-2 px-1 text-[0.6rem] font-extrabold text-zinc-500 uppercase tracking-widest">
