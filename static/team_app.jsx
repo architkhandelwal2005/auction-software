@@ -239,6 +239,12 @@ const TeamApp = () => {
                     <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
                         <h3 className="fredoka text-lg font-bold mb-4 flex items-center gap-2"><i className="fa-solid fa-list-check text-amber-500"></i> Minimum Quotas</h3>
                         <div className="space-y-3">
+                            {team.target_squad_size > 0 && <div className="flex items-center justify-between pb-3 mb-1 border-b border-zinc-800">
+                                <span className="text-sm font-bold text-zinc-300">Full Squad</span>
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${currentSquadSize>=team.target_squad_size ? 'bg-emerald-500/20 text-emerald-400' : 'bg-indigo-500/20 text-indigo-300'}`}>
+                                    {currentSquadSize} / {team.target_squad_size}
+                                </span>
+                            </div>}
                             {strategy.map((s, i) => (
                                 <div key={i} className="flex items-center justify-between">
                                     <span className="text-sm font-bold text-zinc-300">{s.category}</span>

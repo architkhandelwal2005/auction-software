@@ -1795,7 +1795,9 @@ function App() {
                                         <div className={`h-full rounded-full transition-all duration-700 ${pct>50?'bg-green-400':pct>20?'bg-yellow-400':'bg-red-400'}`} style={{width:`${pct}%`}}></div>
                                     </div>
                                     <div className="flex justify-between text-xs">
-                                        <span className="text-slate-400 font-bold">{t.player_count||0} players</span>
+                                        <span className={`font-bold ${t.target_squad_size ? (t.player_count>=t.target_squad_size ? 'text-green-400' : 'text-slate-400') : 'text-slate-400'}`}>
+                                            {t.player_count||0}{t.target_squad_size ? `/${t.target_squad_size}` : ''} players
+                                        </span>
                                         <span className={`font-extrabold ${pct>20?'text-green-400':'text-red-400'}`}>₹{t.remaining_budget}L</span>
                                     </div>
                                     {t.max_allowed_bid != null && <div className="flex justify-between text-[0.65rem] mt-1.5 pt-1.5 border-t border-slate-800">
@@ -1803,7 +1805,8 @@ function App() {
                                         <span className="font-extrabold text-amber-400">₹{t.max_allowed_bid}L{t.reserved_purse>0 && <span className="text-slate-600 font-semibold"> · ₹{t.reserved_purse}L held</span>}</span>
                                     </div>}
                                     {t.fulfillment && t.fulfillment.length>0 && <div className="flex flex-wrap gap-1 mt-2">
-                                        {t.fulfillment.filter(f=>f.min>0).map((f,fi)=><span key={fi} className={`text-[0.5rem] font-bold px-1.5 py-0.5 rounded-full ${f.met?'bg-green-500/20 text-green-400 border border-green-500/30':'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>{f.category}:{f.have}/{f.min}</span>)}
+                                        {t.target_squad_size > 0 && <span className={`text-[0.5rem] font-bold px-1.5 py-0.5 rounded-full border ${t.player_count>=t.target_squad_size?'bg-green-500/20 text-green-400 border-green-500/30':'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'}`}>Squad:{t.player_count||0}/{t.target_squad_size}</span>}
+                                        {t.fulfillment.map((f,fi)=><span key={fi} className={`text-[0.5rem] font-bold px-1.5 py-0.5 rounded-full ${f.met?'bg-green-500/20 text-green-400 border border-green-500/30':'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>{f.category}:{f.have}/{f.min}</span>)}
                                     </div>}
                                 </div>;
                             })}
@@ -2102,7 +2105,7 @@ function App() {
                                 <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-md" style={{background:t.color||'#3b82f6'}}>
                                     {t.logo_url ? <img src={t.logo_url} className="w-5 h-5 object-contain" /> : t.name[0]}
                                 </div>
-                                <div><h4 className="font-extrabold text-white text-xs truncate max-w-[130px]">{t.name}</h4><span className="text-[0.6rem] text-slate-500 font-bold">{t.player_count||0} players</span></div>
+                                <div><h4 className="font-extrabold text-white text-xs truncate max-w-[130px]">{t.name}</h4><span className="text-[0.6rem] text-slate-500 font-bold">{t.player_count||0}{t.target_squad_size ? `/${t.target_squad_size}` : ''} players</span></div>
                             </div>
                             <div className="text-right"><div className="text-[0.55rem] text-slate-500 font-bold uppercase">Purse</div><div className={`fredoka font-bold text-base ${pct>20?'text-green-400':'text-red-400'}`}>₹{t.remaining_budget}L</div></div>
                         </div>
@@ -2111,8 +2114,9 @@ function App() {
                             <span className="text-slate-500 font-bold uppercase">Max Bid</span>
                             <span className="font-extrabold text-amber-400">₹{t.max_allowed_bid}L{t.reserved_purse>0 && <span className="text-slate-600"> ·₹{t.reserved_purse}L held</span>}</span>
                         </div>}
-                        {t.fulfillment && t.fulfillment.filter(f=>f.min>0).length>0 && <div className="flex flex-wrap gap-1">
-                            {t.fulfillment.filter(f=>f.min>0).map((f,fi)=><span key={fi} className={`text-[0.45rem] font-bold px-1.5 py-0.5 rounded-full ${f.met?'bg-green-500/20 text-green-400 border border-green-500/30':'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>{f.category}:{f.have}/{f.min}{f.met?'✓':'!'}</span>)}
+                        {t.fulfillment && t.fulfillment.length>0 && <div className="flex flex-wrap gap-1">
+                            {t.target_squad_size > 0 && <span className={`text-[0.45rem] font-bold px-1.5 py-0.5 rounded-full border ${t.player_count>=t.target_squad_size?'bg-green-500/20 text-green-400 border-green-500/30':'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'}`}>Squad:{t.player_count||0}/{t.target_squad_size}</span>}
+                            {t.fulfillment.map((f,fi)=><span key={fi} className={`text-[0.45rem] font-bold px-1.5 py-0.5 rounded-full ${f.met?'bg-green-500/20 text-green-400 border border-green-500/30':'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>{f.category}:{f.have}/{f.min}{f.met?'✓':'!'}</span>)}
                         </div>}
                         {t.players && t.players.length>0 && <div className="flex -space-x-1.5 mt-2">
                             {t.players.slice(0,6).map(p=><PlayerPhoto key={p.id} url={p.photo_url} name={p.name} size={26} />)}
