@@ -83,9 +83,73 @@ def _sheets_push(payload):
 def sheets_push_async(payload):
     threading.Thread(target=_sheets_push, args=(payload,), daemon=True).start()
 
+# ── Local Excel backup ──────────────────────────────────────────────────────
+# Whenever running locally (no cloud DB, or even with one — this is a belt-
+# and-braces backup), rewrite a full snapshot of the auction to a local .xlsx
+# after every sale/undo/edit/reset. Runs in a background thread with its own
+# DB connection so it never blocks or breaks the actual auction action, and
+# a failure here is only logged, never surfaced to the user.
+EXCEL_BACKUP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'auction_backup.xlsx')
+
+def _write_excel_backup():
+    try:
+        import openpyxl
+        if USE_PG:
+            import psycopg2, psycopg2.extras
+            raw = psycopg2.connect(DATABASE_URL)
+            cur = raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        else:
+            raw = sqlite3.connect(DB_FILE, timeout=20)
+            raw.row_factory = sqlite3.Row
+            cur = raw.cursor()
+
+        cur.execute('SELECT * FROM teams ORDER BY id')
+        teams = [dict(r) for r in cur.fetchall()]
+        cur.execute('SELECT * FROM players ORDER BY id')
+        players = [dict(r) for r in cur.fetchall()]
+        raw.close()
+        team_by_id = {t['id']: t for t in teams}
+
+        wb = openpyxl.Workbook()
+
+        ws1 = wb.active
+        ws1.title = 'Sold Players'
+        ws1.append(['Name', 'Category', 'Base Price', 'Sold Price', 'Team', 'Sold At'])
+        sold = [p for p in players if p.get('status') == 'sold']
+        for p in sorted(sold, key=lambda x: str(x.get('sold_at') or '')):
+            ws1.append([p.get('name'), p.get('category') or '', p.get('base_price') or 0,
+                        p.get('sold_price') or 0, team_by_id.get(p.get('team_id'), {}).get('name', ''),
+                        str(p.get('sold_at') or '')])
+
+        ws2 = wb.create_sheet('All Players')
+        ws2.append(['Name', 'Category', 'Base Price', 'Status', 'Team', 'Sold Price'])
+        for p in players:
+            ws2.append([p.get('name'), p.get('category') or '', p.get('base_price') or 0,
+                        p.get('status') or '', team_by_id.get(p.get('team_id'), {}).get('name', ''),
+                        p.get('sold_price') or ''])
+
+        ws3 = wb.create_sheet('Teams')
+        ws3.append(['Team', 'Total Budget', 'Remaining Budget', 'Spent', 'Players Bought'])
+        for t in teams:
+            spent = (t.get('total_budget') or 0) - (t.get('remaining_budget') or 0)
+            count = sum(1 for p in players if p.get('team_id') == t['id'] and p.get('status') == 'sold')
+            ws3.append([t.get('name'), t.get('total_budget') or 0, t.get('remaining_budget') or 0, spent, count])
+
+        for ws in (ws1, ws2, ws3):
+            for col_cells in ws.columns:
+                length = max((len(str(c.value)) for c in col_cells if c.value is not None), default=10)
+                ws.column_dimensions[col_cells[0].column_letter].width = min(40, max(10, length + 2))
+
+        wb.save(EXCEL_BACKUP_PATH)
+    except Exception as e:
+        print(f'[Excel Backup] failed: {e}', flush=True)
+
+def excel_backup_async():
+    threading.Thread(target=_write_excel_backup, daemon=True).start()
+
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = 'super_secret_auction_pro_key_2026'
-DB_FILE = 'auction.db'
+DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'auction.db')
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -1422,6 +1486,7 @@ def sell_player():
     c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_sold_photo', ?)", (player['photo_url'] or '',))
     conn.commit()
     conn.close()
+    excel_backup_async()
     # Push to Google Sheets in background (non-blocking)
     sheets_push_async({
         'player_name': player['name'],
@@ -1485,6 +1550,7 @@ def undo_last_sale():
         rem_history = c.execute('SELECT COUNT(*) as c FROM action_history').fetchone()['c']
         conn.commit()
         conn.close()
+        excel_backup_async()
         return jsonify({
             'success': True,
             'player': player_dict,
@@ -1518,6 +1584,7 @@ def undo_last_sale():
 
         conn.commit()
         conn.close()
+        excel_backup_async()
         return jsonify({
             'success': True,
             'player': player_dict,
@@ -1579,6 +1646,7 @@ def edit_player_sale():
 
     conn.commit()
     conn.close()
+    excel_backup_async()
     return jsonify({'success': True})
 
 @app.route('/api/reset', methods=['POST'])
@@ -1591,6 +1659,7 @@ def reset_auction():
     c.execute('DELETE FROM action_history')
     conn.commit()
     conn.close()
+    excel_backup_async()
     return jsonify({'success': True})
 
 # ─── Google Sheets sync ───
@@ -2318,6 +2387,7 @@ def pass_player():
     c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_passed_photo', ?)", (player['photo_url'] or '',))
     conn.commit()
     conn.close()
+    excel_backup_async()
     return jsonify({'success': True, 'player_name': player['name']})
 
 @app.route('/api/action/revive', methods=['POST'])
@@ -2337,6 +2407,7 @@ def revive_player():
         c.execute('UPDATE players SET status="unsold" WHERE id=?', (player_id,))
     conn.commit()
     conn.close()
+    excel_backup_async()
     return jsonify({'success': True})
 
 @app.route('/api/action/bargain_bin', methods=['POST'])
@@ -2351,6 +2422,7 @@ def bargain_bin():
             c.execute("UPDATE players SET base_price=? WHERE id=?", (new_price, p['id']))
             count += 1
         conn.commit()
+        excel_backup_async()
         return jsonify({'success': True, 'count': count})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
