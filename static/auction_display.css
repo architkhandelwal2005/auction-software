@@ -2141,3 +2141,65 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
    past the bottom of the stage and collided with the floating controls. */
 .main-grid { grid-template-rows:minmax(0,1fr) !important; align-items:center !important; }
 .main-grid > * { min-height:0 !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   HALL READABILITY + LEADING BIDDER
+   Player name, category badge and must-have line enlarged so the stage
+   reads from the back of a hall. Leading bidder shown under the price and
+   highlighted in the purse panel, on every screen.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ---- Bigger player identity across all templates ---- */
+.player-name          { font-size:72px !important; }
+.pbh-name             { font-size:60px !important; }
+.pbs-name             { font-size:52px !important; }
+.pbe-name             { font-size:62px !important; }
+.collector-title      { font-size:52px !important; }
+.circle-name          { font-size:60px !important; }
+.broadcast-name       { font-size:62px !important; }
+.poster-name          { font-size:56px !important; }
+
+.category-badge       { font-size:22px !important; padding:9px 18px !important; }
+.pbs-cat, .pbe-cat, .pbh-cat { font-size:23px !important; letter-spacing:3px !important; }
+.collector-cat        { font-size:20px !important; }
+.circle-badge span    { font-size:20px !important; }
+.broadcast-eyebrow    { font-size:20px !important; }
+.poster-kicker        { font-size:19px !important; }
+
+.mh                   { font-size:26px !important; }
+.tpl-pb-sun .mh       { font-size:23px !important; }
+
+/* ---- Leading bidder tag under the current price ---- */
+.bidder-tag {
+  margin-top:14px; display:inline-flex; align-items:center; gap:12px;
+  padding:10px 22px; border-radius:999px;
+  border:1px solid var(--bidder-color, var(--accent));
+  background:color-mix(in srgb, var(--bidder-color, var(--accent)) 18%, transparent);
+  animation:bidderIn .35s cubic-bezier(.22,1,.36,1) both;
+}
+.bidder-tag[hidden] { display:none !important; }
+.bidder-label {
+  font-family:var(--display-font); font-size:15px; font-weight:800;
+  letter-spacing:3px; color:#9badbf;
+}
+.bidder-name {
+  font-family:var(--display-font); font-size:30px; font-weight:900;
+  letter-spacing:1px; text-transform:uppercase;
+  color:var(--bidder-color, var(--accent));
+}
+@keyframes bidderIn { from{opacity:0; transform:translateY(8px) scale(.96)} to{opacity:1; transform:none} }
+
+/* ---- Purse panel: clickable rows (admin) + leading highlight (everyone) ---- */
+.team-rows-clickable .team-row { cursor:pointer; transition:transform .12s ease, border-color .12s ease; }
+.team-rows-clickable .team-row:hover { transform:translateX(3px); border-color:var(--team-color); }
+.team-rows-clickable .team-row:active { transform:scale(.99); }
+
+.team-row.team-leading {
+  border-color:var(--team-color) !important;
+  background:linear-gradient(90deg,
+    color-mix(in srgb, var(--team-color) 26%, transparent),
+    rgba(9,23,39,.74)) !important;
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--team-color) 55%, transparent),
+             0 0 34px color-mix(in srgb, var(--team-color) 30%, transparent);
+}
+.team-row.team-leading .team-copy span { color:var(--team-color); font-weight:800; letter-spacing:2.4px; }

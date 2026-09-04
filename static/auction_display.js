@@ -376,6 +376,18 @@
       });
     }
     lastPrice = state.auction.currentPrice;
+
+    // Leading bidder tag under the price — hidden until a team is on the bid.
+    const tag = document.getElementById('bidderTag');
+    if (tag) {
+      const name = state.auction.bidderName;
+      tag.hidden = !name;
+      if (name) {
+        const nameEl = document.getElementById('bidderName');
+        if (nameEl) nameEl.textContent = name;
+        tag.style.setProperty('--bidder-color', state.auction.bidderColor || 'var(--accent)');
+      }
+    }
   }
 
   function paintTournament() {
@@ -478,10 +490,12 @@
       const total = Number(t.total_budget) || 0;
       const rem = Number(t.remaining_budget) || 0;
       const pct = total > 0 ? Math.max(0, Math.min(100, (rem / total) * 100)) : 100;
+      // The leading bidder's row is marked so every screen shows who is ahead.
+      const leading = String(t.id) === String(state.auction.bidderId || '');
       return `
-        <div class="team-row" style="--team-color:${esc(color)}" data-team-id="${esc(t.id)}">
+        <div class="team-row${leading ? ' team-leading' : ''}" style="--team-color:${esc(color)}" data-team-id="${esc(t.id)}">
           <div class="team-logo">${logo}</div>
-          <div class="team-copy"><strong>${esc(t.name)}</strong><span>remaining purse</span></div>
+          <div class="team-copy"><strong>${esc(t.name)}</strong><span>${leading ? 'leading bid' : 'remaining purse'}</span></div>
           <div class="team-purse">${money(t.remaining_budget)}</div>
           <div class="team-bar"><i style="width:${pct.toFixed(1)}%"></i></div>
         </div>`;
@@ -616,6 +630,10 @@
     state.auction.currentPrice = rowName ? (parseFloat(st.current_bid) || 0) : null;
     state.auction.basePrice = rowName ? (parseFloat(st.base_price) || 0) : null;
     state.auction.increment = parseFloat(cfg.bid_increment) || null;
+    // Leading bidder — set when the auctioneer clicks a team row to raise the bid.
+    state.auction.bidderId = rowName ? (st.bidder_team_id || '') : '';
+    state.auction.bidderName = rowName ? (st.bidder_team_name || '') : '';
+    state.auction.bidderColor = rowName ? (st.bidder_team_color || '') : '';
 
     state.teams = (data.teams || []).map(t => ({
       id: t.id, name: String(t.name || '').toUpperCase(),
@@ -917,6 +935,9 @@
     let adminBid = 0;
     let adminIncrement = 2.5;
     let adminPlayer = null;
+    // Team currently holding the top bid. Cleared whenever a new player is
+    // staged, sold or passed, so a stale bidder never shows on the screens.
+    let adminBidder = null;
     let adminTeams = [];
     let adminUnsoldPlayers = [];
     let adminTotalPlayers = 0;
@@ -1028,9 +1049,12 @@
       adminIdle.style.display = '';
       adminActive.style.display = 'none';
       adminPlayer = null;
+      adminBidder = null;      // no player on the block, so no leading bid
     }
 
     function showActive(player, bid) {
+      // A different player on the block means the previous bidder is stale.
+      if (!adminPlayer || String(adminPlayer.id) !== String(player.id)) adminBidder = null;
       adminPlayer = player;
       adminBid = bid;
       // adminPlayerCat/adminPlayerName labels were removed from the admin bar
@@ -1049,7 +1073,8 @@
     }
 
     let bidPostTimer = null;
-    /* Push the current bid to the server (debounced) and refresh the stage. */
+
+    /* Push the current bid (and who bid it) to the server, then refresh. */
     function pushBid() {
       adminBidDisplay.value = adminBid;
       adminBidDisplay.classList.remove('bid-pulse');
@@ -1061,7 +1086,12 @@
         try {
           await fetch('/api/auction/state', {
             method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ current_bid: adminBid })
+            body: JSON.stringify({
+              current_bid: adminBid,
+              bidder_team_id: adminBidder ? String(adminBidder.id) : '',
+              bidder_team_name: adminBidder ? adminBidder.name : '',
+              bidder_team_color: adminBidder ? (adminBidder.color || '') : ''
+            })
           });
           poll();
         } catch(e) { console.error('bid update failed', e); }
@@ -1071,6 +1101,32 @@
       adminBid = Math.max(0, Math.round((adminBid + delta) * 10) / 10);
       SFX.bid();
       pushBid();
+    }
+
+    /* Click a team row on the stage: raise by one increment and mark that team
+       as the leading bidder on every screen. */
+    function bidForTeam(teamId) {
+      if (!adminPlayer) return;                       // nothing on the block
+      const team = adminTeams.find(t => String(t.id) === String(teamId));
+      if (!team) return;
+      const next = Math.max(0, Math.round((adminBid + adminIncrement) * 10) / 10);
+      const max = team.max_allowed_bid;
+      if (max != null && next > max) {
+        toast(team.name + ' cannot bid ₹' + next + 'L (max ₹' + max + 'L)', 'err');
+        return;
+      }
+      adminBid = next;
+      adminBidder = team;
+      SFX.bid();
+      pushBid();
+    }
+    // Delegated so it keeps working after every purse-panel re-render.
+    if (teamRows) {
+      teamRows.addEventListener('click', e => {
+        const row = e.target.closest('.team-row');
+        if (row && row.dataset.teamId) bidForTeam(row.dataset.teamId);
+      });
+      teamRows.classList.add('team-rows-clickable');
     }
     /* Direct entry — type an exact amount, commit on Enter or blur */
     function commitTypedBid() {

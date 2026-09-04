@@ -91,6 +91,21 @@ def sheets_push_async(payload):
 # a failure here is only logged, never surfaced to the user.
 EXCEL_BACKUP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'auction_backup.xlsx')
 
+def archive_excel_backup(reason='archive'):
+    """Preserve the current backup under a timestamped name before a reset or
+    wipe. Without this, resetting an auction overwrites the only record of a
+    completed one with an empty snapshot."""
+    try:
+        if not os.path.exists(EXCEL_BACKUP_PATH):
+            return
+        import shutil, datetime
+        stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+        dest = EXCEL_BACKUP_PATH.replace('.xlsx', f'-{reason}-{stamp}.xlsx')
+        shutil.copy2(EXCEL_BACKUP_PATH, dest)
+        print(f'[Excel Backup] archived to {dest}', flush=True)
+    except Exception as e:
+        print(f'[Excel Backup] archive failed: {e}', flush=True)
+
 def _write_excel_backup():
     try:
         import openpyxl
@@ -467,6 +482,8 @@ def restart_setup():
     wipe_all = data.get('wipe_all', False)
     if wipe_all and data.get('password') != 'Wipe@123':
         return jsonify({'error': 'Incorrect password'}), 403
+    # Keep a dated copy of the outgoing auction before erasing it.
+    archive_excel_backup('wipe' if wipe_all else 'restart')
     conn = get_db()
     c = conn.cursor()
     c.execute('INSERT OR REPLACE INTO config (key, value) VALUES ("setup_done", "false")')
@@ -1412,9 +1429,14 @@ def set_auction_state():
     c = conn.cursor()
     for k, v in data.items():
         c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES (?, ?)', (k, str(v)))
-    # Clear sold/passed overlay when a new player goes on the block
+    # Clear sold/passed overlay and any previous leading bidder when a new
+    # player goes on the block (unless this same request sets a bidder).
     if data.get('current_player'):
-        c.execute("DELETE FROM auction_state WHERE key IN ('auction_status','last_sold_player','last_sold_price','last_sold_team_name','last_sold_team_color','last_sold_photo','last_passed_player','last_passed_photo')")
+        keys = ['auction_status', 'last_sold_player', 'last_sold_price', 'last_sold_team_name',
+                'last_sold_team_color', 'last_sold_photo', 'last_passed_player', 'last_passed_photo']
+        if 'bidder_team_id' not in data:
+            keys += ['bidder_team_id', 'bidder_team_name', 'bidder_team_color']
+        c.execute("DELETE FROM auction_state WHERE key IN (%s)" % ','.join(['?'] * len(keys)), keys)
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -1651,6 +1673,9 @@ def edit_player_sale():
 
 @app.route('/api/reset', methods=['POST'])
 def reset_auction():
+    # Archive first: clearing every sale would otherwise overwrite the backup
+    # of a finished auction with an empty snapshot.
+    archive_excel_backup('reset')
     conn = get_db()
     c = conn.cursor()
     c.execute('UPDATE players SET status="unsold", team_id=NULL, sold_price=NULL, sold_at=NULL')

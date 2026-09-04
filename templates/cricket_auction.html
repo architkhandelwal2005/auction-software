@@ -86,6 +86,11 @@
           <div class="status-pill"><span></span><b data-slot="auction.status">CURRENT PLAYER</b></div>
           <div class="price-label">CURRENT PRICE</div>
           <div class="current-price" data-slot="auction.current-price">₹ --</div>
+          <!-- Leading bidder — filled when the auctioneer raises a bid for a team -->
+          <div id="bidderTag" class="bidder-tag" hidden>
+            <span class="bidder-label">LEADING BID</span>
+            <span class="bidder-name" id="bidderName"></span>
+          </div>
           <div class="price-meta-row">
             <div class="price-meta-card">
               <span>BASE PRICE</span>

@@ -374,6 +374,11 @@
                                                 <div className="fredoka text-[5rem] md:text-[6.5rem] leading-none font-black tracking-tight" style={{color: currentTheme.accent, textShadow: `0 0 40px ${currentTheme.accent}40`}}>
                                                     ₹{state.current_bid}L
                                                 </div>
+                                                {state.bidder_team_name && <div className="mt-3 inline-flex items-center gap-3 px-5 py-2.5 rounded-full border"
+                                                    style={{borderColor: state.bidder_team_color || currentTheme.accent, background: `${state.bidder_team_color || currentTheme.accent}22`}}>
+                                                    <span className="fredoka text-xs font-bold uppercase tracking-[0.25em] text-zinc-400">Leading Bid</span>
+                                                    <span className="fredoka text-2xl font-black uppercase tracking-wide" style={{color: state.bidder_team_color || currentTheme.accent}}>{state.bidder_team_name}</span>
+                                                </div>}
                                             </div>
                                         </div>
 
