@@ -21,6 +21,9 @@ window.addEventListener('unhandledrejection', function(e) {
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        /* Global type scale: bump root so every rem-based size grows together.
+           Keeps the software readable on large hall screens. */
+        html { font-size: 18px; }
         body { font-family: 'Inter', sans-serif; background: #09090b; color: #fafaf9; min-height: 100vh; }
         .fredoka { font-family: 'Fredoka', sans-serif; }
         .space-grotesk { font-family: 'Space Grotesk', sans-serif; }

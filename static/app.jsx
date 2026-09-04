@@ -358,92 +358,96 @@ const SpinWheel = ({ items, title, onSelect, onClose }) => {
 const TeamRosterModal = ({ team, onClose }) => {
     if(!team) return null;
     const pct=Math.max(0,Math.min(100,(team.remaining_budget/team.total_budget)*100));
-    return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md anim-scaleIn" onClick={onClose}>
-        <div className="bg-slate-900 border border-slate-700 rounded-3xl p-7 max-w-lg w-full shadow-2xl space-y-5" onClick={e=>e.stopPropagation()}>
-            <div className="flex justify-between items-start pb-4 border-b border-slate-800">
-                <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white fredoka font-bold text-xl shadow-lg" style={{background:team.color||'#3b82f6'}}>
-                        {team.logo_url ? <img src={team.logo_url} className="w-10 h-10 object-contain" /> : team.name[0]}
+    return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md anim-scaleIn p-4" onClick={onClose}>
+        <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-7xl h-[90vh] shadow-2xl flex flex-col overflow-hidden" onClick={e=>e.stopPropagation()}>
+            {/* Header — always visible, never scrolls away */}
+            <div className="flex justify-between items-center px-8 py-5 border-b border-slate-800 shrink-0">
+                <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-white fredoka font-bold text-3xl shadow-lg shrink-0" style={{background:team.color||'#3b82f6'}}>
+                        {team.logo_url ? <img src={team.logo_url} className="w-12 h-12 object-contain" /> : team.name[0]}
                     </div>
                     <div>
-                        <h2 className="fredoka text-2xl font-bold text-white">{team.name}</h2>
-                        <p className="text-xs text-slate-400 font-bold">{team.player_count||0} players acquired • ₹{(team.total_budget-team.remaining_budget).toFixed(1)}L spent</p>
+                        <h2 className="fredoka text-4xl font-bold text-white leading-tight">{team.name}</h2>
+                        <p className="text-base text-slate-400 font-bold mt-1">{team.player_count||0} players acquired &bull; &#8377;{(team.total_budget-team.remaining_budget).toFixed(1)}L spent</p>
                     </div>
                 </div>
-                <button onClick={onClose} className="w-9 h-9 rounded-xl hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"><i className="fa-solid fa-xmark text-lg"></i></button>
+                <button onClick={onClose} className="w-11 h-11 rounded-xl hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition shrink-0"><i className="fa-solid fa-xmark text-2xl"></i></button>
             </div>
-            {/* Budget */}
-            <div className="bg-slate-950 rounded-2xl p-4 text-center border border-slate-800">
-                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Remaining Purse</p>
-                <p className={`fredoka text-4xl font-bold ${pct>20?'text-green-400':'text-red-400'}`}>₹{team.remaining_budget}L</p>
-                <div className="bg-slate-800 rounded-full h-2.5 mt-2.5 overflow-hidden"><div className={`h-full rounded-full transition-all ${pct>50?'bg-green-400':pct>20?'bg-yellow-400':'bg-red-400'}`} style={{width:`${pct}%`}}></div></div>
-            </div>
-            
-            {/* Team Analytics Breakdown */}
-            <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800 space-y-3 mt-3">
-                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Team Analytics</p>
-                {(() => {
-                    const spent = team.total_budget - team.remaining_budget;
-                    if (spent <= 0 || !team.players || team.players.length === 0) return <div className="text-xs text-slate-500 text-center py-2">No purchases yet.</div>;
-                    
-                    const catSpent = {};
-                    team.players.forEach(p => {
-                        const c = p.category || 'Uncategorized';
-                        catSpent[c] = (catSpent[c] || 0) + p.sold_price;
-                    });
-                    
-                    const sorted = Object.keys(catSpent).sort((a,b) => catSpent[b] - catSpent[a]);
-                    
-                    return (
-                        <div className="space-y-3">
-                            <div className="w-full h-3 rounded-full flex overflow-hidden border border-slate-800 bg-slate-900">
-                                {sorted.map((c, i) => {
-                                    const p = (catSpent[c] / spent) * 100;
-                                    const col = getCatColor(c);
-                                    return <div key={i} title={`${c}: ${catSpent[c]}L (${p.toFixed(1)}%)`} style={{width: `${p}%`, background: col}}></div>;
-                                })}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                {sorted.map((c, i) => {
-                                    const p = (catSpent[c] / spent) * 100;
-                                    const col = getCatColor(c);
-                                    return (
-                                        <div key={i} className="flex items-center gap-1.5 text-[0.65rem] font-bold text-slate-300">
-                                            <div className="w-2.5 h-2.5 rounded-[2px]" style={{background: col}}></div>
-                                            {c} ({p.toFixed(0)}%)
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    );
-                })()}
-            </div>
-            {/* Fulfillment */}
 
-            {team.fulfillment && team.fulfillment.length>0 && <div>
-                <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2">Category Requirements</p>
-                <div className="flex flex-wrap gap-2">
-                    {team.fulfillment.map((f,i)=><span key={i} className={`text-xs font-bold px-2.5 py-1 rounded-full border ${f.met?'bg-green-500/20 text-green-400 border-green-500/30':'bg-orange-500/20 text-orange-400 border-orange-500/30'}`}>{f.category}: {f.have}/{f.min} {f.met?'✅':'⚠️'}</span>)}
+            {/* Landscape body: left = stats column, right = squad roster */}
+            <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[380px_1fr]">
+                {/* LEFT: Purse, Analytics, Requirements */}
+                <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar border-b lg:border-b-0 lg:border-r border-slate-800">
+                    <div className="bg-slate-950 rounded-2xl p-5 text-center border border-slate-800">
+                        <p className="text-sm text-slate-400 font-bold uppercase tracking-widest">Remaining Purse</p>
+                        <p className={`fredoka text-5xl font-bold mt-1 ${pct>20?'text-green-400':'text-red-400'}`}>&#8377;{team.remaining_budget}L</p>
+                        <div className="bg-slate-800 rounded-full h-3 mt-3 overflow-hidden"><div className={`h-full rounded-full transition-all ${pct>50?'bg-green-400':pct>20?'bg-yellow-400':'bg-red-400'}`} style={{width:`${pct}%`}}></div></div>
+                    </div>
+
+                    <div className="bg-slate-950 rounded-2xl p-5 border border-slate-800 space-y-3">
+                        <p className="text-sm text-slate-400 font-bold uppercase tracking-widest">Team Analytics</p>
+                        {(() => {
+                            const spent = team.total_budget - team.remaining_budget;
+                            if (spent <= 0 || !team.players || team.players.length === 0) return <div className="text-sm text-slate-500 text-center py-2">No purchases yet.</div>;
+                            const catSpent = {};
+                            team.players.forEach(p => {
+                                const c = p.category || 'Uncategorized';
+                                catSpent[c] = (catSpent[c] || 0) + p.sold_price;
+                            });
+                            const sorted = Object.keys(catSpent).sort((a,b) => catSpent[b] - catSpent[a]);
+                            return (
+                                <div className="space-y-3">
+                                    <div className="w-full h-4 rounded-full flex overflow-hidden border border-slate-800 bg-slate-900">
+                                        {sorted.map((c, i) => {
+                                            const p = (catSpent[c] / spent) * 100;
+                                            const col = getCatColor(c);
+                                            return <div key={i} title={`${c}: ${catSpent[c]}L (${p.toFixed(1)}%)`} style={{width: `${p}%`, background: col}}></div>;
+                                        })}
+                                    </div>
+                                    <div className="flex flex-wrap gap-3">
+                                        {sorted.map((c, i) => {
+                                            const p = (catSpent[c] / spent) * 100;
+                                            const col = getCatColor(c);
+                                            return (
+                                                <div key={i} className="flex items-center gap-2 text-sm font-bold text-slate-300">
+                                                    <div className="w-3 h-3 rounded-[3px]" style={{background: col}}></div>
+                                                    {c} ({p.toFixed(0)}%)
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                    </div>
+
+                    {team.fulfillment && team.fulfillment.length>0 && <div className="bg-slate-950 rounded-2xl p-5 border border-slate-800">
+                        <p className="text-sm font-extrabold text-slate-400 uppercase tracking-widest mb-3">Category Requirements</p>
+                        <div className="flex flex-wrap gap-2.5">
+                            {team.fulfillment.map((f,i)=><span key={i} className={`text-sm font-bold px-3 py-1.5 rounded-full border ${f.met?'bg-green-500/20 text-green-400 border-green-500/30':'bg-orange-500/20 text-orange-400 border-orange-500/30'}`}>{f.category}: {f.have}/{f.min} {f.met?'✅':'⚠️'}</span>)}
+                        </div>
+                    </div>}
+
+                    {/* Shareable link */}
+                    <div className="flex items-center gap-2">
+                        <i className="fa-solid fa-link text-blue-400 text-base shrink-0"></i>
+                        <input readOnly value={`${window.location.origin}/team/${team.id}`} className="flex-1 min-w-0 bg-slate-950 border border-slate-700 text-blue-400 px-3 py-2.5 rounded-xl text-sm font-bold" onClick={e=>{e.target.select();navigator.clipboard?.writeText(e.target.value);}} />
+                        <span className="text-sm text-slate-400 font-bold shrink-0">Copy</span>
+                    </div>
                 </div>
-            </div>}
-            {/* Players */}
-            <div className="border-t border-slate-800 pt-4">
-                <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2.5">Squad Roster</p>
-                {(!team.players||team.players.length===0)?<div className="text-center py-6 text-slate-500"><p className="text-3xl mb-1">🏏</p><p className="font-bold text-sm">No players acquired yet</p></div>
-                :<div className="space-y-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
-                    {team.players.map(p=><div key={p.id} className="flex items-center gap-3 p-2.5 bg-slate-950 rounded-xl border border-slate-800">
-                        <PlayerPhoto url={p.photo_url} name={p.name} size={36} />
-                        <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{p.name}</div>{p.category&&<CatBadge category={p.category}/>}</div>
-                        <span className="fredoka font-bold text-green-400 text-sm">₹{p.sold_price}L</span>
-                    </div>)}
-                </div>}
-            </div>
-            {/* Shareable link */}
-            <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
-                <i className="fa-solid fa-link text-blue-400 text-sm"></i>
-                <input readOnly value={`${window.location.origin}/team/${team.id}`} className="flex-1 bg-slate-950 border border-slate-700 text-blue-400 px-3 py-2 rounded-xl text-xs font-bold" onClick={e=>{e.target.select();navigator.clipboard?.writeText(e.target.value);}} />
-                <span className="text-xs text-slate-400 font-bold">Copy</span>
+
+                {/* RIGHT: Squad Roster — big cards, hall-readable */}
+                <div className="p-6 overflow-y-auto custom-scrollbar">
+                    <p className="text-sm font-extrabold text-slate-400 uppercase tracking-widest mb-3">Squad Roster</p>
+                    {(!team.players||team.players.length===0)?<div className="text-center py-16 text-slate-500"><p className="text-5xl mb-2">🏏</p><p className="font-bold text-lg">No players acquired yet</p></div>
+                    :<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {team.players.map(p=><div key={p.id} className="flex items-center gap-4 p-4 bg-slate-950 rounded-2xl border border-slate-800">
+                            <PlayerPhoto url={p.photo_url} name={p.name} size={56} />
+                            <div className="flex-1 min-w-0"><div className="font-bold text-white text-lg truncate">{p.name}</div>{p.category&&<CatBadge category={p.category}/>}</div>
+                            <span className="fredoka font-bold text-green-400 text-xl shrink-0">&#8377;{p.sold_price}L</span>
+                        </div>)}
+                    </div>}
+                </div>
             </div>
         </div>
     </div>;
