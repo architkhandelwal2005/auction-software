@@ -32,11 +32,11 @@
     'pb-spotlight': 'pb-hall', 'pb-arena': 'pb-hall', 'pb-daylight': 'pb-sunset',
     'pb-neon': 'pb-hall',
   };
-  const TEMPLATES = ['arena', 'collector', 'circular', 'broadcast', 'poster', ...CK_TEMPLATES, ...PB_TEMPLATES];
+  const TEMPLATES = ['arena', 'collector', 'broadcast', 'poster', ...CK_TEMPLATES, ...PB_TEMPLATES];
   const SPORTS = ['cricket', 'football', 'badminton', 'pickleball', 'multi'];
   // Available templates per sport for random/sequential modes
   const SPORT_TEMPLATES = {
-    cricket: ['arena', 'collector', 'circular', 'broadcast', 'poster', ...CK_TEMPLATES],
+    cricket: ['arena', ...CK_TEMPLATES],
     football: ['arena', 'broadcast', 'poster'],
     badminton: ['arena', 'broadcast'],
     pickleball: PB_TEMPLATES,
@@ -53,12 +53,6 @@
     badminton: 'none',
     pickleball: 'none',
     multi: 'none',
-  };
-  // Some templates read best on a specific backdrop. The Circular Spotlight sits
-  // over the floodlit pitch plate the way the reference boards do. Only applied
-  // for cricket, and only until the operator picks a background by hand.
-  const TEMPLATE_DEFAULT_BG = {
-    cricket: { circular: 'cricket-pitch' },
   };
   let bgManual = false;
   // Stage settings driven by admin panel via live_data
@@ -177,6 +171,14 @@
             </div>`;
   }
 
+  /* The template to show in 'fixed' mode. A value saved before the sport's
+     pool changed is no longer selectable, so fall back to the pool's first
+     entry rather than stranding the stage on a retired template. */
+  function resolveFixedTemplate() {
+    const pool = SPORT_TEMPLATES[stageSport] || TEMPLATES;
+    if (pool.includes(stageFixedTemplate)) return stageFixedTemplate;
+    return pool[0];
+  }
   /* ───────────── player display templates ─────────────
      Only this region changes between templates. Header, price zone,
      team purse panel and the bottom information strip are shared chrome. */
@@ -200,18 +202,6 @@
               <div class="collector-firstname"></div>
               <div class="collector-title" data-slot="player.name">PLAYER NAME</div>
             </div>
-            ${MH}
-          </div>
-        </article>`;
-    } else if (template === 'circular') {
-      html = `
-        <article class="tpl-circular">
-          <div class="circle-orbit">
-            ${photoShell('circle-photo')}
-            <div class="circle-badge"><span data-slot="player.category">CATEGORY</span></div>
-          </div>
-          <div class="circle-plate">
-            <div class="circle-name" data-slot="player.name">PLAYER NAME</div>
             ${MH}
           </div>
         </article>`;
@@ -743,15 +733,15 @@
         seqIndex++;
         setTemplate(pick);
       } else {
-        if (TEMPLATES.includes(stageFixedTemplate)) setTemplate(stageFixedTemplate);
+        setTemplate(resolveFixedTemplate());
       }
     } else if (currentPlayerName && stageTemplateMode === 'fixed' && stageFixedTemplate !== stage.dataset.template) {
       // Same player on block but admin changed the fixed template — apply within next poll cycle
-      if (TEMPLATES.includes(stageFixedTemplate)) setTemplate(stageFixedTemplate);
+      setTemplate(resolveFixedTemplate());
     } else if (!currentPlayerName && prevPlayerName !== null) {
       prevPlayerName = null;
     } else if (!currentPlayerName && stageTemplateMode === 'fixed' && stageFixedTemplate !== stage.dataset.template) {
-      if (TEMPLATES.includes(stageFixedTemplate)) setTemplate(stageFixedTemplate);
+      setTemplate(resolveFixedTemplate());
     }
 
     // SOLD / UNSOLD overlay
@@ -843,13 +833,11 @@
     stage.dataset.template = template;
     if (templateSelect) templateSelect.value = template;
     renderTemplate(template);
-    // template-preferred backdrop (cricket only, and only if the operator
-    // hasn't overridden the background by hand)
+    // Sport backdrop, unless the operator has picked one by hand. Templates
+    // that own their photograph paint it from CSS and ignore this.
     if (!bgManual) {
       const sport = stage.dataset.sport || 'cricket';
-      const pref = (TEMPLATE_DEFAULT_BG[sport] || {})[template];
-      if (pref) setBackground(pref);
-      else setBackground(SPORT_DEFAULT_BG[sport] || 'none');
+      setBackground(SPORT_DEFAULT_BG[sport] || 'none');
     }
   }
 
@@ -1394,16 +1382,19 @@
     /* ── sport / template selectors ── */
     // Only templates that actually exist for a sport are offered
     const TEMPLATE_LABELS = {
-      arena: 'Arena Portrait', collector: 'Collector Card', circular: 'Circular Spotlight',
+      arena: 'Arena Portrait', collector: 'Collector Card',
       broadcast: 'Broadcast Panel', poster: 'Photo Poster',
-      'pb-focus': 'PB — Focus', 'pb-board': 'PB — Board', 'pb-spotlight': 'PB — Spotlight',
+      'ck-crease': 'Crease — Aerial Ground',
+      'ck-house': 'Full House — Packed Stand',
+      'ck-nets': 'Nets — Practice Nets',
+      'pb-hall': 'PB — Hall', 'pb-sunset': 'PB — Sunset', 'pb-press': 'PB — Press',
     };
     const SPORT_VALID_TEMPLATES = {
-      cricket: ['arena','collector','circular','broadcast','poster'],
+      cricket: SPORT_TEMPLATES.cricket,
       pickleball: PB_TEMPLATES,
       football: ['arena','broadcast','poster'],
       badminton: ['arena','broadcast'],
-      multi: ['arena','collector','broadcast']
+      multi: SPORT_TEMPLATES.multi
     };
     const defaultTemplateFor = sport => (SPORT_VALID_TEMPLATES[sport] || ['arena'])[0];
 
