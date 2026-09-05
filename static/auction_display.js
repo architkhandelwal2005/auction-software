@@ -21,6 +21,10 @@
      player profile card on the LEFT, price floating over the environment in the
      MIDDLE, team purses on the RIGHT. Each has its own environment and vibe. */
   const PB_TEMPLATES = ['pb-hall', 'pb-sunset', 'pb-press'];
+  /* Cricket templates that own their own photographic background and their own
+     construction, the way the pickleball set does. The five original cricket
+     templates share one backdrop; these three do not. */
+  const CK_TEMPLATES = ['ck-crease', 'ck-house', 'ck-nets'];
   // Older saved template names map onto the current set
   const PB_ALIAS = {
     'pb-glass': 'pb-hall', 'pb-dash': 'pb-hall', 'pb-grid': 'pb-hall',
@@ -28,15 +32,15 @@
     'pb-spotlight': 'pb-hall', 'pb-arena': 'pb-hall', 'pb-daylight': 'pb-sunset',
     'pb-neon': 'pb-hall',
   };
-  const TEMPLATES = ['arena', 'collector', 'circular', 'broadcast', 'poster', ...PB_TEMPLATES];
+  const TEMPLATES = ['arena', 'collector', 'circular', 'broadcast', 'poster', ...CK_TEMPLATES, ...PB_TEMPLATES];
   const SPORTS = ['cricket', 'football', 'badminton', 'pickleball', 'multi'];
   // Available templates per sport for random/sequential modes
   const SPORT_TEMPLATES = {
-    cricket: ['arena', 'collector', 'circular', 'broadcast', 'poster'],
+    cricket: ['arena', 'collector', 'circular', 'broadcast', 'poster', ...CK_TEMPLATES],
     football: ['arena', 'broadcast', 'poster'],
     badminton: ['arena', 'broadcast'],
     pickleball: PB_TEMPLATES,
-    multi: ['arena', 'collector', 'broadcast'],
+    multi: ['arena', 'collector', 'broadcast', 'ck-house'],
   };
 
   /* Photographic stage backgrounds. 'none' falls back to the CSS-only
@@ -233,6 +237,60 @@
           </div>
           <div class="poster-stamp">SPORTS<br>AUCTION<br>LIVE</div>
         </article>`;
+    } else if (template === 'ck-crease') {
+      /* CREASE — the player stands at the wicket on a floodlit pitch. Three
+         stumps rise behind the portrait, the turf throws a shadow, and the
+         name is set on a sightscreen slab the way ground boards read. */
+      html = `
+        <article class="tpl-ck tpl-ck-crease">
+          <div class="ckc-stumps" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
+          <div class="ckc-figure">
+            ${photoShell('ckc-photo')}
+            <div class="ckc-turf" aria-hidden="true"></div>
+          </div>
+          <div class="ckc-screen">
+            <div class="ckc-cat" data-slot="player.category">CATEGORY</div>
+            <div class="ckc-name" data-slot="player.name">PLAYER NAME</div>
+            ${MH}
+          </div>
+        </article>`;
+
+    } else if (template === 'ck-house') {
+      /* FULL HOUSE — a packed stand behind a stadium scoreboard. The portrait
+         sits inside a hexagonal LED medallion; the name burns on an amber
+         board strip under a thin scanline sheen. */
+      html = `
+        <article class="tpl-ck tpl-ck-house">
+          <div class="ckh-medal">
+            <div class="ckh-ring" aria-hidden="true"></div>
+            ${photoShell('ckh-photo')}
+            <div class="ckh-scan" aria-hidden="true"></div>
+          </div>
+          <div class="ckh-board">
+            <div class="ckh-strip"><span class="ckh-cat" data-slot="player.category">CATEGORY</span></div>
+            <div class="ckh-name" data-slot="player.name">PLAYER NAME</div>
+            ${MH}
+          </div>
+        </article>`;
+
+    } else if (template === 'ck-nets') {
+      /* NETS — a scouting report clipped up at the practice nets. Squared
+         photographic print on cream card, red ball-seam stitching down the
+         rule, everything set precise and editorial. */
+      html = `
+        <article class="tpl-ck tpl-ck-nets">
+          <div class="ckn-card">
+            <div class="ckn-head">
+              <span class="ckn-mark">CRICKET</span>
+              <span class="ckn-cat" data-slot="player.category">CATEGORY</span>
+            </div>
+            <div class="ckn-print">${photoShell('ckn-photo')}</div>
+            <div class="ckn-name" data-slot="player.name">PLAYER NAME</div>
+            <div class="ckn-seam" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            ${MH}
+          </div>
+        </article>`;
+
     } else if (template === 'pb-sunset') {
       /* SUNSET — golden hour on a resort court. The profile is an instant
          photo print pinned to the board, tilted, caption written beneath. */

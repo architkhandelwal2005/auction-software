@@ -2203,3 +2203,306 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
              0 0 34px color-mix(in srgb, var(--team-color) 30%, transparent);
 }
 .team-row.team-leading .team-copy span { color:var(--team-color); font-weight:800; letter-spacing:2.4px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CRICKET — THREE SELF-CONTAINED TEMPLATES
+   The five original cricket templates share one backdrop and differ only in
+   the shape of the photo. These three do not: each owns its own photograph,
+   its own palette and its own construction, the way the pickleball set does.
+
+     ck-crease  floodlit pitch    portrait at the wicket, sightscreen plate
+     ck-house   packed stand      LED scoreboard medallion
+     ck-nets    practice nets     scouting-report print on cream card
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* The photograph is the whole environment; the CSS scene is switched off. */
+.stage[data-template='ck-crease'] .sport-environment > *:not(.env-photo):not(.env-photo-grade):not(.env-grain),
+.stage[data-template='ck-house']  .sport-environment > *:not(.env-photo):not(.env-photo-grade):not(.env-grain),
+.stage[data-template='ck-nets']   .sport-environment > *:not(.env-photo):not(.env-photo-grade):not(.env-grain),
+.stage[data-template='ck-crease'] .drama,
+.stage[data-template='ck-house']  .drama,
+.stage[data-template='ck-nets']   .drama { display: none; }
+
+.tpl-ck { width: 100%; height: 100%; display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          font-family: var(--display-font, 'Barlow Condensed', sans-serif); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   1 — CREASE  ·  floodlit pitch
+   ══════════════════════════════════════════════════════════════════════ */
+.stage[data-template='ck-crease'] .env-photo {
+  opacity: 1 !important;
+  background-image: url('img/bg-cricket-pitch.jpg');
+  background-size: cover; background-position: center 62%;
+  filter: brightness(1.06) contrast(1.04) saturate(1.08) blur(1.6px);
+}
+.stage[data-template='ck-crease'] .env-photo-grade {
+  opacity: 1;
+  background:
+    radial-gradient(ellipse 62% 58% at 30% 54%, rgba(2,14,8,.14) 0 44%, rgba(2,12,7,.52) 84%, rgba(1,8,5,.8) 100%),
+    linear-gradient(180deg, rgba(2,10,7,.66) 0%, rgba(2,10,7,.14) 26%, rgba(2,10,7,.22) 66%, rgba(1,7,4,.78) 100%);
+}
+.stage[data-template='ck-crease'] .env-grain { opacity: .16; }
+
+.stage[data-template='ck-crease'] {
+  --ck-turf: #4ea86a;
+  --ck-turf-lt: #a8e8bd;
+  --ck-chalk: #f4f9f4;
+}
+
+.tpl-ck-crease { position: relative; gap: 0; justify-content: center; }
+
+/* Three stumps standing behind the portrait, bails lit by the floodlights */
+.ckc-stumps {
+  position: absolute; bottom: 224px; left: 50%; transform: translateX(-50%);
+  width: 190px; height: 690px; z-index: 0;
+  display: flex; justify-content: space-between; align-items: flex-end;
+}
+.ckc-stumps i {
+  width: 15px; height: 100%; border-radius: 7px 7px 2px 2px;
+  background: linear-gradient(180deg, #fbfdfb, #cfe0d3 62%, #7f9585);
+  box-shadow: 0 0 26px rgba(255,255,255,.34);
+  opacity: .5;
+}
+.ckc-stumps b {
+  position: absolute; top: -9px; left: 6px; right: 6px; height: 8px;
+  border-radius: 4px; background: linear-gradient(90deg, #f7d9a1, #fff6e2, #f7d9a1);
+  box-shadow: 0 0 18px rgba(245,183,46,.6); opacity: .55;
+}
+
+/* The portrait itself — cut out of its frame, standing on the pitch */
+.ckc-figure { position: relative; z-index: 1; flex: none; }
+.ckc-photo {
+  width: 468px; height: 566px;
+  border-radius: 18px 18px 0 0;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, #000 0 86%, rgba(0,0,0,.06) 100%);
+          mask-image: linear-gradient(180deg, #000 0 86%, rgba(0,0,0,.06) 100%);
+}
+/* Turf shadow pooling under the figure */
+.ckc-turf {
+  position: absolute; left: 50%; bottom: -16px; transform: translateX(-50%);
+  width: 430px; height: 54px; border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.55) 0 38%, rgba(0,0,0,0) 72%);
+  filter: blur(5px);
+}
+
+/* Sightscreen plate — white board, turf keyline, ground-signage lettering */
+.ckc-screen {
+  position: relative; z-index: 2; margin-top: 16px; flex: none;
+  width: 552px; padding: 18px 26px 20px; text-align: center;
+  background: linear-gradient(180deg, rgba(244,249,244,.96), rgba(224,236,226,.93));
+  border: 2px solid rgba(78,168,106,.55);
+  border-radius: 8px;
+  box-shadow: 0 22px 54px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.9);
+}
+.ckc-cat {
+  font-weight: 800; letter-spacing: 4px; text-transform: uppercase;
+  color: #2f7546; font-size: 21px;
+}
+.ckc-name {
+  margin-top: 6px; font-weight: 900; font-size: 66px; line-height: .96;
+  letter-spacing: 1px; text-transform: uppercase; color: #10261a;
+}
+.tpl-ck-crease .mh { color: #1d3a27; justify-content: center; text-align: center; }
+.tpl-ck-crease .mh .mh-star { color: #2f7546; }
+
+/* Chrome tuned to the pitch */
+.stage[data-template='ck-crease'] .price-zone { background: none; border: none; box-shadow: none; }
+.stage[data-template='ck-crease'] .status-pill { background: rgba(6,26,15,.62); border: 1px solid rgba(168,232,189,.32); }
+.stage[data-template='ck-crease'] .status-pill span { background: var(--ck-turf-lt); box-shadow: 0 0 12px var(--ck-turf-lt); }
+.stage[data-template='ck-crease'] .status-pill b { color: var(--ck-turf-lt); letter-spacing: 3px; }
+.stage[data-template='ck-crease'] .price-label { color: rgba(224,244,231,.62); letter-spacing: 5px; }
+.stage[data-template='ck-crease'] .current-price { color: var(--ck-chalk); text-shadow: 0 0 44px rgba(168,232,189,.34); }
+.stage[data-template='ck-crease'] .price-meta-card { background: rgba(6,26,15,.6); border-color: rgba(168,232,189,.26); }
+.stage[data-template='ck-crease'] .price-meta-card span { color: rgba(224,244,231,.5); }
+.stage[data-template='ck-crease'] .price-meta-card strong { color: var(--ck-turf-lt); }
+.stage[data-template='ck-crease'] .tournament-header { border-bottom-color: rgba(168,232,189,.24); }
+.stage[data-template='ck-crease'] .tournament-name { color: var(--ck-chalk); }
+.stage[data-template='ck-crease'] .brand-mark { border-color: rgba(168,232,189,.4); color: var(--ck-turf-lt); }
+.stage[data-template='ck-crease'] .progress-box { background: rgba(6,26,15,.62); border-color: rgba(168,232,189,.3); }
+.stage[data-template='ck-crease'] .progress-box strong { color: var(--ck-turf-lt); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   2 — FULL HOUSE  ·  packed stand, stadium scoreboard
+   ══════════════════════════════════════════════════════════════════════ */
+.stage[data-template='ck-house'] .env-photo {
+  opacity: 1 !important;
+  background-image: url('img/bg-cricket-crowd.jpg');
+  background-size: cover; background-position: center 42%;
+  filter: brightness(.82) contrast(1.12) saturate(1.1) blur(3px);
+}
+.stage[data-template='ck-house'] .env-photo-grade {
+  opacity: 1;
+  background:
+    radial-gradient(ellipse 66% 62% at 50% 48%, rgba(2,7,20,.26) 0 42%, rgba(2,6,18,.62) 82%, rgba(1,4,13,.86) 100%),
+    linear-gradient(180deg, rgba(2,6,18,.74) 0%, rgba(2,6,18,.28) 30%, rgba(2,6,18,.38) 68%, rgba(1,4,13,.86) 100%);
+}
+.stage[data-template='ck-house'] .env-grain { opacity: .22; }
+
+.stage[data-template='ck-house'] {
+  --ck-led: #ffb31f;
+  --ck-led-lt: #ffe1a0;
+  --ck-board: rgba(6,14,30,.9);
+  --ck-board-line: rgba(255,179,31,.34);
+}
+
+.tpl-ck-house { gap: 22px; }
+
+/* Hexagonal LED medallion */
+.ckh-medal {
+  position: relative; width: 500px; height: 540px;
+  display: flex; align-items: center; justify-content: center;
+}
+.ckh-ring {
+  position: absolute; inset: 0;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: linear-gradient(160deg, var(--ck-led), rgba(255,179,31,.18) 46%, var(--ck-led));
+  box-shadow: 0 0 60px rgba(255,179,31,.34);
+}
+.ckh-photo {
+  position: absolute; inset: 9px;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  border-radius: 0; overflow: hidden;
+  background: #061021;
+}
+/* Scoreboard scanlines drawn over the portrait, very faint */
+.ckh-scan {
+  position: absolute; inset: 9px; pointer-events: none;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: repeating-linear-gradient(180deg, rgba(255,255,255,.05) 0 1px, rgba(0,0,0,0) 1px 4px);
+  mix-blend-mode: screen; opacity: .8;
+}
+
+/* Board underneath: amber strip for the category, name burnt in beneath */
+.ckh-board {
+  width: 640px; text-align: center;
+  padding: 18px 26px 20px;
+  background: var(--ck-board);
+  border: 1px solid var(--ck-board-line);
+  border-radius: 14px;
+  box-shadow: 0 24px 58px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+  backdrop-filter: blur(10px);
+}
+.ckh-strip { display: flex; justify-content: center; }
+.ckh-cat {
+  display: inline-block; padding: 7px 20px; border-radius: 4px;
+  background: var(--ck-led); color: #14100a;
+  font-weight: 900; letter-spacing: 4px; font-size: 20px; text-transform: uppercase;
+  box-shadow: 0 0 26px rgba(255,179,31,.45);
+}
+.ckh-name {
+  margin-top: 13px; font-weight: 900; font-size: 64px; line-height: .98;
+  letter-spacing: 2px; text-transform: uppercase; color: var(--ck-led-lt);
+  text-shadow: 0 0 30px rgba(255,179,31,.42);
+}
+.tpl-ck-house .mh { color: #eaf1fb; justify-content: center; text-align: center; }
+.tpl-ck-house .mh .mh-star { color: var(--ck-led); }
+
+.stage[data-template='ck-house'] .price-zone { background: none; border: none; box-shadow: none; }
+.stage[data-template='ck-house'] .status-pill { background: var(--ck-board); border: 1px solid var(--ck-board-line); }
+.stage[data-template='ck-house'] .status-pill span { background: var(--ck-led); box-shadow: 0 0 12px var(--ck-led); }
+.stage[data-template='ck-house'] .status-pill b { color: var(--ck-led-lt); letter-spacing: 3px; }
+.stage[data-template='ck-house'] .price-label { color: rgba(234,241,251,.58); letter-spacing: 5px; }
+.stage[data-template='ck-house'] .current-price { color: #fff6e2; text-shadow: 0 0 50px rgba(255,179,31,.4); }
+.stage[data-template='ck-house'] .price-meta-card { background: var(--ck-board); border-color: var(--ck-board-line); }
+.stage[data-template='ck-house'] .price-meta-card span { color: rgba(234,241,251,.5); }
+.stage[data-template='ck-house'] .price-meta-card strong { color: var(--ck-led-lt); }
+.stage[data-template='ck-house'] .tournament-header { border-bottom-color: var(--ck-board-line); }
+.stage[data-template='ck-house'] .tournament-name { color: #fff6e2; }
+.stage[data-template='ck-house'] .brand-mark { border-color: var(--ck-board-line); color: var(--ck-led-lt); }
+.stage[data-template='ck-house'] .progress-box { background: var(--ck-board); border-color: var(--ck-board-line); }
+.stage[data-template='ck-house'] .progress-box strong { color: var(--ck-led-lt); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   3 — NETS  ·  practice nets, scouting report
+   ══════════════════════════════════════════════════════════════════════ */
+.stage[data-template='ck-nets'] .env-photo {
+  opacity: 1 !important;
+  background-image: url('img/bg-cricket-nets.jpg');
+  background-size: cover; background-position: center 50%;
+  filter: brightness(.9) contrast(1.06) saturate(.86) blur(2.4px);
+}
+.stage[data-template='ck-nets'] .env-photo-grade {
+  opacity: 1;
+  background:
+    radial-gradient(ellipse 64% 60% at 32% 50%, rgba(10,8,5,.2) 0 44%, rgba(8,6,4,.58) 84%, rgba(6,5,3,.82) 100%),
+    linear-gradient(180deg, rgba(8,6,4,.7) 0%, rgba(8,6,4,.24) 28%, rgba(8,6,4,.3) 68%, rgba(6,5,3,.82) 100%);
+}
+.stage[data-template='ck-nets'] .env-grain { opacity: .26; }
+
+.stage[data-template='ck-nets'] {
+  --ck-ball: #a2231d;
+  --ck-ball-lt: #e0736a;
+  --ck-card: #f3ece0;
+  --ck-ink: #17130e;
+}
+
+.tpl-ck-nets { justify-content: center; }
+
+/* Cream report card, squared print, red seam rule */
+.ckn-card {
+  width: 580px; padding: 24px 28px 26px;
+  background: linear-gradient(180deg, #f7f1e7, var(--ck-card));
+  border: 1px solid rgba(23,19,14,.16);
+  border-radius: 4px;
+  box-shadow: 0 30px 70px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.9);
+}
+.ckn-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 12px; margin-bottom: 16px;
+  border-bottom: 2px solid var(--ck-ball);
+}
+.ckn-mark {
+  font-weight: 900; letter-spacing: 6px; font-size: 17px;
+  color: var(--ck-ball); text-transform: uppercase;
+}
+.ckn-cat {
+  font-weight: 800; letter-spacing: 3px; font-size: 19px;
+  color: rgba(23,19,14,.62); text-transform: uppercase;
+}
+.ckn-print { position: relative; }
+.ckn-photo {
+  width: 100%; height: 500px;
+  border-radius: 2px; overflow: hidden;
+  background: #ddd4c6;
+  box-shadow: inset 0 0 0 1px rgba(23,19,14,.14);
+}
+.ckn-name {
+  margin-top: 18px; font-weight: 900; font-size: 62px; line-height: .96;
+  letter-spacing: .5px; text-transform: uppercase; color: var(--ck-ink);
+}
+/* Ball seam: two hairlines with cross-stitches between them */
+.ckn-seam {
+  position: relative; height: 12px; margin: 12px 0 4px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-top: 1px solid rgba(162,35,29,.5);
+  border-bottom: 1px solid rgba(162,35,29,.5);
+}
+.ckn-seam i {
+  display: block; width: 16px; height: 1.5px;
+  background: var(--ck-ball); transform: rotate(-24deg); opacity: .8;
+}
+.tpl-ck-nets .mh { color: #2a2118; }
+.tpl-ck-nets .mh .mh-star { color: var(--ck-ball); }
+
+.stage[data-template='ck-nets'] .price-zone { background: none; border: none; box-shadow: none; }
+.stage[data-template='ck-nets'] .status-pill { background: rgba(20,14,10,.66); border: 1px solid rgba(224,115,106,.34); }
+.stage[data-template='ck-nets'] .status-pill span { background: var(--ck-ball-lt); box-shadow: 0 0 12px var(--ck-ball-lt); }
+.stage[data-template='ck-nets'] .status-pill b { color: #f0ddd3; letter-spacing: 3px; }
+.stage[data-template='ck-nets'] .price-label { color: rgba(243,236,224,.58); letter-spacing: 5px; }
+.stage[data-template='ck-nets'] .current-price { color: var(--ck-card); text-shadow: 0 0 40px rgba(224,115,106,.3); }
+.stage[data-template='ck-nets'] .price-meta-card { background: rgba(20,14,10,.62); border-color: rgba(224,115,106,.26); }
+.stage[data-template='ck-nets'] .price-meta-card span { color: rgba(243,236,224,.5); }
+.stage[data-template='ck-nets'] .price-meta-card strong { color: var(--ck-ball-lt); }
+.stage[data-template='ck-nets'] .tournament-header { border-bottom-color: rgba(224,115,106,.24); }
+.stage[data-template='ck-nets'] .tournament-name { color: var(--ck-card); }
+.stage[data-template='ck-nets'] .brand-mark { border-color: rgba(224,115,106,.4); color: var(--ck-ball-lt); }
+.stage[data-template='ck-nets'] .progress-box { background: rgba(20,14,10,.62); border-color: rgba(224,115,106,.3); }
+.stage[data-template='ck-nets'] .progress-box strong { color: var(--ck-ball-lt); }
+
+/* Hall readability — these names sit on the same enlarged scale as the rest. */
+.ckc-name { font-size: 66px !important; }
+.ckh-name { font-size: 64px !important; }
+.ckn-name { font-size: 62px !important; }
+.ckc-cat, .ckh-cat, .ckn-cat { font-size: 21px !important; }

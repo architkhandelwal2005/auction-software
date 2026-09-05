@@ -30,11 +30,11 @@ const TEAM_COLORS = ['#3b82f6','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899'
 const PALETTE = ['#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#f97316', '#06b6d4', '#14b8a6', '#ef4444', '#84cc16', '#a855f7', '#6366f1'];
 
 const SPORT_TEMPLATE_OPTIONS = {
-    cricket:    [{id:'arena',label:'Arena Portrait'},{id:'collector',label:'Collector Card'},{id:'circular',label:'Circular Spotlight'},{id:'broadcast',label:'Broadcast Panel'},{id:'poster',label:'Photo Poster'}],
+    cricket:    [{id:'arena',label:'Arena Portrait'},{id:'collector',label:'Collector Card'},{id:'circular',label:'Circular Spotlight'},{id:'broadcast',label:'Broadcast Panel'},{id:'poster',label:'Photo Poster'},{id:'ck-crease',label:'Crease — Floodlit Pitch'},{id:'ck-house',label:'Full House — Packed Stand'},{id:'ck-nets',label:'Nets — Practice Nets'}],
     football:   [{id:'arena',label:'Arena Portrait'},{id:'broadcast',label:'Broadcast Panel'},{id:'poster',label:'Photo Poster'}],
     badminton:  [{id:'arena',label:'Arena Portrait'},{id:'broadcast',label:'Broadcast Panel'}],
     pickleball: [{id:'pb-hall',label:'Hall'},{id:'pb-sunset',label:'Sunset'},{id:'pb-press',label:'Press'}],
-    multi:      [{id:'arena',label:'Arena Portrait'},{id:'collector',label:'Collector Card'},{id:'broadcast',label:'Broadcast Panel'}],
+    multi:      [{id:'arena',label:'Arena Portrait'},{id:'collector',label:'Collector Card'},{id:'broadcast',label:'Broadcast Panel'},{id:'ck-house',label:'Full House — Packed Stand'}],
 };
 
 // ═══════════════════════════════════════════════
