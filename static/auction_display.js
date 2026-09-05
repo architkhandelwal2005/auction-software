@@ -1384,9 +1384,9 @@
     const TEMPLATE_LABELS = {
       arena: 'Arena Portrait', collector: 'Collector Card',
       broadcast: 'Broadcast Panel', poster: 'Photo Poster',
-      'ck-crease': 'Crease — Aerial Ground',
+      'ck-crease': 'Crease — Night Pitch',
       'ck-house': 'Full House — Packed Stand',
-      'ck-nets': 'Nets — Practice Nets',
+      'ck-nets': 'Dusk — Ground at Dusk',
       'pb-hall': 'PB — Hall', 'pb-sunset': 'PB — Sunset', 'pb-press': 'PB — Press',
     };
     const SPORT_VALID_TEMPLATES = {
