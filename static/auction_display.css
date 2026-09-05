@@ -2232,15 +2232,15 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
    ══════════════════════════════════════════════════════════════════════ */
 .stage[data-template='ck-crease'] .env-photo {
   opacity: 1 !important;
-  background-image: url('img/bg-cricket-pitch.jpg');
-  background-size: cover; background-position: center 62%;
-  filter: brightness(1.06) contrast(1.04) saturate(1.08) blur(1.6px);
+  background-image: url('img/bg-cricket-ground.jpg');
+  background-size: cover; background-position: center 46%;
+  filter: brightness(.9) contrast(1.06) saturate(1.16) blur(2px);
 }
 .stage[data-template='ck-crease'] .env-photo-grade {
   opacity: 1;
   background:
-    radial-gradient(ellipse 62% 58% at 30% 54%, rgba(2,14,8,.14) 0 44%, rgba(2,12,7,.52) 84%, rgba(1,8,5,.8) 100%),
-    linear-gradient(180deg, rgba(2,10,7,.66) 0%, rgba(2,10,7,.14) 26%, rgba(2,10,7,.22) 66%, rgba(1,7,4,.78) 100%);
+    radial-gradient(ellipse 66% 62% at 34% 52%, rgba(4,20,12,.06) 0 40%, rgba(3,16,10,.34) 78%, rgba(2,11,7,.6) 100%),
+    linear-gradient(180deg, rgba(3,14,9,.56) 0%, rgba(3,14,9,.06) 26%, rgba(3,14,9,.1) 62%, rgba(2,11,7,.6) 100%);
 }
 .stage[data-template='ck-crease'] .env-grain { opacity: .16; }
 
@@ -2328,9 +2328,9 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
    ══════════════════════════════════════════════════════════════════════ */
 .stage[data-template='ck-house'] .env-photo {
   opacity: 1 !important;
-  background-image: url('img/bg-cricket-crowd.jpg');
-  background-size: cover; background-position: center 42%;
-  filter: brightness(.82) contrast(1.12) saturate(1.1) blur(3px);
+  background-image: url('img/bg-cricket-arena.jpg');
+  background-size: cover; background-position: center 38%;
+  filter: brightness(.86) contrast(1.1) saturate(1.14) blur(2.6px);
 }
 .stage[data-template='ck-house'] .env-photo-grade {
   opacity: 1;
