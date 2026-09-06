@@ -2432,3 +2432,285 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 .ckh-name { font-size: 64px !important; }
 .ckn-name { font-size: 62px !important; }
 .ckc-cat, .ckh-cat, .ckn-cat { font-size: 21px !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BADMINTON — THREE SELF-CONTAINED TEMPLATES
+   Badminton previously borrowed the cricket templates and the CSS scene, so
+   it had no look of its own. These three follow the cricket and pickleball
+   pattern: one photograph, one palette and one construction each.
+
+     bd-smash  dark match hall   arched portrait, feather strokes
+     bd-net    net in close-up   slanted panel, angled name bar
+     bd-court  clean blue hall   round shuttle medallion
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* The photograph carries the scene; the drawn environment is switched off. */
+.stage[data-sport='badminton'] .sport-environment > *:not(.env-photo):not(.env-photo-grade):not(.env-grain),
+.stage[data-sport='badminton'] .drama { display: none; }
+
+.tpl-bd { width: 100%; height: 100%; display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          font-family: var(--display-font, 'Barlow Condensed', sans-serif); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   1 — SMASH  ·  dark match hall
+   ══════════════════════════════════════════════════════════════════════ */
+.stage[data-template='bd-smash'] .env-photo {
+  opacity: 1 !important;
+  background-image: url('img/bg-bd-smash.jpg');
+  background-size: cover; background-position: center 46%;
+  filter: brightness(.84) contrast(1.1) saturate(1.16) blur(2.4px);
+}
+.stage[data-template='bd-smash'] .env-photo-grade {
+  opacity: 1;
+  background:
+    radial-gradient(ellipse 64% 60% at 30% 50%, rgba(2,14,16,.16) 0 42%, rgba(2,12,14,.54) 82%, rgba(1,8,10,.82) 100%),
+    linear-gradient(180deg, rgba(2,12,14,.66) 0%, rgba(2,12,14,.12) 28%, rgba(2,12,14,.2) 66%, rgba(1,8,10,.8) 100%);
+}
+.stage[data-template='bd-smash'] .env-grain { opacity: .18; }
+
+.stage[data-template='bd-smash'] {
+  --bd-volt: #c8ff4d;
+  --bd-volt-lt: #e7ffab;
+  --bd-deep: rgba(4,20,24,.86);
+  --bd-line: rgba(200,255,77,.32);
+}
+
+.tpl-bd-smash { position: relative; gap: 0; }
+
+/* Feather strokes rising each side of the arch */
+.bds-feathers {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 0 18px 190px;
+}
+.bds-feathers i {
+  display: block; width: 3px; height: 200px; border-radius: 3px;
+  background: linear-gradient(180deg, rgba(200,255,77,0), rgba(200,255,77,.5));
+  opacity: .45;
+}
+.bds-feathers i:nth-child(2), .bds-feathers i:nth-child(5) { height: 300px; opacity: .3; }
+.bds-feathers i:nth-child(3), .bds-feathers i:nth-child(4) { height: 400px; opacity: .18; }
+
+/* Arched portrait frame */
+.bds-arch {
+  position: relative; z-index: 1; flex: none;
+  width: 470px; height: 596px;
+  border-radius: 235px 235px 20px 20px;
+  padding: 5px;
+  background: linear-gradient(180deg, var(--bd-volt), rgba(200,255,77,.12) 52%, rgba(200,255,77,.34));
+  box-shadow: 0 26px 64px rgba(0,0,0,.5), 0 0 54px rgba(200,255,77,.16);
+}
+.bds-photo {
+  width: 100%; height: 100%;
+  border-radius: 230px 230px 16px 16px;
+  overflow: hidden; background: #04171b;
+}
+.bds-glow {
+  position: absolute; left: 50%; bottom: -26px; transform: translateX(-50%);
+  width: 400px; height: 46px; border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(200,255,77,.3) 0 34%, rgba(200,255,77,0) 72%);
+  filter: blur(7px);
+}
+
+.bds-plate {
+  position: relative; z-index: 2; flex: none;
+  margin-top: 22px; width: 552px; padding: 16px 26px 18px; text-align: center;
+  background: var(--bd-deep);
+  border: 1px solid var(--bd-line);
+  border-left: 4px solid var(--bd-volt);
+  border-radius: 6px;
+  box-shadow: 0 22px 52px rgba(0,0,0,.5);
+  backdrop-filter: blur(10px);
+}
+.bds-cat {
+  font-weight: 800; letter-spacing: 4px; text-transform: uppercase;
+  color: var(--bd-volt); font-size: 21px;
+}
+.bds-name {
+  margin-top: 5px; font-weight: 900; font-size: 64px; line-height: .96;
+  letter-spacing: 1px; text-transform: uppercase; color: #f2fbe6;
+}
+.tpl-bd-smash .mh { color: #dcecd2; justify-content: center; text-align: center; }
+.tpl-bd-smash .mh .mh-star { color: var(--bd-volt); }
+
+.stage[data-template='bd-smash'] .price-zone { background: none; border: none; box-shadow: none; }
+.stage[data-template='bd-smash'] .status-pill { background: var(--bd-deep); border: 1px solid var(--bd-line); }
+.stage[data-template='bd-smash'] .status-pill span { background: var(--bd-volt); box-shadow: 0 0 12px var(--bd-volt); }
+.stage[data-template='bd-smash'] .status-pill b { color: var(--bd-volt-lt); letter-spacing: 3px; }
+.stage[data-template='bd-smash'] .price-label { color: rgba(226,244,222,.6); letter-spacing: 5px; }
+.stage[data-template='bd-smash'] .current-price { color: #f6ffe9; text-shadow: 0 0 48px rgba(200,255,77,.32); }
+.stage[data-template='bd-smash'] .price-meta-card { background: var(--bd-deep); border-color: var(--bd-line); }
+.stage[data-template='bd-smash'] .price-meta-card span { color: rgba(226,244,222,.5); }
+.stage[data-template='bd-smash'] .price-meta-card strong { color: var(--bd-volt-lt); }
+.stage[data-template='bd-smash'] .tournament-header { border-bottom-color: var(--bd-line); }
+.stage[data-template='bd-smash'] .tournament-name { color: #f6ffe9; }
+.stage[data-template='bd-smash'] .brand-mark { border-color: var(--bd-line); color: var(--bd-volt-lt); }
+.stage[data-template='bd-smash'] .progress-box { background: var(--bd-deep); border-color: var(--bd-line); }
+.stage[data-template='bd-smash'] .progress-box strong { color: var(--bd-volt-lt); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   2 — NET  ·  the cord in close-up, lit warm
+   ══════════════════════════════════════════════════════════════════════ */
+.stage[data-template='bd-net'] .env-photo {
+  opacity: 1 !important;
+  background-image: url('img/bg-bd-net.jpg');
+  background-size: cover; background-position: center 50%;
+  filter: brightness(.8) contrast(1.08) saturate(1.1) blur(3px);
+}
+.stage[data-template='bd-net'] .env-photo-grade {
+  opacity: 1;
+  background:
+    radial-gradient(ellipse 66% 62% at 32% 50%, rgba(12,10,6,.2) 0 42%, rgba(10,8,5,.58) 82%, rgba(7,6,4,.84) 100%),
+    linear-gradient(180deg, rgba(10,8,5,.68) 0%, rgba(10,8,5,.2) 28%, rgba(10,8,5,.28) 66%, rgba(7,6,4,.84) 100%);
+}
+.stage[data-template='bd-net'] .env-grain { opacity: .22; }
+
+.stage[data-template='bd-net'] {
+  --bd-amber: #f0a93c;
+  --bd-amber-lt: #ffd99a;
+  --bd-ink: rgba(14,11,7,.88);
+  --bd-amber-line: rgba(240,169,60,.34);
+}
+
+.tpl-bd-net { align-items: center; gap: 0; }
+
+/* Slanted photo panel — the card leans with the cord */
+.bdn-slant {
+  flex: none; width: 452px; height: 566px;
+  transform: skewX(-7deg);
+  overflow: hidden;
+  border: 1px solid var(--bd-amber-line);
+  border-radius: 4px;
+  box-shadow: 0 28px 66px rgba(0,0,0,.56);
+}
+.bdn-photo {
+  width: 100%; height: 100%;
+  transform: skewX(7deg) scale(1.14);
+  background: #14100a;
+}
+/* Name bar riding the same angle */
+.bdn-bar {
+  flex: none; margin-top: -28px; align-self: center;
+  width: 520px; padding: 15px 30px 17px;
+  transform: skewX(-7deg);
+  background: var(--bd-ink);
+  border-left: 4px solid var(--bd-amber);
+  box-shadow: 0 20px 48px rgba(0,0,0,.5);
+  backdrop-filter: blur(10px);
+}
+.bdn-bar > * { transform: skewX(7deg); }
+.bdn-cat {
+  font-weight: 800; letter-spacing: 4px; text-transform: uppercase;
+  color: var(--bd-amber); font-size: 21px;
+}
+.bdn-name {
+  margin-top: 4px; font-weight: 900; font-size: 62px; line-height: .96;
+  letter-spacing: 1px; text-transform: uppercase; color: #fdf3e4;
+}
+.tpl-bd-net .mh { margin-top: 18px; max-width: 520px; color: #f0e4d2; justify-content: center; text-align: center; }
+.tpl-bd-net .mh .mh-star { color: var(--bd-amber); }
+
+.stage[data-template='bd-net'] .price-zone { background: none; border: none; box-shadow: none; }
+.stage[data-template='bd-net'] .status-pill { background: var(--bd-ink); border: 1px solid var(--bd-amber-line); }
+.stage[data-template='bd-net'] .status-pill span { background: var(--bd-amber); box-shadow: 0 0 12px var(--bd-amber); }
+.stage[data-template='bd-net'] .status-pill b { color: var(--bd-amber-lt); letter-spacing: 3px; }
+.stage[data-template='bd-net'] .price-label { color: rgba(246,235,220,.58); letter-spacing: 5px; }
+.stage[data-template='bd-net'] .current-price { color: #fff5e4; text-shadow: 0 0 46px rgba(240,169,60,.34); }
+.stage[data-template='bd-net'] .price-meta-card { background: var(--bd-ink); border-color: var(--bd-amber-line); }
+.stage[data-template='bd-net'] .price-meta-card span { color: rgba(246,235,220,.5); }
+.stage[data-template='bd-net'] .price-meta-card strong { color: var(--bd-amber-lt); }
+.stage[data-template='bd-net'] .tournament-header { border-bottom-color: var(--bd-amber-line); }
+.stage[data-template='bd-net'] .tournament-name { color: #fff5e4; }
+.stage[data-template='bd-net'] .brand-mark { border-color: var(--bd-amber-line); color: var(--bd-amber-lt); }
+.stage[data-template='bd-net'] .progress-box { background: var(--bd-ink); border-color: var(--bd-amber-line); }
+.stage[data-template='bd-net'] .progress-box strong { color: var(--bd-amber-lt); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   3 — COURT  ·  clean blue indoor hall
+   ══════════════════════════════════════════════════════════════════════ */
+.stage[data-template='bd-court'] .env-photo {
+  opacity: 1 !important;
+  background-image: url('img/bg-bd-court.jpg');
+  /* pushed left so the hall's own wall signage sits behind the purse panel */
+  background-size: cover; background-position: 34% 56%;
+  filter: brightness(.72) contrast(1.06) saturate(1.2) blur(3.4px);
+}
+.stage[data-template='bd-court'] .env-photo-grade {
+  opacity: 1;
+  background:
+    radial-gradient(ellipse 66% 62% at 32% 50%, rgba(3,10,26,.22) 0 42%, rgba(3,9,24,.6) 82%, rgba(2,6,18,.84) 100%),
+    linear-gradient(180deg, rgba(3,9,24,.7) 0%, rgba(3,9,24,.22) 28%, rgba(3,9,24,.3) 66%, rgba(2,6,18,.84) 100%);
+}
+.stage[data-template='bd-court'] .env-grain { opacity: .16; }
+
+.stage[data-template='bd-court'] {
+  --bd-sky: #63b8ff;
+  --bd-sky-lt: #cbe8ff;
+  --bd-card: #eaf4ff;
+  --bd-navy: #0a1c33;
+}
+
+.tpl-bd-court { gap: 20px; }
+
+/* Round shuttle medallion: portrait as the cork, feathers turning around it */
+.bdc-shuttle {
+  position: relative; flex: none;
+  width: 496px; height: 496px;
+  display: grid; place-items: center;
+}
+.bdc-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg,
+    rgba(214,238,255,.92) 0deg 2.2deg, rgba(214,238,255,0) 2.2deg 8deg);
+  -webkit-mask-image: radial-gradient(circle, transparent 0 41%, #000 44% 99%, transparent 100%);
+          mask-image: radial-gradient(circle, transparent 0 41%, #000 44% 99%, transparent 100%);
+  filter: drop-shadow(0 0 16px rgba(99,184,255,.55));
+  animation: bdcSpin 44s linear infinite;
+}
+@keyframes bdcSpin { to { transform: rotate(360deg); } }
+.bdc-photo {
+  width: 404px; height: 404px; border-radius: 50%;
+  overflow: hidden; z-index: 2;
+  border: 4px solid var(--bd-sky);
+  background: #061426;
+  box-shadow: inset 0 0 0 7px rgba(6,20,38,.9), 0 22px 58px rgba(0,0,0,.5), 0 0 56px rgba(99,184,255,.22);
+}
+
+.bdc-plate {
+  flex: none; width: 552px; padding: 16px 28px 18px; text-align: center;
+  background: linear-gradient(180deg, rgba(234,244,255,.96), rgba(212,231,250,.93));
+  border-radius: 10px;
+  box-shadow: 0 24px 56px rgba(0,0,0,.48), inset 0 1px 0 rgba(255,255,255,.9);
+}
+.bdc-name {
+  font-weight: 900; font-size: 62px; line-height: .96;
+  letter-spacing: 1px; text-transform: uppercase; color: var(--bd-navy);
+}
+.bdc-cat {
+  margin-top: 4px; font-weight: 800; letter-spacing: 4px; font-size: 21px;
+  text-transform: uppercase; color: #2f6ea8;
+}
+.tpl-bd-court .mh { color: #16324f; justify-content: center; text-align: center; }
+.tpl-bd-court .mh .mh-star { color: #2f6ea8; }
+
+.stage[data-template='bd-court'] .price-zone { background: none; border: none; box-shadow: none; }
+.stage[data-template='bd-court'] .status-pill { background: rgba(6,20,38,.72); border: 1px solid rgba(99,184,255,.34); }
+.stage[data-template='bd-court'] .status-pill span { background: var(--bd-sky); box-shadow: 0 0 12px var(--bd-sky); }
+.stage[data-template='bd-court'] .status-pill b { color: var(--bd-sky-lt); letter-spacing: 3px; }
+.stage[data-template='bd-court'] .price-label { color: rgba(226,240,255,.6); letter-spacing: 5px; }
+.stage[data-template='bd-court'] .current-price { color: #f2f9ff; text-shadow: 0 0 48px rgba(99,184,255,.36); }
+.stage[data-template='bd-court'] .price-meta-card { background: rgba(6,20,38,.7); border-color: rgba(99,184,255,.28); }
+.stage[data-template='bd-court'] .price-meta-card span { color: rgba(226,240,255,.5); }
+.stage[data-template='bd-court'] .price-meta-card strong { color: var(--bd-sky-lt); }
+.stage[data-template='bd-court'] .tournament-header { border-bottom-color: rgba(99,184,255,.26); }
+.stage[data-template='bd-court'] .tournament-name { color: #f2f9ff; }
+.stage[data-template='bd-court'] .brand-mark { border-color: rgba(99,184,255,.4); color: var(--bd-sky-lt); }
+.stage[data-template='bd-court'] .progress-box { background: rgba(6,20,38,.7); border-color: rgba(99,184,255,.3); }
+.stage[data-template='bd-court'] .progress-box strong { color: var(--bd-sky-lt); }
+
+/* Hall readability — same enlarged scale as the cricket and pickleball sets. */
+.bds-name { font-size: 64px !important; }
+.bdn-name { font-size: 62px !important; }
+.bdc-name { font-size: 62px !important; }
+.bds-cat, .bdn-cat, .bdc-cat { font-size: 21px !important; }

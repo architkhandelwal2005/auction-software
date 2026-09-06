@@ -32,13 +32,16 @@
     'pb-spotlight': 'pb-hall', 'pb-arena': 'pb-hall', 'pb-daylight': 'pb-sunset',
     'pb-neon': 'pb-hall',
   };
-  const TEMPLATES = ['arena', 'collector', 'broadcast', 'poster', ...CK_TEMPLATES, ...PB_TEMPLATES];
+  /* Badminton templates, built the same way: each owns its photograph and
+     its own construction rather than sharing one backdrop. */
+  const BD_TEMPLATES = ['bd-smash', 'bd-net', 'bd-court'];
+  const TEMPLATES = ['arena', 'collector', 'broadcast', 'poster', ...CK_TEMPLATES, ...BD_TEMPLATES, ...PB_TEMPLATES];
   const SPORTS = ['cricket', 'football', 'badminton', 'pickleball', 'multi'];
   // Available templates per sport for random/sequential modes
   const SPORT_TEMPLATES = {
     cricket: ['arena', ...CK_TEMPLATES],
     football: ['arena', 'broadcast', 'poster'],
-    badminton: ['arena', 'broadcast'],
+    badminton: BD_TEMPLATES,
     pickleball: PB_TEMPLATES,
     multi: ['arena', 'collector', 'broadcast', 'ck-house'],
   };
@@ -277,6 +280,55 @@
             <div class="ckn-print">${photoShell('ckn-photo')}</div>
             <div class="ckn-name" data-slot="player.name">PLAYER NAME</div>
             <div class="ckn-seam" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            ${MH}
+          </div>
+        </article>`;
+
+    } else if (template === 'bd-smash') {
+      /* SMASH — a dark hall, one player mid-jump. The portrait stands in an
+         arched frame lifting off the court, feather strokes rising each side,
+         name on a slim plate with an electric keyline. */
+      html = `
+        <article class="tpl-bd tpl-bd-smash">
+          <div class="bds-feathers" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="bds-arch">
+            ${photoShell('bds-photo')}
+            <div class="bds-glow" aria-hidden="true"></div>
+          </div>
+          <div class="bds-plate">
+            <div class="bds-cat" data-slot="player.category">CATEGORY</div>
+            <div class="bds-name" data-slot="player.name">PLAYER NAME</div>
+            ${MH}
+          </div>
+        </article>`;
+
+    } else if (template === 'bd-net') {
+      /* NET — the cord in close-up, lit warm. The portrait is a slanted panel
+         cutting across the frame, the name riding the same angle so the whole
+         card leans into the shot. */
+      html = `
+        <article class="tpl-bd tpl-bd-net">
+          <div class="bdn-slant">${photoShell('bdn-photo')}</div>
+          <div class="bdn-bar">
+            <div class="bdn-cat" data-slot="player.category">CATEGORY</div>
+            <div class="bdn-name" data-slot="player.name">PLAYER NAME</div>
+          </div>
+          ${MH}
+        </article>`;
+
+    } else if (template === 'bd-court') {
+      /* COURT — a clean blue hall, empty courts. The portrait sits in a round
+         shuttle: cork below, a ring of feathers turning around it, name set on
+         a pale court-blue plate. */
+      html = `
+        <article class="tpl-bd tpl-bd-court">
+          <div class="bdc-shuttle">
+            <div class="bdc-ring" aria-hidden="true"></div>
+            ${photoShell('bdc-photo')}
+          </div>
+          <div class="bdc-plate">
+            <div class="bdc-name" data-slot="player.name">PLAYER NAME</div>
+            <div class="bdc-cat" data-slot="player.category">CATEGORY</div>
             ${MH}
           </div>
         </article>`;
@@ -1387,13 +1439,16 @@
       'ck-crease': 'Crease — Night Pitch',
       'ck-house': 'Full House — Packed Stand',
       'ck-nets': 'Dusk — Ground at Dusk',
+      'bd-smash': 'Smash — Match Night',
+      'bd-net': 'Net — Close Court',
+      'bd-court': 'Court — Indoor Hall',
       'pb-hall': 'PB — Hall', 'pb-sunset': 'PB — Sunset', 'pb-press': 'PB — Press',
     };
     const SPORT_VALID_TEMPLATES = {
       cricket: SPORT_TEMPLATES.cricket,
       pickleball: PB_TEMPLATES,
       football: ['arena','broadcast','poster'],
-      badminton: ['arena','broadcast'],
+      badminton: SPORT_TEMPLATES.badminton,
       multi: SPORT_TEMPLATES.multi
     };
     const defaultTemplateFor = sport => (SPORT_VALID_TEMPLATES[sport] || ['arena'])[0];

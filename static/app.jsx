@@ -32,7 +32,7 @@ const PALETTE = ['#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#f97316
 const SPORT_TEMPLATE_OPTIONS = {
     cricket:    [{id:'arena',label:'Arena Portrait'},{id:'ck-crease',label:'Crease — Night Pitch'},{id:'ck-house',label:'Full House — Packed Stand'},{id:'ck-nets',label:'Dusk — Ground at Dusk'}],
     football:   [{id:'arena',label:'Arena Portrait'},{id:'broadcast',label:'Broadcast Panel'},{id:'poster',label:'Photo Poster'}],
-    badminton:  [{id:'arena',label:'Arena Portrait'},{id:'broadcast',label:'Broadcast Panel'}],
+    badminton:  [{id:'bd-smash',label:'Smash — Match Night'},{id:'bd-net',label:'Net — Close Court'},{id:'bd-court',label:'Court — Indoor Hall'}],
     pickleball: [{id:'pb-hall',label:'Hall'},{id:'pb-sunset',label:'Sunset'},{id:'pb-press',label:'Press'}],
     multi:      [{id:'arena',label:'Arena Portrait'},{id:'collector',label:'Collector Card'},{id:'broadcast',label:'Broadcast Panel'},{id:'ck-house',label:'Full House — Packed Stand'}],
 };
