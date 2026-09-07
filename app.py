@@ -201,6 +201,111 @@ def auction_schema(auction_id):
     return 'auction_%d' % int(auction_id)
 
 
+
+# ─── Media storage (Supabase Storage, with a local-disk fallback) ────────────
+# Render's disk is ephemeral: a file written to uploads/ disappears at the next
+# deploy or restart. Player photos, team logos, org logos and the event banner
+# all used to be written there, so every one of them was silently lost on a
+# hosted deployment. They now go to a public Supabase Storage bucket, keyed by
+# auction so purging one auction's photos never touches another's.
+#
+# The fallback to local disk keeps `python app.py` on a laptop working exactly
+# as before, with no Supabase account required — the auction still runs fully
+# offline if SUPABASE_URL/SUPABASE_SERVICE_KEY are unset.
+
+SUPABASE_URL = (os.environ.get('SUPABASE_URL') or '').rstrip('/')
+SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY') or ''
+SUPABASE_BUCKET = os.environ.get('SUPABASE_BUCKET') or 'auction-media'
+USE_SUPABASE_STORAGE = bool(SUPABASE_URL and SUPABASE_SERVICE_KEY)
+
+_MEDIA_CONTENT_TYPES = {
+    'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
+    'webp': 'image/webp', 'gif': 'image/gif', 'heic': 'image/heic',
+}
+
+
+def _storage_headers(content_type):
+    return {
+        'Authorization': 'Bearer %s' % SUPABASE_SERVICE_KEY,
+        'apikey': SUPABASE_SERVICE_KEY,
+        'Content-Type': content_type,
+        'x-upsert': 'true',
+    }
+
+
+def storage_put(path, data, ext):
+    """Upload bytes to the bucket and return the public URL. Raises on
+    failure — callers fall back to local disk rather than silently losing
+    the file."""
+    content_type = _MEDIA_CONTENT_TYPES.get(ext.lower(), 'application/octet-stream')
+    url = '%s/storage/v1/object/%s/%s' % (SUPABASE_URL, SUPABASE_BUCKET, path)
+    req = _ureq.Request(url, data=data, method='POST', headers=_storage_headers(content_type))
+    last_exc = None
+    for attempt in range(2):   # urllib has no built-in retry
+        try:
+            with _ureq.urlopen(req, timeout=20):
+                pass
+            # Cache-bust: a stable path plus CDN caching would otherwise keep
+            # serving the old image after a re-upload.
+            return '%s/storage/v1/object/public/%s/%s?v=%s' % (
+                SUPABASE_URL, SUPABASE_BUCKET, path, uuid.uuid4().hex[:8])
+        except Exception as exc:
+            last_exc = exc
+    raise last_exc
+
+
+def storage_object_path(url):
+    """The bucket-relative path inside one of our own public storage URLs, or
+    None. Used to delete exactly the files a purge should remove, rather than
+    trusting Storage's list endpoint — which was found to lag noticeably
+    behind a write (a file fetched fine by direct URL immediately after
+    upload, yet did not appear in list for the same prefix), making list-then-
+    delete an unreliable way to find what a purge should remove.
+    """
+    marker = '/storage/v1/object/public/%s/' % SUPABASE_BUCKET
+    if not url or SUPABASE_URL not in url or marker not in url:
+        return None
+    path = url.split(marker, 1)[1]
+    return path.split('?', 1)[0] or None
+
+
+def storage_delete_paths(paths):
+    """Delete exact object paths. Best-effort: failure is logged, not raised,
+    since the caller still marks the auction purged either way — an orphaned
+    object costs storage space, not correctness."""
+    paths = [p for p in dict.fromkeys(paths) if p]   # de-dupe, keep order
+    if not paths or not USE_SUPABASE_STORAGE:
+        return
+    try:
+        del_url = '%s/storage/v1/object/%s' % (SUPABASE_URL, SUPABASE_BUCKET)
+        req = _ureq.Request(del_url, data=json.dumps({'prefixes': paths}).encode(),
+                            method='DELETE', headers=_storage_headers('application/json'))
+        with _ureq.urlopen(req, timeout=20):
+            pass
+    except Exception as exc:
+        print('[storage] could not delete %d object(s): %s' % (len(paths), exc), flush=True)
+
+
+def save_media(auction_id, kind, key, data, ext):
+    """Store one file and return the URL to put in the database.
+
+    kind is a folder under the auction (players, logos, banner); key names the
+    file within it. Falls back to local disk when Supabase Storage is not
+    configured, or if the upload itself fails, so a flaky network never loses
+    a photo the organiser just took.
+    """
+    ext = (ext or 'jpg').lower().lstrip('.')
+    if USE_SUPABASE_STORAGE:
+        try:
+            return storage_put('%s/%s/%s.%s' % (auction_id, kind, key, ext), data, ext)
+        except Exception as exc:
+            print('[storage] upload failed, falling back to local disk: %s' % exc, flush=True)
+    fname = '%s_a%s_%s_%s.%s' % (kind, auction_id, key, uuid.uuid4().hex[:8], ext)
+    with open(os.path.join(UPLOAD_FOLDER, fname), 'wb') as fh:
+        fh.write(data)
+    return '/uploads/' + fname
+
+
 # ─── Google Drive photo links ────────────────────────────────────────────────
 # A Google Form file-upload question stores its answer as a Drive link, e.g.
 # https://drive.google.com/open?id=FILE_ID. That URL serves an HTML page, not
@@ -287,10 +392,8 @@ def download_drive_photo(url, auction_id, player_id):
                 data = resp.read(_DRIVE_MAX_BYTES)
             if not data:
                 continue
-            fname = 'drive_a%s_p%s_%s.%s' % (auction_id, player_id, file_id[:12], _DRIVE_IMG_EXT[ctype])
-            with open(os.path.join(UPLOAD_FOLDER, fname), 'wb') as fh:
-                fh.write(data)
-            return '/uploads/' + fname
+            return save_media(auction_id, 'players', 'p%s_%s' % (player_id, file_id[:12]),
+                              data, _DRIVE_IMG_EXT[ctype])
         except Exception:
             continue
     return None
@@ -1112,7 +1215,20 @@ def purge_expired():
     for row in rows:
         auction_id = dict(row)['id']
         try:
+            # Read the exact photo URLs before the tables disappear. Player
+            # photos are the bulk of what a retained report does not need;
+            # logos are kept, negligible cost, so the report still carries the
+            # event's branding after the rest is gone.
+            try:
+                acon = open_auction_conn(auction_id)
+                urls = [dict(r)['photo_url'] for r in
+                        acon.execute("SELECT photo_url FROM players WHERE photo_url IS NOT NULL").fetchall()]
+                acon.close()
+            except Exception:
+                urls = []
+            paths = [p for p in (storage_object_path(u) for u in urls) if p]
             destroy_auction_storage(auction_id)
+            storage_delete_paths(paths)
             conn.execute("UPDATE %s SET status = 'purged' WHERE id = ?" % tbl, (auction_id,))
             conn.commit()
             purged += 1
@@ -1549,10 +1665,7 @@ def upload_photo(player_id):
     if file.filename == '':
         return jsonify({'error': 'No file'}), 400
     ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'jpg'
-    fname = f"player_{player_id}_{uuid.uuid4().hex[:8]}.{ext}"
-    fpath = os.path.join(UPLOAD_FOLDER, fname)
-    file.save(fpath)
-    url = f"/uploads/{fname}"
+    url = save_media(g.auction_id, 'players', str(player_id), file.read(), ext)
     conn = get_db()
     conn.execute('UPDATE players SET photo_url=? WHERE id=?', (url, player_id))
     conn.commit()
@@ -2643,10 +2756,7 @@ def upload_banner():
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
     ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'png'
-    fname = f"event_banner_{uuid.uuid4().hex[:8]}.{ext}"
-    fpath = os.path.join(UPLOAD_FOLDER, fname)
-    file.save(fpath)
-    url = f"/uploads/{fname}"
+    url = save_media(g.auction_id, 'logos', 'banner', file.read(), ext)
     conn = get_db()
     conn.execute('INSERT OR REPLACE INTO config (key, value) VALUES ("event_banner", ?)', (url,))
     conn.commit()
@@ -2663,10 +2773,7 @@ def upload_org_logo():
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
     ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'png'
-    fname = f"org_logo_{uuid.uuid4().hex[:8]}.{ext}"
-    fpath = os.path.join(UPLOAD_FOLDER, fname)
-    file.save(fpath)
-    url = f"/uploads/{fname}"
+    url = save_media(g.auction_id, 'logos', 'org', file.read(), ext)
     conn = get_db()
     conn.execute('INSERT OR REPLACE INTO config (key, value) VALUES ("org_logo", ?)', (url,))
     conn.commit()
@@ -2681,10 +2788,7 @@ def upload_team_logo(team_id):
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
     ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'png'
-    fname = f"team_logo_{team_id}_{uuid.uuid4().hex[:8]}.{ext}"
-    fpath = os.path.join(UPLOAD_FOLDER, fname)
-    file.save(fpath)
-    url = f"/uploads/{fname}"
+    url = save_media(g.auction_id, 'logos', 'team_%d' % team_id, file.read(), ext)
     conn = get_db()
     conn.execute('UPDATE teams SET logo_url = ? WHERE id = ?', (url, team_id))
     conn.commit()
