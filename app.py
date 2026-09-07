@@ -671,6 +671,106 @@ init_registry()
 
 
 
+
+# ─── Who may call what ───────────────────────────────────────────────────────
+# Every endpoint is classified here, in one place, rather than by scattering
+# checks through fifty route bodies. Four levels:
+#
+#   'public'  no session needed — the audience screens and the login page
+#   'viewer'  any signed-in role, including a spectator: read-only data
+#   'team'    a team owner or the admin
+#   'admin'   the auctioneer only — anything that changes the auction
+#
+# Spectator login takes no password, so a spectator session must never reach a
+# write endpoint. Before this table it could: a spectator could clear the whole
+# player pool of the live auction.
+ROUTE_POLICY = {
+    # Public: the screens an audience opens, and the way in.
+    'static': 'public', 'uploaded_file': 'public', 'log_error': 'public',
+    'login_portal': 'public', 'logout': 'public', 'auth_login': 'public',
+    'auth_me': 'public',
+    'live_view': 'public', 'presentation_view': 'public',
+    'cricket_auction_view': 'public', 'roster_view': 'public',
+    'get_live_data': 'public',
+    # The login page lists the live auction's teams before anyone signs in.
+    'get_teams': 'public', 'get_config': 'public',
+
+    # Read-only for anyone signed in.
+    'get_players': 'viewer', 'get_stats': 'viewer', 'get_auction_state': 'viewer',
+    'auction_status': 'viewer', 'list_presets': 'viewer',
+    'report_view': 'viewer', 'final_report': 'viewer', 'export_csv': 'viewer',
+    'fetch_drive_photos_status': 'viewer',
+
+    # A team owner's own dashboard.
+    'team_dashboard': 'team', 'get_team_data': 'team',
+
+    # The auctioneer's console: everything that writes.
+    'admin_dashboard': 'admin',
+    'list_auctions': 'admin', 'create_auction': 'admin', 'open_auction': 'admin',
+    'delete_auction': 'admin', 'go_live_auction': 'admin', 'end_auction': 'admin',
+    'reopen_auction': 'admin',
+    'save_config': 'admin', 'restart_setup': 'admin', 'reset_auction': 'admin',
+    'add_team': 'admin', 'edit_team': 'admin',
+    'add_player': 'admin', 'edit_player': 'admin', 'upload_photo': 'admin',
+    'import_players': 'admin', 'clear_player_pool': 'admin', 'load_preset': 'admin',
+    'load_test_data': 'admin', 'smart_analyze': 'admin',
+    'import_from_sheet': 'admin', 'resync_sheet': 'admin', 'apply_sheet_changes': 'admin',
+    'set_auction_state': 'admin', 'sell_player': 'admin', 'undo_last_sale': 'admin',
+    'edit_player_sale': 'admin', 'pass_player': 'admin', 'revive_player': 'admin',
+    'bargain_bin': 'admin', 'set_common_base_price': 'admin',
+    'sheets_sync_all': 'admin', 'fetch_drive_photos': 'admin',
+    'upload_banner': 'admin', 'upload_org_logo': 'admin', 'upload_team_logo': 'admin',
+}
+
+_ROLE_RANK = {'viewer': 1, 'team': 2, 'admin': 3}
+
+
+def _assert_every_route_classified():
+    """Refuse to start if a route is missing from the table.
+
+    Without this, adding a route and forgetting to classify it would leave it
+    silently open. A boot failure is the right way to find that out.
+    """
+    known = {rule.endpoint for rule in app.url_map.iter_rules()}
+    missing = sorted(known - set(ROUTE_POLICY))
+    if missing:
+        raise RuntimeError(
+            'These routes have no entry in ROUTE_POLICY, so it is not defined who '
+            'may call them: %s' % ', '.join(missing))
+
+
+@app.before_request
+def enforce_route_policy():
+    endpoint = request.endpoint
+    if endpoint is None:
+        return None
+    required = ROUTE_POLICY.get(endpoint)
+    if required is None:
+        # _assert_every_route_classified stops this at boot; refuse anyway
+        # rather than fall open if it is ever reached.
+        return jsonify({'error': 'forbidden'}), 403
+    if required == 'public':
+        return None
+
+    role = session.get('role')
+    if not role:
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'login_required'}), 401
+        return redirect('/login')
+
+    if _ROLE_RANK.get(role, 0) < _ROLE_RANK[required]:
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'forbidden',
+                            'message': 'This action is for the auctioneer.'}), 403
+        return redirect('/login')
+
+    # A team owner may only open their own dashboard.
+    if endpoint in ('team_dashboard', 'get_team_data') and role == 'team':
+        requested = request.view_args.get('team_id') if request.view_args else None
+        if requested is not None and str(requested) != str(session.get('team_id')):
+            return jsonify({'error': 'forbidden'}), 403
+    return None
+
 # ─── Binding each request to one auction ─────────────────────────────────────
 # Endpoints that work outside any auction: the registry itself, login, static
 # files. Everything else needs an auction bound, and get_db() raises if one is
@@ -3220,6 +3320,9 @@ def bargain_bin():
         return jsonify({'error': str(e)}), 500
     finally:
         conn.close()
+
+# Fail to start if any route is unclassified, rather than leaving it open.
+_assert_every_route_classified()
 
 if __name__ == '__main__':
     Timer(1, lambda: webbrowser.open_new('http://127.0.0.1:5000/')).start()
