@@ -50,14 +50,15 @@
                 </div>
             </div>
 
-            <!-- Admin -->
+            <!-- Admin / Auctioneer -->
             <div class="bg-zinc-900 border border-zinc-800 p-8 rounded-3xl text-left flex flex-col h-full relative">
                 <div class="w-12 h-12 bg-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center text-2xl mb-6">⚙️</div>
                 <h2 class="fredoka text-2xl font-bold text-white mb-2">Auctioneer</h2>
                 <p class="text-zinc-500 text-sm mb-6">Control the auction, manage the player pool, and setup categories.</p>
-                
+
                 <div class="space-y-3 mt-auto">
-                    <input type="password" id="admin-pass" placeholder="Admin Password" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl p-3 text-white text-sm font-bold focus:border-amber-500 outline-none">
+                    <input type="text" id="admin-loginid" placeholder="Login ID (leave blank if you're the super-admin)" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl p-3 text-white text-sm font-bold focus:border-amber-500 outline-none">
+                    <input type="password" id="admin-pass" placeholder="Password" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl p-3 text-white text-sm font-bold focus:border-amber-500 outline-none">
                     <button onclick="loginAdmin()" class="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20">
                         Control Panel <i class="fa-solid fa-arrow-right"></i>
                     </button>
@@ -110,8 +111,9 @@
         }
 
         function loginAdmin() {
+            const loginId = document.getElementById('admin-loginid').value.trim();
             const pass = document.getElementById('admin-pass').value;
-            doLogin('admin', {password: pass}, 'admin-error');
+            doLogin('admin', {login_id: loginId, password: pass}, 'admin-error');
         }
 
         function loginTeam() {

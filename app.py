@@ -825,7 +825,11 @@ ROUTE_POLICY = {
     'upload_banner': 'admin', 'upload_org_logo': 'admin', 'upload_team_logo': 'admin',
 }
 
-_ROLE_RANK = {'viewer': 1, 'team': 2, 'admin': 3}
+# 'auctioneer' (a per-auction login) ranks equal to 'admin' for anything
+# scoped to their own bound auction — selling, editing, ending it. What still
+# separates them from the super-admin is require_admin() below, used only by
+# the handful of routes that manage the registry itself.
+_ROLE_RANK = {'viewer': 1, 'team': 2, 'auctioneer': 3, 'admin': 3}
 
 
 def _assert_every_route_classified():
@@ -997,6 +1001,15 @@ def require_admin():
     return jsonify({'error': 'admin_required'}), 401
 
 
+def require_admin_or_auctioneer():
+    """None for the super-admin or for the auctioneer signed into this one
+    auction. Used by the lifecycle actions (go live, end, reopen) an
+    auctioneer needs for their own event, unlike registry management."""
+    if session.get('role') in ('admin', 'auctioneer'):
+        return None
+    return jsonify({'error': 'admin_required'}), 401
+
+
 @app.route('/api/auctions', methods=['GET'])
 def list_auctions():
     guard = require_admin()
@@ -1021,12 +1034,23 @@ def create_auction():
         return jsonify({'error': 'Auction name is required'}), 400
     login_id = (data.get('login_id') or '').strip()
     password = (data.get('password') or '').strip()
-
-    from werkzeug.security import generate_password_hash
-    pw_hash = generate_password_hash(password) if password else ''
+    if bool(login_id) != bool(password):
+        return jsonify({'error': 'Give both a login ID and a password for this auction, '
+                                 'or leave both blank.'}), 400
 
     conn = get_registry_db()
     tbl = _registry_table()
+    if login_id:
+        # Case-insensitive: two auctions sharing a login id (even by
+        # capitalisation) would make login ambiguous.
+        existing = conn.execute('SELECT login_id FROM %s WHERE login_id IS NOT NULL '
+                                'AND login_id != %s' % (tbl, "''")).fetchall()
+        if any((dict(r)['login_id'] or '').lower() == login_id.lower() for r in existing):
+            return jsonify({'error': 'That login ID is already used by another auction. '
+                                     'Pick a different one.'}), 400
+
+    from werkzeug.security import generate_password_hash
+    pw_hash = generate_password_hash(password) if password else ''
     if USE_PG:
         cur = conn.execute(
             'INSERT INTO %s (name, slug, login_id, password_hash, status) '
@@ -1094,7 +1118,7 @@ def delete_auction(auction_id):
 def go_live_auction():
     """Setup complete: this auction becomes the one the public screens follow.
     A unique index on the registry allows only one live auction at a time."""
-    guard = require_admin()
+    guard = require_admin_or_auctioneer()
     if guard: return guard
     conn = get_registry_db()
     tbl = _registry_table()
@@ -1153,7 +1177,7 @@ def end_auction():
     A crash before that single update leaves the auction live and completely
     intact — there is no half-ended state to recover from.
     """
-    guard = require_admin()
+    guard = require_admin_or_auctioneer()
     if guard: return guard
     if g.auction['status'] in ('ended', 'purged'):
         return jsonify({'success': True, 'already_ended': True})
@@ -1174,7 +1198,7 @@ def end_auction():
 
 @app.route('/api/auction/reopen', methods=['POST'])
 def reopen_auction():
-    guard = require_admin()
+    guard = require_admin_or_auctioneer()
     if guard: return guard
     if g.auction['status'] == 'purged':
         return jsonify({'error': 'This auction\'s data has been purged and cannot be reopened.'}), 400
@@ -1277,7 +1301,7 @@ def login_portal():
 
 @app.route('/admin')
 def admin_dashboard():
-    if session.get('role') != 'admin':
+    if session.get('role') not in ('admin', 'auctioneer'):
         return redirect('/login')
     return render_template('index.html')
 
@@ -1317,12 +1341,34 @@ def auth_login():
     """Three doors. The super-admin opens the auction chooser and picks from
     there. Team owners and spectators join whichever auction is live, and their
     session is bound to it — a team password is only ever checked against its
-    own auction's teams table."""
+    own auction's teams table.
+
+    The admin door does double duty: a login ID identifies a specific
+    auction's own login (set when that auction was created) and signs the
+    caller in as its auctioneer, bound to it directly with no chooser. Left
+    blank, it is the super-admin password instead."""
     data = request.json or {}
     role = data.get('role')
     password = data.get('password', '').strip()
 
     if role == 'admin':
+        login_id = (data.get('login_id') or '').strip()
+        if login_id:
+            reg = get_registry_db()
+            tbl = _registry_table()
+            rows = reg.execute("SELECT * FROM %s WHERE login_id IS NOT NULL "
+                               "AND login_id != ''" % tbl).fetchall()
+            match = next((dict(r) for r in rows
+                         if (r['login_id'] or '').lower() == login_id.lower()), None)
+            from werkzeug.security import check_password_hash
+            if match and match.get('password_hash') and \
+                    check_password_hash(match['password_hash'], password):
+                session['user'] = login_id
+                session['role'] = 'auctioneer'
+                session['auction_id'] = match['id']
+                return jsonify({'success': True, 'url': '/admin'})
+            return jsonify({'error': 'Incorrect login ID or password'}), 401
+
         if password == ADMIN_PASSWORD:
             session['user'] = 'admin'
             session['role'] = 'admin'

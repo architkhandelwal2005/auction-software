@@ -1511,6 +1511,11 @@ const AuctionChooser = ({ onOpen }) => {
 function App() {
     const [view, setView] = useState('loading');
     const [auctionInfo, setAuctionInfo] = useState(null);
+    // 'admin' is the super-admin, who can switch between auctions. 'auctioneer'
+    // is a per-auction login, bound to one event with no registry access —
+    // Switch Auction is hidden for them since the server refuses it anyway.
+    const [myRole, setMyRole] = useState(null);
+    useEffect(()=>{ fetch('/api/auth/me').then(r=>r.json()).then(d=>setMyRole(d.role)).catch(()=>{}); }, []);
     const [teams, setTeams] = useState([]);
     const [players, setPlayers] = useState([]);
     const [stats, setStats] = useState(null);
@@ -1996,7 +2001,7 @@ function App() {
                             {divider:true},
                             {icon:'fa-rotate-left', label:'Clear Bids Only', danger:true, onClick:resetAuction},
                             {icon:'fa-power-off', label:'Start Over (Wipe All)', danger:true, onClick:wipeAllAndRestart},
-                            {icon:'fa-arrow-left-long', label:'Switch Auction', onClick:switchAuction},
+                            ...(myRole === 'admin' ? [{icon:'fa-arrow-left-long', label:'Switch Auction', onClick:switchAuction}] : []),
                             {icon:'fa-right-from-bracket', label:'Logout', danger:true, onClick:()=>window.location.href='/logout'},
                         ]} />
 
