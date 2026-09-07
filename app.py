@@ -678,6 +678,9 @@ init_registry()
 AUCTION_FREE_ENDPOINTS = {
     'static', 'uploaded_file', 'log_error', 'login_portal', 'logout',
     'auth_login', 'auth_me',
+    # The admin shell hosts the auction chooser, so it must load before any
+    # auction is bound.
+    'admin_dashboard',
     'list_auctions', 'create_auction', 'open_auction', 'delete_auction',
     'list_presets',
 }

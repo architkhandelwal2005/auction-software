@@ -544,11 +544,13 @@ const ShareModal = ({ teams, onClose }) => {
 // ═══════════════════════════════════════════════
 // SETUP WIZARD (Dark Themed)
 // ═══════════════════════════════════════════════
-const SetupWizard = ({ onComplete }) => {
+const SetupWizard = ({ onComplete, auctionInfo }) => {
     const [step, setStep] = useState(1);
 
     // Step 1
-    const [eventName, setEventName] = useState('Society Auction 2026');
+    // The name given when the auction was created is the event name; the
+    // wizard starts from it rather than a generic placeholder.
+    const [eventName, setEventName] = useState((auctionInfo && auctionInfo.name) || 'Society Auction 2026');
     const [sportTheme, setSportTheme] = useState('multi_sport');
     const [bidIncrement, setBidIncrement] = useState(5);
     const [uploadedFile, setUploadedFile] = useState(null);
@@ -799,6 +801,12 @@ const SetupWizard = ({ onComplete }) => {
         for (const t of teams) {
             await fetch('/api/teams', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(t) });
         }
+        // Setup is done, so this becomes the auction the public screens follow.
+        try {
+            const res = await fetch('/api/auction/go_live', { method: 'POST' });
+            const d = await res.json();
+            if (!d.success && d.message) alert(d.message);
+        } catch (e) { /* the dashboard still opens; the admin can retry */ }
         onComplete();
     };
 
@@ -936,7 +944,7 @@ const SetupWizard = ({ onComplete }) => {
                                 </div>
                                 <div className="text-xs text-zinc-400 mt-0.5">
                                     {driveStatus.failed > 0 && !driveStatus.running
-                                        ? 'In Google Drive, open the form's response folder, Share, and set "Anyone with the link — Viewer". Then retry.'
+                                        ? "In Google Drive, open the form's response folder, Share, and set 'Anyone with the link — Viewer'. Then retry."
                                         : (driveStatus.linked
                                             ? 'Linked photos load from Google Drive, so keep the folder shared and the venue online. Copied photos need neither.'
                                             : 'Photos are copied into the app, so the auction does not depend on Drive during the event.')}
@@ -1287,8 +1295,165 @@ const SetupWizard = ({ onComplete }) => {
 // ═══════════════════════════════════════════════
 // MAIN APP (Dark Themed Pro UI)
 // ═══════════════════════════════════════════════
+// ── AUCTION CHOOSER ──────────────────────────────────────────────────────────
+// The first screen the admin sees. Every auction is stored separately, so
+// starting a new event no longer wipes the last one.
+const STATUS_STYLE = {
+    setup:  { label: 'In setup', cls: 'bg-slate-700/40 text-slate-300 border-slate-600/50' },
+    live:   { label: 'Live',     cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' },
+    ended:  { label: 'Ended',    cls: 'bg-amber-500/15 text-amber-300 border-amber-500/40' },
+    purged: { label: 'Archived', cls: 'bg-slate-800/60 text-slate-500 border-slate-700' },
+};
+
+const daysLeft = (purgeAfter) => {
+    if(!purgeAfter) return null;
+    const ms = new Date(purgeAfter.replace(' ', 'T')) - new Date();
+    return ms <= 0 ? 0 : Math.ceil(ms / 86400000);
+};
+
+const AuctionChooser = ({ onOpen }) => {
+    const [auctions, setAuctions] = useState(null);
+    const [creating, setCreating] = useState(false);
+    const [form, setForm] = useState({ name: '', login_id: '', password: '' });
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+
+    const load = async () => {
+        try {
+            const d = await fetch('/api/auctions').then(r => r.json());
+            setAuctions(d.auctions || []);
+        } catch (e) { setAuctions([]); }
+    };
+    useEffect(() => { load(); }, []);
+
+    const create = async () => {
+        if(!form.name.trim()) { setError('Give the auction a name.'); return; }
+        setBusy(true); setError('');
+        try {
+            const res = await fetch('/api/auctions', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(form)
+            });
+            const d = await res.json();
+            if(d.success) onOpen(d.auction, true);
+            else setError(d.error || 'Could not create the auction.');
+        } catch (e) { setError('Could not create the auction: ' + e); }
+        setBusy(false);
+    };
+
+    const open = async (a) => {
+        const res = await fetch(`/api/auctions/${a.id}/open`, { method: 'POST' });
+        const d = await res.json();
+        if(d.success) onOpen(d.auction, a.status === 'setup');
+    };
+
+    const discard = async (a, e) => {
+        e.stopPropagation();
+        if(!confirm(`Delete "${a.name}"? It was never finished, so nothing is kept.`)) return;
+        await fetch(`/api/auctions/${a.id}`, { method: 'DELETE' });
+        load();
+    };
+
+    return (
+        <div className="min-h-screen bg-slate-950 text-white px-4 py-10 md:py-16">
+            <div className="max-w-3xl mx-auto">
+                <div className="text-center mb-10">
+                    <div className="text-5xl mb-4">🏆</div>
+                    <h1 className="fredoka text-3xl md:text-4xl font-black">Your Auctions</h1>
+                    <p className="text-slate-400 text-sm mt-2">Every auction keeps its own players, teams and results.</p>
+                </div>
+
+                {creating ? (
+                    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 mb-8">
+                        <h2 className="font-black text-lg mb-1">Create a new auction</h2>
+                        <p className="text-xs text-slate-500 mb-5">You will set up teams and players next.</p>
+                        <label className="block text-xs font-bold text-slate-400 mb-1.5">AUCTION NAME</label>
+                        <input autoFocus value={form.name} onChange={e=>setForm({...form, name:e.target.value})}
+                            placeholder="Ficci Flo Pickleball Auction 2026"
+                            className="w-full bg-slate-950 border border-slate-700 p-3 rounded-2xl font-bold text-white focus:border-amber-500 outline-none transition mb-4" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 mb-1.5">LOGIN ID <span className="text-slate-600 font-medium">(optional)</span></label>
+                                <input value={form.login_id} onChange={e=>setForm({...form, login_id:e.target.value})}
+                                    placeholder="ficci2026"
+                                    className="w-full bg-slate-950 border border-slate-700 p-3 rounded-2xl font-bold text-white focus:border-amber-500 outline-none transition" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-400 mb-1.5">PASSWORD <span className="text-slate-600 font-medium">(optional)</span></label>
+                                <input type="password" value={form.password} onChange={e=>setForm({...form, password:e.target.value})}
+                                    className="w-full bg-slate-950 border border-slate-700 p-3 rounded-2xl font-bold text-white focus:border-amber-500 outline-none transition" />
+                            </div>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mb-5">A login for whoever runs this one auction. You can always open it as admin.</p>
+                        {error && <div className="text-red-400 text-xs font-bold mb-4">{error}</div>}
+                        <div className="flex gap-3">
+                            <button onClick={create} disabled={busy}
+                                className="flex-1 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-black py-3 rounded-2xl transition">
+                                {busy ? 'Creating...' : 'Create & Start Setup →'}
+                            </button>
+                            <button onClick={()=>{setCreating(false);setError('');}}
+                                className="px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-2xl transition">Cancel</button>
+                        </div>
+                    </div>
+                ) : (
+                    <button onClick={()=>setCreating(true)}
+                        className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-4 rounded-3xl transition mb-8 text-lg flex items-center justify-center gap-3">
+                        <i className="fa-solid fa-plus"></i> Create New Auction
+                    </button>
+                )}
+
+                <h2 className="text-xs font-black text-slate-500 tracking-widest mb-3">EXISTING AUCTIONS</h2>
+                {auctions === null ? (
+                    <div className="text-slate-500 text-sm py-8 text-center">Loading...</div>
+                ) : auctions.length === 0 ? (
+                    <div className="text-slate-500 text-sm py-10 text-center border border-dashed border-slate-800 rounded-3xl">
+                        No auctions yet. Create your first one above.
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {auctions.map(a => {
+                            const st = STATUS_STYLE[a.status] || STATUS_STYLE.setup;
+                            const left = daysLeft(a.purge_after);
+                            return (
+                                <div key={a.id} onClick={()=>open(a)}
+                                    className="group bg-slate-900 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 flex items-center gap-4 cursor-pointer transition">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2.5 flex-wrap">
+                                            <span className="font-black truncate">{a.name}</span>
+                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${st.cls}`}>{st.label}</span>
+                                        </div>
+                                        <div className="text-[11px] text-slate-500 mt-1">
+                                            {a.created_at ? a.created_at.slice(0, 10) : ''}
+                                            {a.players ? ` · ${a.players} players` : ''}
+                                            {a.teams ? ` · ${a.teams} teams` : ''}
+                                            {a.status === 'ended' && left !== null && ` · data kept ${left} more day${left === 1 ? '' : 's'}`}
+                                            {a.status === 'purged' && ' · report only'}
+                                        </div>
+                                    </div>
+                                    {a.status === 'setup' && (
+                                        <button onClick={(e)=>discard(a, e)} title="Delete"
+                                            className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 px-2 transition">
+                                            <i className="fa-solid fa-trash"></i>
+                                        </button>
+                                    )}
+                                    <i className="fa-solid fa-chevron-right text-slate-600 group-hover:text-amber-400 transition"></i>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                <div className="text-center mt-10">
+                    <a href="/logout" className="text-slate-600 hover:text-slate-400 text-xs font-bold transition">Log out</a>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 function App() {
     const [view, setView] = useState('loading');
+    const [auctionInfo, setAuctionInfo] = useState(null);
     const [teams, setTeams] = useState([]);
     const [players, setPlayers] = useState([]);
     const [stats, setStats] = useState(null);
@@ -1351,18 +1516,55 @@ function App() {
         }
     };
 
+    // Entering the app is now two decisions, not one: which auction, and then
+    // whether that auction still needs setting up.
+    const enterAuction = async (auction, forceWizard) => {
+        setAuctionInfo(auction || null);
+        if(forceWizard) { setView('wizard'); return; }
+        const res = await loadData();
+        const cd = res && res.cd, pd = res && res.pd;
+        if((cd && cd.config?.setup_done === 'true') || (pd && pd.length > 0)) setView('dashboard');
+        else setView('wizard');
+    };
+
+    const refreshAuctionInfo = async () => {
+        try {
+            const d = await fetch('/api/auction/status').then(r => r.json());
+            if(d && d.id) setAuctionInfo(d);
+            return d;
+        } catch (e) { return null; }
+    };
+
     useEffect(()=>{
         (async()=>{
-            const res = await loadData();
-            if(!res) return;
-            const {cd, pd} = res;
-            if((cd && cd.config?.setup_done === 'true') || (pd && pd.length > 0)) {
-                setView('dashboard');
-            } else {
-                setView('wizard');
-            }
+            const info = await refreshAuctionInfo();
+            if(!info || !info.id) { setView('chooser'); return; }
+            await enterAuction(info, false);
         })();
     }, []);
+
+    const endAuction = async () => {
+        const ok = confirm(['End this auction?', '',
+            'The report unlocks straight after, and nothing can be sold or edited until you reopen it.', '',
+            'All data is kept for 10 days.'].join('\n'));
+        if(!ok) return;
+        const res = await fetch('/api/auction/end', {method:'POST'});
+        const d = await res.json();
+        if(d.success){
+            await refreshAuctionInfo();
+            alert(['Auction ended. The report is ready.', '',
+                'Data is kept until ' + (d.purge_after||'').slice(0,10) + '.'].join('\n'));
+        } else alert(d.message || d.error || 'Could not end the auction.');
+    };
+
+    const reopenAuction = async () => {
+        const res = await fetch('/api/auction/reopen', {method:'POST'});
+        const d = await res.json();
+        if(d.success) { await refreshAuctionInfo(); alert('Auction reopened. You can sell and edit again.'); }
+        else alert(d.message || d.error || 'Could not reopen the auction.');
+    };
+
+    const switchAuction = () => { setAuctionInfo(null); setView('chooser'); };
 
     const bidIncrement = parseFloat(config.bid_increment) || 2.5;
 
@@ -1611,7 +1813,8 @@ function App() {
     const categoryList = catRules.map(r=>r.category);
 
     if(view==='loading') return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="text-center"><div className="text-5xl mb-3 animate-bounce">🏏</div><p className="fredoka text-xl text-slate-400">Loading auction system...</p></div></div>;
-    if(view==='wizard') return <SetupWizard onComplete={()=>{loadData();setView('dashboard');}} />;
+    if(view==='chooser') return <AuctionChooser onOpen={enterAuction} />;
+    if(view==='wizard') return <SetupWizard auctionInfo={auctionInfo} onComplete={()=>{refreshAuctionInfo();loadData();setView('dashboard');}} />;
 
     // ═══════════════════════════════════════════════
     // DASHBOARD (Dark Themed)
@@ -1695,10 +1898,21 @@ function App() {
                             {divider:true},
                             {icon:'fa-tags', label:'Bargain Bin Round', onClick:startBargainBin},
                             {icon:'fa-share-nodes', label:'Share Links', onClick:()=>setShowShareModal(true)},
-                            {icon:'fa-print', label:'Print Report', onClick:()=>window.open('/report','_blank')},
+                            {divider:true},
+                            ...(auctionInfo?.status === 'ended' || auctionInfo?.status === 'purged'
+                                ? [{icon:'fa-rotate-left', label:'Reopen Auction', onClick:reopenAuction}]
+                                : [{icon:'fa-flag-checkered', label:'End Auction', onClick:endAuction}]),
+                            {icon:'fa-print',
+                             label: (auctionInfo?.status === 'ended' || auctionInfo?.status === 'purged')
+                                 ? 'Print Report' : 'Print Report (ends auction first)',
+                             onClick:()=>{
+                                 if(auctionInfo?.status === 'ended' || auctionInfo?.status === 'purged') window.open('/report','_blank');
+                                 else alert('Click "End Auction" first. The report is a record of a finished auction, so it stays locked until then.');
+                             }},
                             {divider:true},
                             {icon:'fa-rotate-left', label:'Clear Bids Only', danger:true, onClick:resetAuction},
                             {icon:'fa-power-off', label:'Start Over (Wipe All)', danger:true, onClick:wipeAllAndRestart},
+                            {icon:'fa-arrow-left-long', label:'Switch Auction', onClick:switchAuction},
                             {icon:'fa-right-from-bracket', label:'Logout', danger:true, onClick:()=>window.location.href='/logout'},
                         ]} />
 
