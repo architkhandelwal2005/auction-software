@@ -214,6 +214,21 @@ def drive_file_id(url):
     return None
 
 
+def drive_direct_url(url):
+    """A Drive share link rewritten to a URL a browser can put in <img src>.
+
+    Used when the file cannot be copied into uploads/ — on a host with an
+    ephemeral disk, for instance. The image then loads straight from Google,
+    which needs the file to stay shared and the venue to have internet, so a
+    local copy is still preferred where storage exists."""
+    file_id = drive_file_id(url)
+    if not file_id:
+        return None
+    if 'googleusercontent.com' in url:
+        return url
+    return 'https://lh3.googleusercontent.com/d/%s=w1400' % file_id
+
+
 def download_drive_photo(url, player_id):
     """Save a Drive-hosted photo into uploads/ and return its local /uploads
     path. Returns None when the link is not a Drive link, the file is not
@@ -273,7 +288,7 @@ def _hydrate_drive_photos():
                     "   OR photo_url LIKE '%googleusercontent.com%'")
         rows = [dict(r) for r in cur.fetchall()]
 
-        done = failed = 0
+        done = linked = failed = 0
         for row in rows:
             local = download_drive_photo(row['photo_url'], row['id'])
             if local:
@@ -282,28 +297,38 @@ def _hydrate_drive_photos():
                 raw.commit()
                 done += 1
             else:
-                failed += 1
+                # Could not store the bytes. Rewrite the link to a form the
+                # browser can render, so the photo still shows as long as the
+                # file is shared. Counted as a fallback, not a success.
+                direct = drive_direct_url(row['photo_url'])
+                if direct and direct != row['photo_url']:
+                    cur.execute('UPDATE players SET photo_url=' + placeholder +
+                                ' WHERE id=' + placeholder, (direct, row['id']))
+                    raw.commit()
+                    linked += 1
+                else:
+                    failed += 1
         raw.close()
         if rows:
-            print('[drive-photos] %d saved locally, %d could not be fetched '
-                  '(check that the Drive folder is shared with "Anyone with the link")'
-                  % (done, failed))
-        _DRIVE_HYDRATE_STATE.update({'running': False, 'done': done, 'failed': failed,
-                                     'total': len(rows)})
+            print('[drive-photos] %d saved locally, %d linked directly, %d failed '
+                  '(a failure usually means the Drive folder is not shared with '
+                  '"Anyone with the link")' % (done, linked, failed))
+        _DRIVE_HYDRATE_STATE.update({'running': False, 'done': done, 'linked': linked,
+                                     'failed': failed, 'total': len(rows)})
     except Exception as exc:
         _DRIVE_HYDRATE_STATE.update({'running': False, 'error': str(exc)})
         print('[drive-photos] failed: %s' % exc)
 
 
-_DRIVE_HYDRATE_STATE = {'running': False, 'done': 0, 'failed': 0, 'total': 0, 'error': ''}
+_DRIVE_HYDRATE_STATE = {'running': False, 'done': 0, 'linked': 0, 'failed': 0, 'total': 0, 'error': ''}
 
 
 def hydrate_drive_photos_async():
     """Kick off the download pass unless one is already running."""
     if _DRIVE_HYDRATE_STATE.get('running'):
         return
-    _DRIVE_HYDRATE_STATE.update({'running': True, 'done': 0, 'failed': 0,
-                                 'total': 0, 'error': ''})
+    _DRIVE_HYDRATE_STATE.update({'running': True, 'done': 0, 'linked': 0,
+                                 'failed': 0, 'total': 0, 'error': ''})
     threading.Thread(target=_hydrate_drive_photos, daemon=True).start()
 
 # Cache-busting version for front-end assets. Uses the newest mtime of the JSX
