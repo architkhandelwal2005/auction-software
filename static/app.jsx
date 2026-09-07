@@ -555,6 +555,10 @@ const SetupWizard = ({ onComplete }) => {
     const [uploadedFileName, setUploadedFileName] = useState('');
     const [uploading, setUploading] = useState(false);
     const [uploadedCount, setUploadedCount] = useState(0);
+    // Google Drive photo import. A Forms response sheet stores photos as Drive
+    // share links, which browsers cannot render; the server downloads them into
+    // uploads/ in the background and this tracks that pass.
+    const [driveStatus, setDriveStatus] = useState(null);
     const [orgName, setOrgName] = useState('');
     const [orgLogo, setOrgLogo] = useState('');
     const [orgLogoUploading, setOrgLogoUploading] = useState(false);
@@ -639,6 +643,29 @@ const SetupWizard = ({ onComplete }) => {
         e.target.value = null;
     };
 
+    const refreshDriveStatus = async () => {
+        try {
+            const d = await fetch('/api/players/fetch_photos').then(r => r.json());
+            setDriveStatus(d);
+            return d;
+        } catch (e) { return null; }
+    };
+
+    // Poll while the background download is running, then stop.
+    const watchDriveStatus = () => {
+        let ticks = 0;
+        const timer = setInterval(async () => {
+            const d = await refreshDriveStatus();
+            ticks++;
+            if (!d || (!d.running && d.pending === 0) || ticks > 90) clearInterval(timer);
+        }, 2000);
+    };
+
+    const retryDrivePhotos = async () => {
+        try { await fetch('/api/players/fetch_photos', { method: 'POST' }); } catch (e) {}
+        watchDriveStatus();
+    };
+
     const handleWizardUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -657,6 +684,7 @@ const SetupWizard = ({ onComplete }) => {
                     const pr = await fetch('/api/players').then(r => r.json());
                     setImportedPreview(Array.isArray(pr) ? pr : []);
                 } catch (e) { setImportedPreview([]); }
+                watchDriveStatus();
             } else {
                 alert(d.error || 'Upload failed');
                 setUploadedFile(null);
@@ -891,6 +919,33 @@ const SetupWizard = ({ onComplete }) => {
                                     </div></>}
                             <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleWizardUpload} />
                         </label>
+                    )}
+
+                    {driveStatus && (driveStatus.running || driveStatus.pending > 0 || driveStatus.done > 0) && (
+                        <div className={`rounded-2xl p-4 border flex items-center gap-3 ${driveStatus.pending > 0 && !driveStatus.running ? 'bg-amber-500/10 border-amber-500/30' : 'bg-blue-500/10 border-blue-500/30'}`}>
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 bg-black/20">
+                                {driveStatus.running ? <i className="fa-solid fa-spinner animate-spin text-blue-300"></i> : (driveStatus.pending > 0 ? '⚠️' : '🖼️')}
+                            </div>
+                            <div className="flex-1">
+                                <div className="font-bold text-sm text-white">
+                                    {driveStatus.running
+                                        ? 'Downloading photos from Google Drive...'
+                                        : (driveStatus.pending > 0
+                                            ? `${driveStatus.pending} Drive photos could not be fetched`
+                                            : `${driveStatus.done} photos saved from Google Drive`)}
+                                </div>
+                                <div className="text-xs text-zinc-400 mt-0.5">
+                                    {driveStatus.pending > 0 && !driveStatus.running
+                                        ? 'In Google Drive, open the form's response folder, Share, and set "Anyone with the link — Viewer". Then retry.'
+                                        : 'Photos are copied into the app, so the auction does not depend on Drive during the event.'}
+                                </div>
+                            </div>
+                            {!driveStatus.running && driveStatus.pending > 0 && (
+                                <button onClick={retryDrivePhotos} className="text-xs font-bold px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 transition shrink-0">
+                                    Retry
+                                </button>
+                            )}
+                        </div>
                     )}
 
                     {uploadedCount > 0 && importedPreview.length > 0 && (

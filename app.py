@@ -168,6 +168,144 @@ DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'auction.db')
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+
+# ─── Google Drive photo links ────────────────────────────────────────────────
+# A Google Form file-upload question stores its answer as a Drive link, e.g.
+# https://drive.google.com/open?id=FILE_ID. That URL serves an HTML page, not
+# an image, so <img src="..."> renders nothing — which is why photos imported
+# from a Forms response sheet never appear on the roster or the stage.
+#
+# The fix is to resolve each link to the image bytes once, at import time, and
+# save them under uploads/. The auction then runs entirely off local files: no
+# Drive dependency, no network dependency, and no per-image latency during the
+# event itself.
+#
+# This works only for files whose sharing is "Anyone with the link can view".
+# Google Forms uploads are private to the form owner by default, so the
+# response folder in Drive must be shared before importing.
+
+_DRIVE_ID_PATTERNS = [
+    r'/file/d/([A-Za-z0-9_-]{10,})',      # .../file/d/ID/view
+    r'[?&]id=([A-Za-z0-9_-]{10,})',       # /open?id=ID, /uc?id=ID, /thumbnail?id=ID
+    r'/d/([A-Za-z0-9_-]{10,})',           # lh3.googleusercontent.com/d/ID
+]
+
+# Content types we accept back. Anything else (usually text/html — a sign-in
+# page, a permission error, or the large-file virus-scan interstitial) means
+# the link did not resolve to an image and the next candidate URL is tried.
+_DRIVE_IMG_EXT = {
+    'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png',
+    'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic',
+}
+
+_DRIVE_MAX_BYTES = 12 * 1024 * 1024
+
+
+def drive_file_id(url):
+    """The Drive file id inside a share link, or None if this is not one."""
+    if not url:
+        return None
+    if 'drive.google.com' not in url and 'googleusercontent.com' not in url:
+        return None
+    for pattern in _DRIVE_ID_PATTERNS:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
+
+def download_drive_photo(url, player_id):
+    """Save a Drive-hosted photo into uploads/ and return its local /uploads
+    path. Returns None when the link is not a Drive link, the file is not
+    shared, or it is not an image — the caller then keeps the original URL."""
+    file_id = drive_file_id(url)
+    if not file_id:
+        return None
+
+    # Three endpoints, in order of image quality. The first serves the original
+    # file; the other two serve Drive's own rendered copies, which still work
+    # for some files the direct download refuses.
+    candidates = [
+        'https://drive.google.com/uc?export=download&id=%s' % file_id,
+        'https://lh3.googleusercontent.com/d/%s=w1400' % file_id,
+        'https://drive.google.com/thumbnail?id=%s&sz=w1400' % file_id,
+    ]
+    for source in candidates:
+        try:
+            req = _ureq.Request(source, headers={'User-Agent': 'Mozilla/5.0'})
+            with _ureq.urlopen(req, timeout=25) as resp:
+                ctype = (resp.headers.get('Content-Type') or '').split(';')[0].strip().lower()
+                if ctype not in _DRIVE_IMG_EXT:
+                    continue
+                data = resp.read(_DRIVE_MAX_BYTES)
+            if not data:
+                continue
+            fname = 'drive_%s_%s.%s' % (player_id, file_id[:12], _DRIVE_IMG_EXT[ctype])
+            with open(os.path.join(UPLOAD_FOLDER, fname), 'wb') as fh:
+                fh.write(data)
+            return '/uploads/' + fname
+        except Exception:
+            continue
+    return None
+
+
+def _hydrate_drive_photos():
+    """Replace every Drive link in players.photo_url with a local file.
+
+    Runs on its own connection in a background thread, so a 70-player import
+    returns immediately instead of waiting on 70 downloads. Photos appear on
+    the roster as each one lands.
+    """
+    try:
+        if USE_PG:
+            import psycopg2, psycopg2.extras
+            raw = psycopg2.connect(DATABASE_URL)
+            cur = raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            placeholder = '%s'
+        else:
+            raw = sqlite3.connect(DB_FILE, timeout=20)
+            raw.row_factory = sqlite3.Row
+            cur = raw.cursor()
+            placeholder = '?'
+
+        cur.execute("SELECT id, photo_url FROM players "
+                    "WHERE photo_url LIKE '%drive.google.com%' "
+                    "   OR photo_url LIKE '%googleusercontent.com%'")
+        rows = [dict(r) for r in cur.fetchall()]
+
+        done = failed = 0
+        for row in rows:
+            local = download_drive_photo(row['photo_url'], row['id'])
+            if local:
+                cur.execute('UPDATE players SET photo_url=' + placeholder +
+                            ' WHERE id=' + placeholder, (local, row['id']))
+                raw.commit()
+                done += 1
+            else:
+                failed += 1
+        raw.close()
+        if rows:
+            print('[drive-photos] %d saved locally, %d could not be fetched '
+                  '(check that the Drive folder is shared with "Anyone with the link")'
+                  % (done, failed))
+        _DRIVE_HYDRATE_STATE.update({'running': False, 'done': done, 'failed': failed,
+                                     'total': len(rows)})
+    except Exception as exc:
+        _DRIVE_HYDRATE_STATE.update({'running': False, 'error': str(exc)})
+        print('[drive-photos] failed: %s' % exc)
+
+
+_DRIVE_HYDRATE_STATE = {'running': False, 'done': 0, 'failed': 0, 'total': 0, 'error': ''}
+
+
+def hydrate_drive_photos_async():
+    """Kick off the download pass unless one is already running."""
+    if _DRIVE_HYDRATE_STATE.get('running'):
+        return
+    _DRIVE_HYDRATE_STATE.update({'running': True, 'done': 0, 'failed': 0,
+                                 'total': 0, 'error': ''})
+    threading.Thread(target=_hydrate_drive_photos, daemon=True).start()
+
 # Cache-busting version for front-end assets. Uses the newest mtime of the JSX
 # bundles so every deploy serves a fresh URL and browsers never run stale JS
 # (e.g. an old "Start Over" without the wipe-password prompt).
@@ -1222,6 +1360,10 @@ def apply_and_launch():
     conn.commit()
     conn.close()
 
+    # Photos that came in as Google Drive share links are downloaded into
+    # uploads/ in the background, so the import returns straight away.
+    hydrate_drive_photos_async()
+
     return jsonify({
         'success': True,
         'player_count': player_count,
@@ -1288,6 +1430,7 @@ def import_players():
 
     conn.commit()
     conn.close()
+    hydrate_drive_photos_async()
     return jsonify({
         'success': True,
         'count': count,
@@ -1980,6 +2123,28 @@ def get_live_data():
     })
 
 # ─── Set Common Base Price for All Unsold Players ───
+@app.route('/api/players/fetch_photos', methods=['POST'])
+def fetch_drive_photos():
+    """Re-run the Drive photo download for any player still holding a Drive
+    link. Use it after sharing the Drive folder, or if some photos failed the
+    first time. GET the same path for progress."""
+    hydrate_drive_photos_async()
+    return jsonify({'success': True, 'status': dict(_DRIVE_HYDRATE_STATE)})
+
+
+@app.route('/api/players/fetch_photos', methods=['GET'])
+def fetch_drive_photos_status():
+    conn = get_db()
+    pending = conn.execute(
+        "SELECT COUNT(*) AS n FROM players "
+        "WHERE photo_url LIKE '%drive.google.com%' "
+        "   OR photo_url LIKE '%googleusercontent.com%'").fetchone()
+    conn.close()
+    status = dict(_DRIVE_HYDRATE_STATE)
+    status['pending'] = pending['n'] if pending else 0
+    return jsonify(status)
+
+
 @app.route('/api/players/set_common_base_price', methods=['POST'])
 def set_common_base_price():
     data = request.json or {}
