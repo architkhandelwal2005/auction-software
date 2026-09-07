@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for, g
 import sqlite3, os, webbrowser, csv, io, uuid, json, re, threading, datetime
 import urllib.request as _ureq
+import urllib.error as _uerr
 from threading import Timer
 
 # ── Load .env (DATABASE_URL, etc.) ──────────────────────────────────────────
@@ -704,6 +705,7 @@ MUTATING_ENDPOINTS = {
     'upload_banner', 'upload_org_logo', 'upload_team_logo', 'fetch_drive_photos',
     'set_common_base_price', 'smart_analyze', 'pass_player', 'revive_player',
     'bargain_bin', 'go_live_auction',
+    'import_from_sheet', 'resync_sheet', 'apply_sheet_changes',
 }
 
 
@@ -1703,6 +1705,311 @@ def parse_auction_file(file_storage, default_base_price=10.0):
 
 
 # ─── New Dynamic File Ingestion & Category Rule Endpoints ───
+
+# ─── Google Sheet as a player source ─────────────────────────────────────────
+# A Form's responses land in a Google Sheet. Rather than exporting it to Excel
+# and uploading that, the organiser pastes the sheet's link once. The sheet is
+# read a single time, its rows are stored as players and its photos are pulled
+# in, and the auction then runs entirely from stored data — the sheet is never
+# consulted again while bidding, so a slow network or a revoked share cannot
+# interrupt an event.
+#
+# Public-link only. Reading a private sheet needs a Google service account and
+# a Cloud project, which is setup the organiser should not have to do.
+
+_SHEET_ID_RE = re.compile(r'/spreadsheets/d/([A-Za-z0-9_-]{20,})')
+_SHEET_GID_RE = re.compile(r'[#&?]gid=([0-9]+)')
+
+
+class _SheetUpload:
+    """Presents fetched CSV bytes the way read_raw_auction_file expects a
+    Werkzeug upload to look, so the whole existing parse pipeline is reused."""
+    def __init__(self, data, filename='sheet.csv'):
+        self.filename = filename
+        self._data = data
+    def read(self):
+        return self._data
+
+
+def sheet_csv_url(url):
+    match = _SHEET_ID_RE.search(url or '')
+    if not match:
+        return None
+    gid = _SHEET_GID_RE.search(url or '')
+    return 'https://docs.google.com/spreadsheets/d/%s/export?format=csv&gid=%s' % (
+        match.group(1), gid.group(1) if gid else '0')
+
+
+def fetch_public_sheet(url):
+    """The sheet's rows as CSV bytes. Raises ValueError with a message the
+    organiser can act on."""
+    csv_url = sheet_csv_url(url)
+    if not csv_url:
+        raise ValueError('That does not look like a Google Sheet link. Copy the '
+                         'address from the browser while the sheet is open.')
+    req = _ureq.Request(csv_url, headers={
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Accept': 'text/csv,text/plain,*/*',
+    })
+    # Google occasionally drops the first connection; one retry costs a second
+    # and saves the organiser from a failure they cannot act on.
+    last = None
+    for attempt in range(3):
+        try:
+            with _ureq.urlopen(req, timeout=30) as resp:
+                ctype = (resp.headers.get('Content-Type') or '').split(';')[0].strip().lower()
+                data = resp.read(20 * 1024 * 1024)
+            break
+        except _uerr.HTTPError as exc:
+            if exc.code in (401, 403, 404):
+                raise ValueError('That sheet is not shared publicly, or the link is wrong. '
+                                 'Open it in Google Sheets, click Share, and set '
+                                 '"Anyone with the link" to Viewer.')
+            last = exc
+        except Exception as exc:
+            last = exc
+    else:
+        raise ValueError('Could not reach the sheet: %s' % last)
+    # Google answers a private sheet with a sign-in page, not an error status,
+    # so the content type is what decides this — never the status code.
+    if ctype != 'text/csv':
+        raise ValueError('That sheet is not shared publicly. Open it in Google '
+                         'Sheets, click Share, and set "Anyone with the link" to '
+                         'Viewer. Then try again.')
+    if not data:
+        raise ValueError('The sheet came back empty.')
+    return data
+
+
+def snapshot_path(auction_id, which='latest'):
+    return os.path.join(DATA_DIR, 'auction_%s_source_%s.csv' % (auction_id, which))
+
+
+def save_sheet_snapshot(auction_id, data):
+    """Keep the fetched rows so the wizard can re-analyse without re-uploading,
+    and so a later re-sync has something to compare against."""
+    latest = snapshot_path(auction_id, 'latest')
+    if os.path.exists(latest):
+        try:
+            import shutil
+            shutil.copy2(latest, snapshot_path(auction_id, 'prev'))
+        except Exception:
+            pass
+    with open(latest, 'wb') as fh:
+        fh.write(data)
+
+
+def load_sheet_snapshot(auction_id, which='latest'):
+    path = snapshot_path(auction_id, which)
+    if not os.path.exists(path):
+        return None
+    with open(path, 'rb') as fh:
+        return fh.read()
+
+
+def _norm_name(name):
+    return ' '.join((name or '').split()).lower()
+
+
+def parse_sheet_items(data, default_base_price):
+    """Sheet rows as player dicts, refusing duplicates.
+
+    Every match in this pipeline is by player name, so two rows sharing one
+    name would make a re-sync diff meaningless — better to say so at import
+    than to apply the wrong change later.
+    """
+    items = parse_auction_file(_SheetUpload(data), default_base_price=default_base_price)
+    seen, dupes = set(), []
+    for it in items:
+        key = _norm_name(it['name'])
+        if key in seen:
+            dupes.append(it['name'])
+        seen.add(key)
+    if dupes:
+        raise ValueError('These names appear more than once in the sheet: %s. '
+                         'Make each player name unique, then import again.'
+                         % ', '.join(sorted(set(dupes))[:6]))
+    return items
+
+
+def _default_base_price(conn):
+    row = conn.execute("SELECT value FROM config WHERE key = 'common_base_price'").fetchone()
+    try:
+        return float(row['value']) if row else 10.0
+    except (TypeError, ValueError):
+        return 10.0
+
+
+def _insert_items(conn, items):
+    c = conn.cursor()
+    for it in items:
+        c.execute('INSERT INTO players (name, category, base_price, photo_url, attributes) '
+                  'VALUES (?, ?, ?, ?, ?)',
+                  (it['name'], it['category'], it['base_price'], it['photo_url'],
+                   json.dumps(it.get('attributes') or {})))
+    existing = {r['category'] for r in conn.execute('SELECT category FROM category_rules').fetchall()}
+    for cat in {it['category'] or 'General' for it in items} - existing:
+        c.execute('INSERT INTO category_rules (category, base_price, min_per_team, max_per_team) '
+                  'VALUES (?, ?, ?, ?)', (cat, items[0]['base_price'], 0, 99))
+    conn.commit()
+
+
+@app.route('/api/auction/source/import', methods=['POST'])
+def import_from_sheet():
+    """First read of a sheet: store the rows as players and start pulling the
+    photos. Replaces whatever player pool the auction currently has."""
+    url = ((request.json or {}).get('sheet_url') or '').strip()
+    try:
+        data = fetch_public_sheet(url)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    conn = get_db()
+    try:
+        items = parse_sheet_items(data, _default_base_price(conn))
+    except ValueError as exc:
+        conn.close()
+        return jsonify({'error': str(exc)}), 400
+    if not items:
+        conn.close()
+        return jsonify({'error': 'The sheet has no player rows.'}), 400
+
+    sold = conn.execute("SELECT COUNT(*) AS n FROM players WHERE status = 'sold'").fetchone()
+    if sold and sold['n']:
+        conn.close()
+        return jsonify({'error': 'Players have already been sold in this auction. '
+                                 'Use Re-sync to bring in changes instead.'}), 409
+
+    conn.execute('DELETE FROM players')
+    conn.execute('DELETE FROM category_rules')
+    _insert_items(conn, items)
+    conn.close()
+
+    save_sheet_snapshot(g.auction_id, data)
+    reg = get_registry_db()
+    reg.execute('UPDATE %s SET sheet_url = ? WHERE id = ?' % _registry_table(), (url, g.auction_id))
+    reg.commit()
+
+    hydrate_drive_photos_async(g.auction_id)
+    return jsonify({'success': True, 'count': len(items)})
+
+
+@app.route('/api/auction/source/resync', methods=['POST'])
+def resync_sheet():
+    """Read the sheet again and report what changed, without writing anything.
+
+    The organiser sees the differences first and applies them deliberately,
+    because a sheet edited after an auction has started can contradict sales
+    that have already happened.
+    """
+    url = ((request.json or {}).get('sheet_url') or g.auction.get('sheet_url') or '').strip()
+    if not url:
+        return jsonify({'error': 'This auction has no sheet linked yet.'}), 400
+    try:
+        data = fetch_public_sheet(url)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    conn = get_db()
+    try:
+        items = parse_sheet_items(data, _default_base_price(conn))
+    except ValueError as exc:
+        conn.close()
+        return jsonify({'error': str(exc)}), 400
+
+    current = {_norm_name(dict(r)['name']): dict(r)
+               for r in conn.execute('SELECT * FROM players').fetchall()}
+    conn.close()
+
+    incoming = {_norm_name(it['name']): it for it in items}
+    added   = [incoming[k]['name'] for k in incoming.keys() - current.keys()]
+    removed = [current[k]['name']  for k in current.keys() - incoming.keys()]
+    changed, blocked = [], []
+    for key in incoming.keys() & current.keys():
+        new, old = incoming[key], current[key]
+        diffs = []
+        if (new['category'] or '') != (old.get('category') or ''):
+            diffs.append({'field': 'category', 'old': old.get('category') or '', 'new': new['category'] or ''})
+        if abs(float(new['base_price'] or 0) - float(old.get('base_price') or 0)) > 0.001:
+            diffs.append({'field': 'base price', 'old': old.get('base_price'), 'new': new['base_price']})
+        if (new['photo_url'] or '') and not (old.get('photo_url') or ''):
+            diffs.append({'field': 'photo', 'old': '', 'new': 'added'})
+        if not diffs:
+            continue
+        entry = {'name': old['name'], 'changes': diffs}
+        # A sold player's terms are already settled; the sheet does not get to
+        # rewrite them behind the organiser's back.
+        (blocked if old.get('status') == 'sold' else changed).append(entry)
+
+    removed_blocked = [n for n in removed
+                       if current[_norm_name(n)].get('status') == 'sold']
+    removed = [n for n in removed if n not in removed_blocked]
+    for name in removed_blocked:
+        blocked.append({'name': name, 'changes': [{'field': 'removed from sheet',
+                                                   'old': 'in auction', 'new': 'sold, so kept'}]})
+
+    save_sheet_snapshot(g.auction_id, data)
+    return jsonify({'success': True, 'added': added, 'removed': removed,
+                    'changed': changed, 'blocked': blocked,
+                    'unchanged': len(incoming) - len(changed) - len(blocked)})
+
+
+@app.route('/api/auction/source/apply', methods=['POST'])
+def apply_sheet_changes():
+    """Write the differences the organiser has just reviewed."""
+    data = load_sheet_snapshot(g.auction_id)
+    if data is None:
+        return jsonify({'error': 'Run Re-sync first.'}), 400
+
+    conn = get_db()
+    try:
+        items = parse_sheet_items(data, _default_base_price(conn))
+    except ValueError as exc:
+        conn.close()
+        return jsonify({'error': str(exc)}), 400
+
+    current = {_norm_name(dict(r)['name']): dict(r)
+               for r in conn.execute('SELECT * FROM players').fetchall()}
+    incoming = {_norm_name(it['name']): it for it in items}
+    c = conn.cursor()
+    added = updated = removed = 0
+
+    for key in incoming.keys() - current.keys():
+        it = incoming[key]
+        c.execute('INSERT INTO players (name, category, base_price, photo_url, attributes) '
+                  'VALUES (?, ?, ?, ?, ?)',
+                  (it['name'], it['category'], it['base_price'], it['photo_url'],
+                   json.dumps(it.get('attributes') or {})))
+        added += 1
+
+    for key in incoming.keys() & current.keys():
+        old, new = current[key], incoming[key]
+        if old.get('status') == 'sold':
+            continue
+        c.execute('UPDATE players SET category=?, base_price=?, photo_url=?, attributes=? WHERE id=?',
+                  (new['category'], new['base_price'],
+                   new['photo_url'] or old.get('photo_url') or '',
+                   json.dumps(new.get('attributes') or {}), old['id']))
+        updated += 1
+
+    for key in current.keys() - incoming.keys():
+        if current[key].get('status') == 'sold':
+            continue
+        c.execute('DELETE FROM players WHERE id=?', (current[key]['id'],))
+        removed += 1
+
+    existing = {r['category'] for r in conn.execute('SELECT category FROM category_rules').fetchall()}
+    for cat in {it['category'] or 'General' for it in items} - existing:
+        c.execute('INSERT INTO category_rules (category, base_price, min_per_team, max_per_team) '
+                  'VALUES (?, ?, ?, ?)', (cat, _default_base_price(conn), 0, 99))
+    conn.commit()
+    conn.close()
+
+    hydrate_drive_photos_async(g.auction_id)
+    excel_backup_async(g.auction_id)
+    return jsonify({'success': True, 'added': added, 'updated': updated, 'removed': removed})
+
+
 @app.route('/api/players/import', methods=['POST'])
 def import_players():
     if 'file' not in request.files:
@@ -2476,16 +2783,23 @@ def export_csv():
 
 @app.route('/api/file/smart_analyze', methods=['POST'])
 def smart_analyze():
-    if 'file' not in request.files:
+    from_snapshot = request.form.get('source') == 'snapshot'
+    if not from_snapshot and 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
 
     num_teams  = max(1, int(request.form.get('num_teams', 4)))
     num_splits = max(2, min(4, int(request.form.get('num_splits', 3))))
     base_price_val = float(request.form.get('base_price', 10.0))
 
-    file = request.files['file']
+    if from_snapshot:
+        data = load_sheet_snapshot(g.auction_id)
+        if data is None:
+            return jsonify({'error': 'No stored sheet for this auction. Import it first.'}), 400
+        source_file = _SheetUpload(data)
+    else:
+        source_file = request.files['file']
     try:
-        headers, dict_rows, _ = read_raw_auction_file(file)
+        headers, dict_rows, _ = read_raw_auction_file(source_file)
     except Exception as e:
         return jsonify({'error': 'Failed to parse file: ' + str(e)}), 400
 

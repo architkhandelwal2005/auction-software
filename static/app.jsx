@@ -557,6 +557,8 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
     const [uploadedFileName, setUploadedFileName] = useState('');
     const [uploading, setUploading] = useState(false);
     const [uploadedCount, setUploadedCount] = useState(0);
+    const [sheetUrl, setSheetUrl] = useState('');
+    const [usedSheet, setUsedSheet] = useState(false);
     // Google Drive photo import. A Forms response sheet stores photos as Drive
     // share links, which browsers cannot render; the server downloads them into
     // uploads/ in the background and this tracks that pass.
@@ -668,6 +670,33 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
         watchDriveStatus();
     };
 
+    // Importing from a Google Sheet link. The sheet is read once here; the
+    // auction then runs from stored data and never consults it again.
+    const importFromSheet = async () => {
+        if(!sheetUrl.trim()) { alert('Paste the Google Sheet link first.'); return; }
+        setUploading(true);
+        try {
+            const res = await fetch('/api/auction/source/import', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ sheet_url: sheetUrl.trim() })
+            });
+            const d = await res.json();
+            if(d.success) {
+                setUploadedCount(d.count);
+                setUploadedFileName('Google Sheet');
+                setUploadedFile(null);
+                setUsedSheet(true);
+                setAnalysisResult(null);
+                try {
+                    const pr = await fetch('/api/players').then(r => r.json());
+                    setImportedPreview(Array.isArray(pr) ? pr : []);
+                } catch (e) { setImportedPreview([]); }
+                watchDriveStatus();
+            } else alert(d.error || 'Could not read the sheet.');
+        } catch (err) { alert('Could not read the sheet: ' + err); }
+        setUploading(false);
+    };
+
     const handleWizardUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -733,15 +762,18 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
     const setBinsFor = (col, n) => { setAnalysisResult(null); setColumnBins(prev => ({ ...prev, [col]: n })); };
 
     const runAnalysis = async () => {
-        if (!uploadedFile) {
-            setAnalyzeError('Please upload a player file in Step 1 first.');
+        // A sheet import leaves no file on the client, so the server re-reads
+        // the copy it stored at import time.
+        if (!uploadedFile && !usedSheet) {
+            setAnalyzeError('Please add your players in Step 1 first.');
             return;
         }
         setAnalyzing(true);
         setAnalyzeError('');
         try {
             const fd = new FormData();
-            fd.append('file', uploadedFile);
+            if (usedSheet) fd.append('source', 'snapshot');
+            else fd.append('file', uploadedFile);
             fd.append('num_teams', numTeams);
             fd.append('num_splits', numSplits);
             fd.append('base_price', basePrice);
@@ -928,6 +960,31 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                             <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleWizardUpload} />
                         </label>
                     )}
+
+                    {/* Google Sheet link. Read once, here — the auction then runs
+                        from stored data and never goes back to the sheet. */}
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <i className="fa-solid fa-table-list text-emerald-400"></i>
+                            <span className="font-bold text-white text-sm">Or paste a Google Sheet link</span>
+                        </div>
+                        <p className="text-xs text-zinc-500 mb-3">
+                            Best for Google Form responses. Photos in the sheet are downloaded and stored,
+                            so the auction never depends on Google once it starts.
+                        </p>
+                        <div className="flex flex-col md:flex-row gap-2">
+                            <input value={sheetUrl} onChange={e=>setSheetUrl(e.target.value)}
+                                placeholder="https://docs.google.com/spreadsheets/d/..."
+                                className="flex-1 bg-zinc-950 border border-zinc-700 p-3 rounded-2xl text-sm font-medium text-white focus:border-emerald-500 outline-none transition" />
+                            <button onClick={importFromSheet} disabled={uploading}
+                                className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-zinc-950 font-black px-5 py-3 rounded-2xl transition whitespace-nowrap">
+                                {uploading ? 'Reading...' : (usedSheet ? 'Re-import' : 'Import Sheet')}
+                            </button>
+                        </div>
+                        <p className="text-[11px] text-zinc-600 mt-2">
+                            The sheet must be shared: Share → "Anyone with the link" → Viewer.
+                        </p>
+                    </div>
 
                     {driveStatus && (driveStatus.running || driveStatus.failed > 0 || driveStatus.done > 0 || driveStatus.linked > 0) && (
                         <div className={`rounded-2xl p-4 border flex items-center gap-3 ${driveStatus.failed > 0 && !driveStatus.running ? 'bg-amber-500/10 border-amber-500/30' : 'bg-blue-500/10 border-blue-500/30'}`}>
@@ -1543,6 +1600,32 @@ function App() {
         })();
     }, []);
 
+    // Re-read the linked sheet and show what changed before writing anything.
+    // Sold players are reported as blocked rather than quietly overwritten.
+    const resyncSheet = async () => {
+        const res = await fetch('/api/auction/source/resync', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+        const d = await res.json();
+        if(!d.success) { alert(d.error || 'Could not read the sheet.'); return; }
+
+        const lines = [];
+        if(d.added.length)   lines.push('ADDED (' + d.added.length + '): ' + d.added.join(', '));
+        if(d.removed.length) lines.push('REMOVED (' + d.removed.length + '): ' + d.removed.join(', '));
+        if(d.changed.length) lines.push('CHANGED (' + d.changed.length + '): ' +
+            d.changed.map(c => c.name + ' — ' + c.changes.map(x => x.field).join(', ')).join('; '));
+        if(d.blocked.length) lines.push('BLOCKED, already sold (' + d.blocked.length + '): ' +
+            d.blocked.map(c => c.name).join(', '));
+
+        if(!lines.length) { alert('The sheet matches the auction. Nothing to change.'); return; }
+        lines.push('', d.unchanged + ' players unchanged.', '', 'Apply these changes?');
+        if(!confirm(lines.join('\n'))) return;
+
+        const ap = await fetch('/api/auction/source/apply', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}).then(r=>r.json());
+        if(ap.success){
+            await loadData();
+            alert('Applied: ' + ap.added + ' added, ' + ap.updated + ' updated, ' + ap.removed + ' removed.');
+        } else alert(ap.error || 'Could not apply the changes.');
+    };
+
     const endAuction = async () => {
         const ok = confirm(['End this auction?', '',
             'The report unlocks straight after, and nothing can be sold or edited until you reopen it.', '',
@@ -1898,6 +1981,7 @@ function App() {
                             {divider:true},
                             {icon:'fa-tags', label:'Bargain Bin Round', onClick:startBargainBin},
                             {icon:'fa-share-nodes', label:'Share Links', onClick:()=>setShowShareModal(true)},
+                            {icon:'fa-rotate', label:'Re-sync from Sheet', onClick:resyncSheet},
                             {divider:true},
                             ...(auctionInfo?.status === 'ended' || auctionInfo?.status === 'purged'
                                 ? [{icon:'fa-rotate-left', label:'Reopen Auction', onClick:reopenAuction}]
