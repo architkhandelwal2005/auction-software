@@ -831,7 +831,17 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
             })
         });
         for (const t of teams) {
-            await fetch('/api/teams', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(t) });
+            const { logoFile, logoPreview, ...teamPayload } = t;
+            const res = await fetch('/api/teams', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(teamPayload) });
+            const created = await res.json();
+            // The team only gets a server id here, so a staged logo can only be
+            // uploaded now — never earlier, while it was just local wizard state.
+            if (logoFile && created.id) {
+                const fd = new FormData();
+                fd.append('logo', logoFile);
+                try { await fetch(`/api/teams/logo/${created.id}`, { method: 'POST', body: fd }); }
+                catch (e) { /* team is still created; the logo can be added later */ }
+            }
         }
         // Setup is done, so this becomes the auction the public screens follow.
         try {
@@ -1270,12 +1280,26 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[240px] overflow-y-auto custom-scrollbar pr-1">
                         {teams.map((t, i) => (
                             <div key={i} className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 flex items-center gap-2.5 group">
-                                <div className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-white font-bold text-xs" style={{ background: t.color }}>{(t.name||'T')[0]}</div>
+                                {/* Logo picker. Teams don't have a server id yet — this file is
+                                    staged in wizard state and uploaded right after finish() creates
+                                    the team, once /api/teams hands back its id. */}
+                                <label title={t.logoPreview ? 'Change logo' : 'Add logo'}
+                                    className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-white font-bold text-xs cursor-pointer overflow-hidden relative"
+                                    style={{ background: t.color }}>
+                                    {t.logoPreview
+                                        ? <img src={t.logoPreview} className="w-full h-full object-cover" />
+                                        : (t.name||'T')[0]}
+                                    <input type="file" accept="image/*" className="hidden" onChange={e => {
+                                        const file = e.target.files[0]; if (!file) return;
+                                        const n=[...teams]; n[i]={...n[i], logoFile:file, logoPreview:URL.createObjectURL(file)}; setTeams(n);
+                                    }} />
+                                </label>
                                 <input type="text" className="flex-1 bg-transparent font-bold text-white text-xs outline-none border-b border-transparent focus:border-amber-500 min-w-0" value={t.name} onChange={e => { const n=[...teams]; n[i]={...n[i],name:e.target.value}; setTeams(n); }} />
                                 <button onClick={() => removeTeam(i)} className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition shrink-0"><i className="fa-solid fa-xmark text-xs"></i></button>
                             </div>
                         ))}
                     </div>
+                    <p className="text-[0.65rem] text-zinc-600 -mt-1">Click a team's colored square to add its logo (optional).</p>
 
                     <div className="flex flex-wrap gap-2">
                         <input type="text" placeholder="Add another team..." className="flex-1 bg-zinc-950 border border-zinc-700 p-3 rounded-xl text-xs font-bold text-white focus:border-green-500 outline-none transition" value={newTeamName} onChange={e => setNewTeamName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addTeam()} />

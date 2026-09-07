@@ -1140,32 +1140,43 @@ def go_live_auction():
 
 
 def build_final_report(conn, auction):
-    """The record kept forever, once the bulky data is purged."""
-    teams = [dict(t) for t in conn.execute('SELECT * FROM teams ORDER BY id').fetchall()]
-    players = [dict(p) for p in conn.execute('SELECT * FROM players ORDER BY id').fetchall()]
-    by_team = {}
-    for p in players:
-        if p.get('status') == 'sold' and p.get('team_id'):
-            by_team.setdefault(p['team_id'], []).append(
-                {'name': p['name'], 'category': p.get('category') or '',
-                 'price': p.get('sold_price') or 0})
+    """The record kept forever, once the bulky data is purged.
+
+    A thin wrapper around build_live_report(): same teams, rosters, and
+    analytics, minus what the purge actually deletes. Player photo files are
+    deleted with the auction's tables, so a photo_url captured here would 404
+    within days — stripped rather than kept as a link to nothing, so the
+    permanent report falls back to initials cleanly instead of a broken
+    image. Team/org logos are NOT deleted by the purge and are kept as-is.
+    The organisation's own branding (name, logo, banner) lives in the
+    per-auction config table, which the purge does drop — captured here into
+    its own small block so a purged auction's report still carries it.
+    """
+    live = build_live_report(conn)
+    cfg = live.get('config') or {}
+
+    def strip_photo(p):
+        d = dict(p)
+        d.pop('photo_url', None)
+        return d
+
+    teams = [{**t, 'players': [strip_photo(p) for p in (t.get('players') or [])]}
+             for t in live.get('teams') or []]
+    stats = dict(live.get('stats') or {})
+    stats['top_buys'] = [strip_photo(b) for b in stats.get('top_buys') or []]
+
     return {
         'name': auction['name'],
         'ended_at': str(datetime.datetime.now()),
-        'player_count': len(players),
-        'team_count': len(teams),
-        'sold_count': sum(1 for p in players if p.get('status') == 'sold'),
-        'total_spend': round(sum((p.get('sold_price') or 0) for p in players
-                                 if p.get('status') == 'sold'), 2),
-        'teams': [{
-            'name': t['name'], 'color': t.get('color') or '#3b82f6',
-            'logo_url': t.get('logo_url') or '',
-            'total_budget': t.get('total_budget') or 0,
-            'remaining_budget': t.get('remaining_budget') or 0,
-            'players': by_team.get(t['id'], []),
-        } for t in teams],
-        'unsold': [{'name': p['name'], 'category': p.get('category') or ''}
-                   for p in players if p.get('status') != 'sold'],
+        'config': {
+            'event_name': cfg.get('event_name') or auction['name'],
+            'organisation_name': cfg.get('organisation_name') or '',
+            'org_logo': cfg.get('org_logo') or '',
+            'event_banner': cfg.get('event_banner') or '',
+        },
+        'teams': teams,
+        'unsold_players': [strip_photo(p) for p in live.get('unsold_players') or []],
+        'stats': stats,
     }
 
 
@@ -1276,8 +1287,11 @@ def final_report():
             try: stored = json.loads(g.auction['report_json'])
             except Exception: stored = {}
         return jsonify({'retained': True, 'report': stored})
+    # Ended but not yet purged: the tables still exist, so serve the full rich
+    # shape (photos, every analytic) rather than the frozen snapshot — that
+    # only gets used once the tables are actually gone.
     conn = get_db()
-    report = build_final_report(conn, g.auction)
+    report = build_live_report(conn)
     conn.close()
     return jsonify({'retained': False, 'report': report})
 
@@ -2871,9 +2885,16 @@ def get_team_data(team_id):
     return jsonify(td)
 
 # ─── Live Spectator Data API ───
-@app.route('/api/live_data', methods=['GET'])
-def get_live_data():
-    conn = get_db()
+def build_live_report(conn):
+    """Everything a live view of the auction needs: config, state, team
+    rosters (with photos), sold/unsold lists, and analytics.
+
+    This is the one source of truth for that data — /api/live_data, the
+    report page while an auction is live, and (via build_final_report, which
+    wraps this and strips what the purge deletes) the permanently retained
+    report all read from here, rather than each keeping its own copy of the
+    same queries to drift out of sync.
+    """
     config = {r['key']: r['value'] for r in conn.execute('SELECT * FROM config').fetchall()}
     state = {r['key']: r['value'] for r in conn.execute('SELECT * FROM auction_state').fetchall()}
 
@@ -2897,14 +2918,14 @@ def get_live_data():
         WHERE p.status = 'sold'
         ORDER BY p.sold_at DESC
     ''').fetchall()
-    
+
     # Unsold + passed players (both available for re-auction)
     unsold = conn.execute('''
         SELECT id, name, category, base_price, photo_url, attributes, status
         FROM players WHERE status IN ('unsold', 'passed')
         ORDER BY status ASC, name ASC
     ''').fetchall()
-    
+
     # Stats & Top Highlights
     total_count = conn.execute('SELECT COUNT(*) as c FROM players').fetchone()['c']
     passed_count = conn.execute("SELECT COUNT(*) as c FROM players WHERE status='passed'").fetchone()['c']
@@ -2915,26 +2936,45 @@ def get_live_data():
         WHERE p.status = 'sold'
         ORDER BY p.sold_price DESC LIMIT 5
     ''').fetchall()
-    
-    # Category spending analytics
+
+    # Category spending analytics — highest_price is "the highest bid in this
+    # category", the per-category counterpart to top_buys[0] (highest overall).
     cats = conn.execute('''
-        SELECT category, 
-               COUNT(*) as total, 
+        SELECT category,
+               COUNT(*) as total,
                SUM(CASE WHEN status="sold" THEN 1 ELSE 0 END) as sold_count,
                COALESCE(SUM(CASE WHEN status="sold" THEN sold_price ELSE 0 END), 0) as total_spent,
-               COALESCE(AVG(CASE WHEN status="sold" THEN sold_price ELSE NULL END), 0) as avg_price
-        FROM players 
+               COALESCE(AVG(CASE WHEN status="sold" THEN sold_price ELSE NULL END), 0) as avg_price,
+               COALESCE(MAX(CASE WHEN status="sold" THEN sold_price ELSE NULL END), 0) as highest_price
+        FROM players
         WHERE category IS NOT NULL AND category != ''
         GROUP BY category
     ''').fetchall()
-    
+
     cat_analytics = []
     for c in cats:
         cd = dict(c)
         cd['percent_of_total'] = round((cd['total_spent'] / total_spent * 100), 1) if total_spent > 0 else 0
         cd['avg_price'] = round(cd['avg_price'], 1)
         cat_analytics.append(cd)
-    
+
+    # Biggest spender — the team that has committed the most of its budget so
+    # far. Derived from teams_result, which already carries total/remaining
+    # budget per team, so no extra query is needed.
+    most_spent_team = None
+    best_spend = -1
+    for t in teams_result:
+        spend = (t.get('total_budget') or 0) - (t.get('remaining_budget') or 0)
+        if spend > best_spend:
+            best_spend = spend
+            most_spent_team = t
+    most_spent_team_summary = None
+    if most_spent_team and best_spend > 0:
+        most_spent_team_summary = {
+            'name': most_spent_team['name'], 'color': most_spent_team.get('color') or '#3b82f6',
+            'logo_url': most_spent_team.get('logo_url') or '', 'spent': round(best_spend, 2),
+        }
+
     def parse_p(p):
         d = dict(p)
         if d.get('attributes'):
@@ -2946,8 +2986,7 @@ def get_live_data():
             d['attributes'] = {}
         return d
 
-    conn.close()
-    return jsonify({
+    return {
         'config': config,
         'auction_state': state,
         # Category quotas — the live display uses these to warn when a team has
@@ -2963,9 +3002,18 @@ def get_live_data():
             'passed': passed_count,
             'spent': total_spent,
             'top_buys': [dict(b) for b in top_buys],
-            'categories': cat_analytics
+            'categories': cat_analytics,
+            'most_spent_team': most_spent_team_summary,
         }
-    })
+    }
+
+
+@app.route('/api/live_data', methods=['GET'])
+def get_live_data():
+    conn = get_db()
+    data = build_live_report(conn)
+    conn.close()
+    return jsonify(data)
 
 # ─── Set Common Base Price for All Unsold Players ───
 @app.route('/api/players/fetch_photos', methods=['POST'])

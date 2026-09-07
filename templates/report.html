@@ -13,6 +13,10 @@
     <style>
         body { font-family: 'Nunito', sans-serif; background: #f8fafc; color: #1e293b; }
         .fredoka { font-family: 'Fredoka', sans-serif; }
+        /* A team's roster should not split across a printed page where it can
+           be avoided — the section-level page-break below only guarantees
+           Section 3 itself starts on a fresh page. */
+        .team-block { break-inside: avoid; page-break-inside: avoid; }
         @media print {
             .no-print { display: none !important; }
             body { background: white !important; color: black !important; font-size: 11pt; }
@@ -28,24 +32,62 @@
         {% raw %}
         const { useState, useEffect } = React;
 
+        // ── Copied from static/app.jsx ──────────────────────────────────────
+        // report.html is a separate, standalone Babel bundle with no import
+        // bridge to app.jsx, so its small display helpers are duplicated here
+        // rather than shared — matching how the rest of this file already has
+        // no dependency on the admin bundle.
+        const CAT_COLORS = ['#ef4444','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ec4899','#06b6d4','#f97316'];
+        const getCatColor = (name) => CAT_COLORS[(name || '').charCodeAt(0) % CAT_COLORS.length];
+
+        const CatBadge = ({ category }) => {
+            const color = getCatColor(category);
+            return <span className="text-[0.65rem] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full" style={{background:color+'25',color:color,border:`1px solid ${color}55`}}>{category || 'General'}</span>;
+        };
+
+        const PlayerPhoto = ({ url, name, size = 44 }) => {
+            const [imgError, setImgError] = useState(false);
+            useEffect(() => { setImgError(false); }, [url]);
+            const initials = (name||'?').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+            const bg = CAT_COLORS[(name||'').charCodeAt(0) % CAT_COLORS.length];
+            if (url && !imgError) {
+                return <img src={url} onError={()=>setImgError(true)} alt={name}
+                    style={{width:size,height:size,borderRadius:'50%',objectFit:'cover',border:'2px solid #e2e8f0',flexShrink:0}} />;
+            }
+            return <div style={{width:size,height:size,borderRadius:'50%',background:bg,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:size*0.35,flexShrink:0}}>{initials}</div>;
+        };
+
+        // Team logo (or a colored initial square when there isn't one) — the
+        // same fallback pattern used throughout the admin and team dashboards.
+        const TeamMark = ({ team, size = 40 }) => (
+            <div className="rounded-xl flex items-center justify-center text-white font-bold shrink-0"
+                 style={{width:size,height:size,fontSize:size*0.4,background:team.color||'#3b82f6'}}>
+                {team.logo_url ? <img src={team.logo_url} style={{width:size*0.8,height:size*0.8,objectFit:'contain'}} /> : (team.name||'?')[0]}
+            </div>
+        );
+
         function Report() {
             const [data, setData] = useState(null);
+            const [error, setError] = useState('');
 
             useEffect(() => {
-                fetch('/api/live_data')
-                    .then(r => r.json())
-                    .then(d => setData(d))
-                    .catch(() => {});
+                fetch('/api/report/final')
+                    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+                    .then(({ ok, d }) => { if (ok) setData(d); else setError(d.message || d.error || 'Could not load the report.'); })
+                    .catch(() => setError('Could not reach the server.'));
             }, []);
 
+            if (error) return <div className="text-center py-20 font-bold text-red-500">{error}</div>;
             if (!data) return <div className="text-center py-20 font-bold text-gray-500">Generating Auction Report...</div>;
 
-            const config = data.config || {};
-            const teams = data.teams || [];
-            const sold = data.sold_players || [];
-            const unsold = data.unsold_players || [];
-            const stats = data.stats || {};
+            const report = data.report || {};
+            const retained = !!data.retained;
+            const config = report.config || {};
+            const teams = report.teams || [];
+            const stats = report.stats || {};
             const categories = stats.categories || [];
+            const highestSale = (stats.top_buys || [])[0] || null;
+            const biggestSpender = stats.most_spent_team || null;
             const eventName = config.event_name || 'Cricket Auction 2026';
             const bannerUrl = config.event_banner;
             const orgName = config.organisation_name || '';
@@ -63,9 +105,9 @@
                             <span className="font-bold text-sm text-gray-600">Official Event Report</span>
                         </div>
                         <div className="flex gap-2">
-                            <a href="/api/export/csv" className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-1.5 border border-gray-200">
+                            {!retained && <a href="/api/export/csv" className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-1.5 border border-gray-200">
                                 <i className="fa-solid fa-file-csv"></i> Download CSV
-                            </a>
+                            </a>}
                             <button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 shadow-sm">
                                 <i className="fa-solid fa-print"></i> Print / Save as PDF
                             </button>
@@ -92,8 +134,9 @@
                             </div>
                             <div className="text-right">
                                 <span className="inline-block bg-green-100 text-green-800 font-bold px-3 py-1 rounded-full text-xs uppercase tracking-wider">
-                                    Final Report
+                                    {retained ? 'Archived Report' : 'Final Report'}
                                 </span>
+                                {retained && <p className="text-[0.65rem] text-gray-400 font-bold mt-1.5 max-w-[180px]">Player photos are no longer stored — every name, price and figure below is unchanged.</p>}
                             </div>
                         </div>
 
@@ -118,6 +161,34 @@
                         </div>
                     </div>
 
+                    {/* Auction Summary: highest sale + biggest spender */}
+                    {(highestSale || biggestSpender) && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {highestSale && (
+                                <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm flex items-center gap-4">
+                                    <PlayerPhoto url={highestSale.photo_url} name={highestSale.name} size={56} />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs text-amber-600 font-extrabold uppercase tracking-wider">🏆 Highest Sale of the Auction</p>
+                                        <p className="fredoka text-xl font-bold text-gray-900 truncate">{highestSale.name}</p>
+                                        <p className="text-xs text-gray-500 font-bold">{highestSale.team_name} {highestSale.category ? `· ${highestSale.category}` : ''}</p>
+                                    </div>
+                                    <p className="fredoka text-2xl font-bold text-amber-600 shrink-0">₹{highestSale.sold_price}L</p>
+                                </div>
+                            )}
+                            {biggestSpender && (
+                                <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm flex items-center gap-4">
+                                    <TeamMark team={biggestSpender} size={56} />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs text-cyan-600 font-extrabold uppercase tracking-wider">💰 Biggest Spender</p>
+                                        <p className="fredoka text-xl font-bold text-gray-900 truncate">{biggestSpender.name}</p>
+                                        <p className="text-xs text-gray-500 font-bold">Committed the most of its budget</p>
+                                    </div>
+                                    <p className="fredoka text-2xl font-bold text-cyan-600 shrink-0">₹{biggestSpender.spent}L</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Section 1: Franchise Summary Table */}
                     <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-sm space-y-4">
                         <h2 className="fredoka text-xl font-bold text-gray-800">1. Franchise Financial & Squad Standings</h2>
@@ -131,25 +202,34 @@
                                         <th className="py-3 px-2 text-right">Remaining Purse</th>
                                         <th className="py-3 px-2 text-right text-cyan-600">Max Bid Allowed</th>
                                         <th className="py-3 px-2 text-center">Squad Size</th>
-                                        <th className="py-3 px-2 text-right">Purse Used</th>
+                                        <th className="py-3 px-2 text-right w-32">Purse Used</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {teams.map(t => {
                                         const spent = t.total_budget - t.remaining_budget;
-                                        const pct = ((spent / t.total_budget) * 100).toFixed(1);
+                                        const pct = t.total_budget > 0 ? ((spent / t.total_budget) * 100) : 0;
                                         return (
-                                            <tr key={t.id} className="border-b border-gray-100 font-bold hover:bg-gray-50">
-                                                <td className="py-3 px-2 flex items-center gap-2">
-                                                    <span className="w-3 h-3 rounded-full" style={{ background: t.color || '#3b82f6' }}></span>
-                                                    <span className="text-gray-800">{t.name}</span>
+                                            <tr key={t.id || t.name} className="border-b border-gray-100 font-bold hover:bg-gray-50">
+                                                <td className="py-3 px-2">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <TeamMark team={t} size={26} />
+                                                        <span className="text-gray-800">{t.name}</span>
+                                                    </div>
                                                 </td>
                                                 <td className="py-3 px-2 text-right text-gray-600">₹{t.total_budget}L</td>
                                                 <td className="py-3 px-2 text-right text-purple-600">₹{spent.toFixed(1)}L</td>
                                                 <td className="py-3 px-2 text-right text-green-600">₹{t.remaining_budget}L</td>
                                                 <td className="py-3 px-2 text-right text-cyan-600 font-extrabold">₹{t.max_allowed_bid}L</td>
                                                 <td className="py-3 px-2 text-center text-gray-800">{t.player_count || 0}/{t.target_squad_size || 10}</td>
-                                                <td className="py-3 px-2 text-right text-gray-500">{pct}%</td>
+                                                <td className="py-3 px-2">
+                                                    <div className="flex items-center gap-2 justify-end">
+                                                        <span className="text-gray-500 text-xs w-9 text-right">{pct.toFixed(0)}%</span>
+                                                        <div className="w-16 h-2 rounded-full bg-gray-100 overflow-hidden shrink-0">
+                                                            <div className="h-full rounded-full bg-purple-400" style={{width:`${Math.min(100,pct)}%`}}></div>
+                                                        </div>
+                                                    </div>
+                                                </td>
                                             </tr>
                                         );
                                     })}
@@ -174,6 +254,7 @@
                                             <span>Avg: ₹{c.avg_price}L</span>
                                             <span>{c.percent_of_total}% of spend</span>
                                         </div>
+                                        {c.highest_price > 0 && <div className="text-[0.65rem] text-amber-600 font-extrabold pt-0.5 border-t border-gray-200 mt-1">🏆 Highest Bid: ₹{c.highest_price}L</div>}
                                     </div>
                                 ))}
                             </div>
@@ -184,31 +265,45 @@
                     <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-sm space-y-6 page-break">
                         <h2 className="fredoka text-xl font-bold text-gray-800">3. Complete Squad Rosters</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {teams.map(t => (
-                                <div key={t.id} className="p-5 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
-                                    <div className="flex justify-between items-center border-b border-gray-200 pb-2">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-6 h-6 rounded-md flex items-center justify-center text-white font-bold text-xs" style={{ background: t.color || '#3b82f6' }}>
-                                                {t.name[0]}
+                            {teams.map(t => {
+                                const spent = t.total_budget - t.remaining_budget;
+                                const pct = t.total_budget > 0 ? ((spent / t.total_budget) * 100) : 0;
+                                return (
+                                <div key={t.id || t.name} className="team-block p-5 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
+                                    <div className="flex justify-between items-center border-b border-gray-200 pb-3">
+                                        <div className="flex items-center gap-3">
+                                            <TeamMark team={t} size={40} />
+                                            <div>
+                                                <h3 className="fredoka font-bold text-gray-800 text-lg leading-tight">{t.name}</h3>
+                                                <p className="text-xs text-gray-500 font-bold">{t.player_count || 0} players &bull; ₹{spent.toFixed(1)}L spent</p>
                                             </div>
-                                            <h3 className="fredoka font-bold text-gray-800">{t.name}</h3>
                                         </div>
-                                        <span className="text-xs font-bold text-gray-500">Purse Left: <span className="text-green-600">₹{t.remaining_budget}L</span></span>
+                                        <span className="text-xs font-bold text-gray-500 text-right">Purse Left<br/><span className="text-green-600 text-sm">₹{t.remaining_budget}L</span></span>
+                                    </div>
+                                    <div className="w-full h-2 rounded-full bg-gray-200 overflow-hidden">
+                                        <div className="h-full rounded-full bg-purple-400" style={{width:`${Math.min(100,pct)}%`}}></div>
                                     </div>
                                     {(!t.players || t.players.length === 0) ? (
                                         <p className="text-xs text-gray-400 font-bold py-2">No players acquired</p>
                                     ) : (
-                                        <div className="space-y-1.5">
-                                            {t.players.map((p, pi) => (
-                                                <div key={p.id} className="flex justify-between items-center text-xs font-bold p-1.5 bg-white rounded-lg border border-gray-100">
-                                                    <span className="text-gray-700">{pi + 1}. {p.name} <span className="text-gray-400 font-normal">({p.category || 'General'})</span></span>
-                                                    <span className="text-green-600 font-extrabold">₹{p.sold_price}L</span>
+                                        /* One column, not two — a two-up grid left too little width for a
+                                           full name next to a photo and price, and cut names off mid-word. */
+                                        <div className="space-y-2">
+                                            {t.players.map((p) => (
+                                                <div key={p.id || p.name} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200">
+                                                    <PlayerPhoto url={p.photo_url} name={p.name} size={48} />
+                                                    <div className="flex-1 min-w-0 flex items-center gap-2.5 flex-wrap">
+                                                        <p className="font-bold text-gray-800 text-base leading-tight">{p.name}</p>
+                                                        <CatBadge category={p.category} />
+                                                    </div>
+                                                    <span className="text-green-600 font-extrabold text-base shrink-0">₹{p.sold_price}L</span>
                                                 </div>
                                             ))}
                                         </div>
                                     )}
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
