@@ -21,6 +21,9 @@
             .no-print { display: none !important; }
             body { background: white !important; color: black !important; font-size: 11pt; }
             .page-break { page-break-before: always; }
+            /* Each team starts on its own page — the first is already on a
+               fresh page via .page-break above, so this applies to the rest. */
+            .team-page-break { break-before: page; page-break-before: always; }
             .shadow-md, .shadow-lg, .shadow-sm { box-shadow: none !important; }
             .border { border-color: #cbd5e1 !important; }
         }
@@ -261,34 +264,38 @@
                         </div>
                     )}
 
-                    {/* Section 3: Full Team Squad Rosters (Page break in print) */}
+                    {/* Section 3: Full Team Squad Rosters. One team per printed page —
+                        two teams side by side left each roster cramped into half the
+                        page width, which is what pushed us to a 2-column player grid
+                        that then truncated names. Full page width per team fixes both:
+                        room for a proper 2-column player grid, and no more squeeze. */}
                     <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-sm space-y-6 page-break">
                         <h2 className="fredoka text-xl font-bold text-gray-800">3. Complete Squad Rosters</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {teams.map(t => {
+                        <div className="space-y-6">
+                            {teams.map((t, ti) => {
                                 const spent = t.total_budget - t.remaining_budget;
                                 const pct = t.total_budget > 0 ? ((spent / t.total_budget) * 100) : 0;
                                 return (
-                                <div key={t.id || t.name} className="team-block p-5 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
-                                    <div className="flex justify-between items-center border-b border-gray-200 pb-3">
-                                        <div className="flex items-center gap-3">
-                                            <TeamMark team={t} size={40} />
+                                <div key={t.id || t.name} className={`team-block p-6 bg-gray-50 rounded-2xl border border-gray-200 space-y-4 ${ti > 0 ? 'team-page-break' : ''}`}>
+                                    <div className="flex justify-between items-center border-b border-gray-200 pb-4">
+                                        <div className="flex items-center gap-4">
+                                            <TeamMark team={t} size={52} />
                                             <div>
-                                                <h3 className="fredoka font-bold text-gray-800 text-lg leading-tight">{t.name}</h3>
-                                                <p className="text-xs text-gray-500 font-bold">{t.player_count || 0} players &bull; ₹{spent.toFixed(1)}L spent</p>
+                                                <h3 className="fredoka font-bold text-gray-800 text-2xl leading-tight">{t.name}</h3>
+                                                <p className="text-sm text-gray-500 font-bold">{t.player_count || 0} players &bull; ₹{spent.toFixed(1)}L spent</p>
                                             </div>
                                         </div>
-                                        <span className="text-xs font-bold text-gray-500 text-right">Purse Left<br/><span className="text-green-600 text-sm">₹{t.remaining_budget}L</span></span>
+                                        <span className="text-xs font-bold text-gray-500 text-right">Purse Left<br/><span className="text-green-600 text-lg">₹{t.remaining_budget}L</span></span>
                                     </div>
-                                    <div className="w-full h-2 rounded-full bg-gray-200 overflow-hidden">
+                                    <div className="w-full h-2.5 rounded-full bg-gray-200 overflow-hidden">
                                         <div className="h-full rounded-full bg-purple-400" style={{width:`${Math.min(100,pct)}%`}}></div>
                                     </div>
                                     {(!t.players || t.players.length === 0) ? (
                                         <p className="text-xs text-gray-400 font-bold py-2">No players acquired</p>
                                     ) : (
-                                        /* One column, not two — a two-up grid left too little width for a
-                                           full name next to a photo and price, and cut names off mid-word. */
-                                        <div className="space-y-2">
+                                        /* A full page width per team leaves plenty of room for two
+                                           columns without cutting a name off mid-word. */
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             {t.players.map((p) => (
                                                 <div key={p.id || p.name} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200">
                                                     <PlayerPhoto url={p.photo_url} name={p.name} size={48} />
