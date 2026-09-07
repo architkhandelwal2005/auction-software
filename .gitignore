@@ -9,3 +9,15 @@ cloudflared.exe
 *.db
 *.db.bak*
 *.db.preaudit
+
+# Live-event data. Participant photos, roster spreadsheets and Excel backups
+# hold real names, phone numbers and faces; this repository is public, so they
+# must never be committed.
+uploads/photo_*
+uploads/org_logo_*
+uploads/team_logo_*
+uploads/player_*
+uploads/drive_*
+uploads/temp_*
+auction_backup*.xlsx
+auction_sheet*.xlsx

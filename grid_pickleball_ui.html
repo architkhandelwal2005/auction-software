@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pickleball Auction - Minimal Grid</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; }
+        .bg-blur {
+            position: fixed; inset: 0; width: 100%; height: 100%;
+            /* Using the CLEAN, UI-free grayscale paddle AI image */
+            background-image: url('file:///C:/Users/archi/.gemini/antigravity/brain/7ffe2368-4e5c-4ec8-b63e-1596183c9a48/clean_bg_grayscale_paddle_1787914439292.jpg');
+            background-size: cover; background-position: center;
+            filter: blur(2px) brightness(0.6); z-index: -1;
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.6); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 12px;
+            transition: all 0.2s;
+        }
+        .glass-card:hover { border-color: rgba(255,255,255,0.15); transform: translateY(-2px); }
+    </style>
+</head>
+<body class="text-slate-300 min-h-screen flex">
+    <div class="bg-blur"></div>
+
+    <!-- Left Sidebar -->
+    <aside class="w-64 border-r border-slate-700/50 p-6 flex flex-col h-screen fixed">
+        <h1 class="font-bold text-white tracking-widest mb-10 text-lg">PB ELITE AUCTIONS</h1>
+        
+        <div class="mb-8">
+            <h3 class="text-xs text-slate-500 font-bold uppercase tracking-widest mb-4">Categories</h3>
+            <ul class="space-y-3 text-sm font-medium text-slate-300">
+                <li class="text-emerald-400 cursor-pointer">Live Player Lots</li>
+                <li class="hover:text-white cursor-pointer transition">Completed Bids</li>
+                <li class="hover:text-white cursor-pointer transition">Unsold Players</li>
+            </ul>
+        </div>
+        
+        <div>
+            <h3 class="text-xs text-slate-500 font-bold uppercase tracking-widest mb-4">Franchises</h3>
+            <ul class="space-y-3 text-sm font-medium text-slate-300">
+                <li class="hover:text-white cursor-pointer transition">Team 1 Roster</li>
+                <li class="hover:text-white cursor-pointer transition">Team 2 Roster</li>
+                <li class="hover:text-white cursor-pointer transition">Team 3 Roster</li>
+                <li class="hover:text-white cursor-pointer transition">Team 4 Roster</li>
+            </ul>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 ml-64 p-10">
+        
+        <div class="flex justify-between items-center mb-8">
+            <h2 class="text-2xl font-bold text-white">Current Active Lots</h2>
+            <div class="bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded text-xs font-bold border border-emerald-500/20 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> AUCTION IS LIVE
+            </div>
+        </div>
+
+        <!-- Grid Layout -->
+        <div class="grid grid-cols-3 gap-6">
+            
+            <!-- Player Card 1 (Large Highlight) -->
+            <div class="glass-card col-span-1 row-span-2 p-6 flex flex-col border-emerald-500/30">
+                <h3 class="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">Player Highlight</h3>
+                <div class="w-full aspect-square bg-slate-800 rounded-lg border border-slate-600 flex items-center justify-center mb-6">
+                    <span class="text-sm text-slate-500 font-bold">PHOTO</span>
+                </div>
+                <h2 class="text-2xl font-bold text-white">Archit Sharma</h2>
+                <p class="text-sm text-slate-400 mb-6">Rank: #14 | All Rounder</p>
+                
+                <div class="mt-auto">
+                    <p class="text-xs text-slate-400 uppercase tracking-widest mb-1 font-bold">Current High Bid</p>
+                    <p class="text-4xl font-bold text-emerald-400 mb-6">₹3.50L</p>
+                    <button class="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded border border-slate-500 transition">Open Bidding Panel</button>
+                </div>
+            </div>
+
+            <!-- Player Card 2 -->
+            <div class="glass-card p-6 flex flex-col justify-between">
+                <div>
+                    <h3 class="text-lg font-bold text-white">Rohan Gupta</h3>
+                    <p class="text-xs text-slate-400 mb-4">Attacker | Age 22</p>
+                    <p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Base Price</p>
+                    <p class="text-xl font-bold text-white">₹30K</p>
+                </div>
+                <button class="w-full bg-emerald-500 text-white font-bold py-2 rounded mt-6 hover:bg-emerald-600 transition">Start Lot</button>
+            </div>
+
+            <!-- Player Card 3 -->
+            <div class="glass-card p-6 flex flex-col justify-between">
+                <div>
+                    <h3 class="text-lg font-bold text-white">Kabir Singh</h3>
+                    <p class="text-xs text-slate-400 mb-4">Defender | Age 25</p>
+                    <p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Current Bid</p>
+                    <p class="text-xl font-bold text-emerald-400">₹1.10L</p>
+                </div>
+                <button class="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded mt-6 border border-slate-500 transition">View Details</button>
+            </div>
+
+            <!-- Player Card 4 -->
+            <div class="glass-card p-6 flex flex-col justify-between">
+                <div>
+                    <h3 class="text-lg font-bold text-white">Priya Patel</h3>
+                    <p class="text-xs text-slate-400 mb-4">All Rounder | Age 21</p>
+                    <p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Current Bid</p>
+                    <p class="text-xl font-bold text-emerald-400">₹95K</p>
+                </div>
+                <button class="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded mt-6 border border-slate-500 transition">View Details</button>
+            </div>
+            
+            <!-- Player Card 5 -->
+            <div class="glass-card p-6 flex flex-col justify-between">
+                <div>
+                    <h3 class="text-lg font-bold text-white text-slate-400 line-through">Vikram Das</h3>
+                    <p class="text-xs text-slate-500 mb-4">Sold to Team 1</p>
+                    <p class="text-[10px] text-slate-600 uppercase tracking-widest font-bold">Final Price</p>
+                    <p class="text-xl font-bold text-slate-400">₹4.20L</p>
+                </div>
+                <button class="w-full bg-slate-800 text-slate-500 font-bold py-2 rounded mt-6 border border-slate-700 cursor-not-allowed">Lot Closed</button>
+            </div>
+
+        </div>
+    </main>
+</body>
+</html>

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pickleball Auction Live</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font (Standard clean web font) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+        }
+        
+        /* Subtle Blurred Background - Extremely understated */
+        .bg-blur {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            /* Using the CLEAN, UI-free wooden court AI image */
+            background-image: url('file:///C:/Users/archi/.gemini/antigravity/brain/7ffe2368-4e5c-4ec8-b63e-1596183c9a48/clean_bg_wooden_court_1787914391186.jpg');
+            background-size: cover;
+            background-position: center;
+            filter: blur(2px) brightness(0.7);
+            z-index: -1;
+        }
+        
+        /* Standard 2D Web Glassmorphism */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-top: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .glass-card {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* Clean Web Buttons */
+        .btn-primary {
+            background-color: #10b981; /* Emerald 500 */
+            transition: all 0.2s ease;
+        }
+        .btn-primary:hover {
+            background-color: #059669; /* Emerald 600 */
+        }
+        
+        .btn-secondary {
+            background-color: #334155; /* Slate 700 */
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.2s ease;
+        }
+        .btn-secondary:hover {
+            background-color: #475569; /* Slate 600 */
+        }
+    </style>
+</head>
+<body class="text-slate-300 min-h-screen flex flex-col">
+    <!-- Subtle Background Layer -->
+    <div class="bg-blur"></div>
+
+    <!-- Top Navigation -->
+    <header class="w-full px-8 py-4 flex justify-between items-center glass-panel border-b-0 rounded-b-2xl max-w-7xl mx-auto mt-4">
+        <div class="flex items-center gap-3">
+            <i class="ph-fill ph-tennis-ball text-2xl text-slate-100"></i>
+            <h1 class="font-bold text-lg text-slate-100 tracking-wide">PICKLEBALL AUCTION LIVE</h1>
+            <span class="text-xs text-slate-500 ml-4 font-medium">ADMIN DASHBOARD</span>
+        </div>
+        <nav class="flex gap-6 text-sm font-medium">
+            <a href="#" class="text-slate-100">Active Players</a>
+            <a href="#" class="text-slate-400 hover:text-slate-200 transition">Teams</a>
+            <a href="#" class="text-slate-400 hover:text-slate-200 transition">Settings</a>
+        </nav>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-5xl mx-auto gap-6">
+        
+        <!-- Central Player Auction Panel -->
+        <section class="glass-panel w-full rounded-2xl p-8 flex gap-10">
+            
+            <!-- Standard Player Photo Placeholder -->
+            <div class="w-72 shrink-0">
+                <div class="w-full aspect-[3/4] bg-slate-800/80 rounded-xl border border-slate-700 flex flex-col items-center justify-center shadow-inner relative overflow-hidden">
+                    <i class="ph ph-user text-6xl text-slate-500 mb-3"></i>
+                    <span class="text-slate-400 text-sm font-medium tracking-widest">PLAYER PHOTO</span>
+                </div>
+            </div>
+
+            <!-- Player Details & Bidding Logic -->
+            <div class="flex-1 flex flex-col justify-center">
+                <!-- Header Info -->
+                <div class="mb-8">
+                    <h2 class="text-4xl font-bold text-slate-100 mb-2">ARCHIT SHARMA</h2>
+                    <p class="text-slate-400 text-sm flex items-center gap-3">
+                        <span>Age: 19</span> 
+                        <span class="w-1 h-1 bg-slate-600 rounded-full"></span> 
+                        <span>Rank: #14 (Nation)</span>
+                        <span class="w-1 h-1 bg-slate-600 rounded-full"></span> 
+                        <span>Role: All Rounder</span>
+                    </p>
+                </div>
+
+                <div class="w-full h-px bg-slate-700/50 mb-8"></div>
+
+                <!-- Bid Display -->
+                <div class="mb-8">
+                    <div class="flex items-center gap-4 mb-2">
+                        <p class="text-slate-400 text-sm font-medium uppercase tracking-wider">Current Bid</p>
+                        <div class="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-xs font-bold border border-emerald-500/20">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> LIVE
+                        </div>
+                    </div>
+                    <h1 class="text-7xl font-bold text-slate-100 tracking-tight">₹40K</h1>
+                </div>
+
+                <!-- Manual Auction Data -->
+                <div class="space-y-2 mb-10">
+                    <p class="text-slate-400 text-sm">Base Price: <span class="text-slate-200 font-medium">₹40K</span></p>
+                    <p class="text-slate-400 text-sm">Increment: <span class="text-slate-200 font-medium">+₹5K</span></p>
+                </div>
+
+                <!-- Admin Action Buttons -->
+                <div class="flex gap-4">
+                    <button class="flex-1 btn-primary text-white font-bold py-4 rounded-xl text-lg shadow-lg flex items-center justify-center gap-2">
+                        <i class="ph-bold ph-check"></i> ACCEPT BID
+                    </button>
+                    <button class="flex-1 btn-secondary text-slate-200 font-bold py-4 rounded-xl text-lg shadow-lg flex items-center justify-center gap-2">
+                        <i class="ph-bold ph-x"></i> REJECT BID
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Bottom Informational Panels -->
+        <div class="w-full flex gap-6">
+            <!-- Manual Controls / Tools -->
+            <section class="glass-panel rounded-xl p-6 flex-1">
+                <h3 class="text-sm font-bold text-slate-200 uppercase tracking-wider mb-4 border-b border-slate-700/50 pb-2">Manual Adjustments</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <button class="glass-card py-3 rounded-lg text-slate-300 font-medium hover:bg-slate-700/50 transition border border-slate-600/50">+ ₹5,000</button>
+                    <button class="glass-card py-3 rounded-lg text-slate-300 font-medium hover:bg-slate-700/50 transition border border-slate-600/50">+ ₹10,000</button>
+                    <button class="glass-card py-3 rounded-lg text-slate-300 font-medium hover:bg-slate-700/50 transition border border-slate-600/50">- ₹5,000</button>
+                    <button class="glass-card py-3 rounded-lg text-slate-300 font-medium hover:bg-slate-700/50 transition border border-slate-600/50">- ₹10,000</button>
+                </div>
+            </section>
+            
+            <!-- Quick Info -->
+            <section class="glass-panel rounded-xl p-6 flex-1">
+                <h3 class="text-sm font-bold text-slate-200 uppercase tracking-wider mb-4 border-b border-slate-700/50 pb-2">Auctioneer Notes</h3>
+                <div class="space-y-4 text-sm text-slate-400">
+                    <p>• Player is a local favorite, expect aggressive bidding.</p>
+                    <p>• Final warning before closing the lot.</p>
+                    <div class="mt-4 pt-4 border-t border-slate-700/50 flex justify-between items-center">
+                        <span class="font-medium text-slate-300">Status:</span>
+                        <span class="text-emerald-400 font-bold">Awaiting Bids...</span>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+    </main>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pickleball Auction - Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; }
+        .bg-blur {
+            position: fixed; inset: 0; width: 100%; height: 100%;
+            /* Using the CLEAN, UI-free blue outdoor AI image */
+            background-image: url('file:///C:/Users/archi/.gemini/antigravity/brain/7ffe2368-4e5c-4ec8-b63e-1596183c9a48/clean_bg_blue_outdoor_1787914406617.jpg');
+            background-size: cover; background-position: center;
+            filter: blur(2px) brightness(0.7); z-index: -1;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px;
+        }
+        .progress-bar { background: #10b981; height: 6px; border-radius: 4px; }
+    </style>
+</head>
+<body class="text-slate-300 min-h-screen flex flex-col p-6">
+    <div class="bg-blur"></div>
+
+    <!-- Header -->
+    <header class="w-full max-w-7xl mx-auto flex justify-between items-center mb-6 px-4">
+        <div class="flex items-center gap-4">
+            <h1 class="font-bold text-xl text-white tracking-widest">PB AUCTION 2026</h1>
+            <span class="text-slate-500">|</span>
+            <span class="text-slate-300">Live Bidding Dashboard</span>
+        </div>
+        <div class="flex items-center gap-4">
+            <span class="text-sm font-medium">Auctioneer View</span>
+            <div class="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white font-bold">A</div>
+        </div>
+    </header>
+
+    <!-- Main 3-Column Grid -->
+    <main class="w-full max-w-7xl mx-auto grid grid-cols-12 gap-6 flex-1">
+        
+        <!-- Column 1: Player Profile -->
+        <section class="col-span-3 glass-panel p-6 flex flex-col">
+            <h2 class="text-xs text-slate-400 font-bold uppercase tracking-widest mb-6 border-b border-slate-700 pb-2">Player Profile</h2>
+            
+            <div class="flex flex-col items-center mb-6">
+                <div class="w-32 h-40 bg-slate-800 rounded-lg mb-4 border border-slate-600 flex items-center justify-center shadow-lg">
+                    <span class="text-xs text-slate-500 font-bold">PHOTO</span>
+                </div>
+                <h3 class="text-xl font-bold text-white">Archit Sharma</h3>
+                <p class="text-xs text-slate-400 mt-1">Age: 19 | Rank: #14 | Attacker</p>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <div class="flex justify-between text-xs mb-1"><span class="text-slate-300">Match Win %</span><span class="font-bold">76%</span></div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5"><div class="progress-bar w-[76%]"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-xs mb-1"><span class="text-slate-300">Serve Accuracy</span><span class="font-bold">88%</span></div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5"><div class="progress-bar w-[88%]"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-xs mb-1"><span class="text-slate-300">Dinks / Min</span><span class="font-bold">14.2</span></div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5"><div class="progress-bar w-[60%]"></div></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Column 2: Live Auction Center -->
+        <section class="col-span-5 flex flex-col gap-6">
+            <!-- Big Price Box -->
+            <div class="glass-panel p-8 text-center flex flex-col justify-center relative overflow-hidden">
+                <div class="absolute top-4 right-4 bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-1 rounded border border-emerald-500/30 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> ACTIVE
+                </div>
+                <p class="text-xs text-slate-400 uppercase tracking-widest font-bold mb-2">Current Bid</p>
+                <h1 class="text-7xl font-bold text-white mb-4 tracking-tighter">₹3.50L</h1>
+                <p class="text-sm text-slate-300 font-medium">Bidder: <span class="text-emerald-400 font-bold uppercase tracking-wider">TEAM 2</span></p>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-6">
+                <!-- Auction Log -->
+                <div class="glass-panel p-5">
+                    <h3 class="text-xs text-slate-400 font-bold uppercase tracking-widest mb-4">Auction Log</h3>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex justify-between"><span class="text-slate-300">Team 2</span><span class="font-bold text-white">₹3.50L</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">Team 4</span><span class="text-slate-400">₹3.45L</span></div>
+                        <div class="flex justify-between"><span class="text-slate-400">Team 2</span><span class="text-slate-400">₹3.40L</span></div>
+                    </div>
+                </div>
+                <!-- Manual Controls -->
+                <div class="glass-panel p-5 flex flex-col justify-center">
+                    <p class="text-xs text-slate-400 font-bold uppercase tracking-widest mb-4">Manual Control</p>
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <button class="bg-slate-800 border border-slate-600 rounded py-2 text-xs font-bold hover:bg-slate-700 transition">+5K</button>
+                        <button class="bg-slate-800 border border-slate-600 rounded py-2 text-xs font-bold hover:bg-slate-700 transition">+10K</button>
+                    </div>
+                    <button class="w-full bg-emerald-500 text-white font-bold py-3 rounded-lg shadow-lg hover:bg-emerald-600 transition">ACCEPT BID</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Column 3: Franchise Purses -->
+        <section class="col-span-4 glass-panel p-6 flex flex-col">
+            <h2 class="text-xs text-slate-400 font-bold uppercase tracking-widest mb-6 border-b border-slate-700 pb-2 flex justify-between">
+                <span>Franchise Purses</span>
+                <span class="text-emerald-400">4 Active</span>
+            </h2>
+            <div class="flex flex-col gap-3">
+                <!-- Team Card -->
+                <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex justify-between items-center">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-blue-600 rounded flex items-center justify-center font-bold text-white shadow-inner">T1</div>
+                        <div><p class="text-sm font-bold text-white">TEAM 1</p><p class="text-[10px] text-slate-400 uppercase">Remaining Bal</p></div>
+                    </div>
+                    <p class="text-lg font-bold text-white">₹10.00L</p>
+                </div>
+                <!-- Team Card -->
+                <div class="bg-slate-700/80 border border-emerald-500/40 rounded-xl p-4 flex justify-between items-center shadow-[inset_0_0_15px_rgba(16,185,129,0.1)]">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-orange-600 rounded flex items-center justify-center font-bold text-white shadow-inner">T2</div>
+                        <div><p class="text-sm font-bold text-white">TEAM 2</p><p class="text-[10px] text-emerald-400 uppercase">Current Leader</p></div>
+                    </div>
+                    <p class="text-lg font-bold text-emerald-400">₹6.50L</p>
+                </div>
+                <!-- Team Card -->
+                <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex justify-between items-center">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-emerald-600 rounded flex items-center justify-center font-bold text-white shadow-inner">T3</div>
+                        <div><p class="text-sm font-bold text-white">TEAM 3</p><p class="text-[10px] text-slate-400 uppercase">Remaining Bal</p></div>
+                    </div>
+                    <p class="text-lg font-bold text-white">₹10.00L</p>
+                </div>
+                <!-- Team Card -->
+                <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex justify-between items-center">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-red-600 rounded flex items-center justify-center font-bold text-white shadow-inner">T4</div>
+                        <div><p class="text-sm font-bold text-white">TEAM 4</p><p class="text-[10px] text-slate-400 uppercase">Remaining Bal</p></div>
+                    </div>
+                    <p class="text-lg font-bold text-white">₹6.50L</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+</body>
+</html>
