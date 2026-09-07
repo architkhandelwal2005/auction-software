@@ -21,3 +21,7 @@ uploads/drive_*
 uploads/temp_*
 auction_backup*.xlsx
 auction_sheet*.xlsx
+
+# Per-auction databases and Excel backups
+data/
+auction_backup_*.xlsx

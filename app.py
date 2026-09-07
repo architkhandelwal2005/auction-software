@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for, g
-import sqlite3, os, webbrowser, csv, io, uuid, json, re, threading
+import sqlite3, os, webbrowser, csv, io, uuid, json, re, threading, datetime
 import urllib.request as _ureq
 from threading import Timer
 
@@ -12,11 +12,6 @@ except ImportError:
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 USE_PG = bool(DATABASE_URL)
-
-SHEETS_WEBHOOK = os.environ.get(
-    'SHEETS_WEBHOOK',
-    'https://script.google.com/macros/s/AKfycbwDEpBKxUPlZG5mT1ea8w-C3csMiJT13m1ofK9n9SNoy5DzkBoVfURocIjkjGSVbek/exec'
-)
 
 # ── PostgreSQL thin wrapper (speaks the same API as sqlite3) ─────────────────
 def _pg_sql(sql):
@@ -71,17 +66,29 @@ class _PGConn:
         self._closed = True
 
 # ── Google Sheets async push ─────────────────────────────────────────────────
-def _sheets_push(payload):
+def _sheets_push(webhook, payload):
     try:
         data = json.dumps(payload).encode()
-        req = _ureq.Request(SHEETS_WEBHOOK, data=data,
+        req = _ureq.Request(webhook, data=data,
                             headers={'Content-Type': 'application/json'}, method='POST')
         _ureq.urlopen(req, timeout=10)
     except Exception as e:
         print(f'[Sheets] sync error: {e}', flush=True)
 
-def sheets_push_async(payload):
-    threading.Thread(target=_sheets_push, args=(payload,), daemon=True).start()
+def sheets_push_async(webhook, payload):
+    """The webhook belongs to one auction and is resolved by the caller while
+    still in request context. Empty means the integration is off."""
+    if not webhook:
+        return
+    threading.Thread(target=_sheets_push, args=(webhook, payload), daemon=True).start()
+
+def auction_sheets_webhook(conn):
+    """This auction's Google Sheets webhook, or '' when it has none."""
+    try:
+        row = conn.execute("SELECT value FROM config WHERE key = 'sheets_webhook'").fetchone()
+        return (row['value'] if row else '') or ''
+    except Exception:
+        return ''
 
 # ── Local Excel backup ──────────────────────────────────────────────────────
 # Whenever running locally (no cloud DB, or even with one — this is a belt-
@@ -89,40 +96,36 @@ def sheets_push_async(payload):
 # after every sale/undo/edit/reset. Runs in a background thread with its own
 # DB connection so it never blocks or breaks the actual auction action, and
 # a failure here is only logged, never surfaced to the user.
-EXCEL_BACKUP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'auction_backup.xlsx')
+def excel_backup_path(auction_id):
+    return os.path.join(BASE_DIR, 'auction_backup_%s.xlsx' % auction_id)
 
-def archive_excel_backup(reason='archive'):
+def archive_excel_backup(auction_id, reason='archive'):
     """Preserve the current backup under a timestamped name before a reset or
     wipe. Without this, resetting an auction overwrites the only record of a
     completed one with an empty snapshot."""
     try:
-        if not os.path.exists(EXCEL_BACKUP_PATH):
+        path = excel_backup_path(auction_id)
+        if not os.path.exists(path):
             return
         import shutil, datetime
         stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-        dest = EXCEL_BACKUP_PATH.replace('.xlsx', f'-{reason}-{stamp}.xlsx')
-        shutil.copy2(EXCEL_BACKUP_PATH, dest)
-        print(f'[Excel Backup] archived to {dest}', flush=True)
+        dest = path.replace('.xlsx', '-%s-%s.xlsx' % (reason, stamp))
+        shutil.copy2(path, dest)
+        print('[Excel Backup] archived to %s' % dest, flush=True)
     except Exception as e:
         print(f'[Excel Backup] archive failed: {e}', flush=True)
 
-def _write_excel_backup():
+def _write_excel_backup(auction_id):
     try:
         import openpyxl
-        if USE_PG:
-            import psycopg2, psycopg2.extras
-            raw = psycopg2.connect(DATABASE_URL)
-            cur = raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        else:
-            raw = sqlite3.connect(DB_FILE, timeout=20)
-            raw.row_factory = sqlite3.Row
-            cur = raw.cursor()
+        conn = open_auction_conn(auction_id)
+        cur = conn.cursor()
 
         cur.execute('SELECT * FROM teams ORDER BY id')
         teams = [dict(r) for r in cur.fetchall()]
         cur.execute('SELECT * FROM players ORDER BY id')
         players = [dict(r) for r in cur.fetchall()]
-        raw.close()
+        conn.close()
         team_by_id = {t['id']: t for t in teams}
 
         wb = openpyxl.Workbook()
@@ -155,18 +158,46 @@ def _write_excel_backup():
                 length = max((len(str(c.value)) for c in col_cells if c.value is not None), default=10)
                 ws.column_dimensions[col_cells[0].column_letter].width = min(40, max(10, length + 2))
 
-        wb.save(EXCEL_BACKUP_PATH)
+        wb.save(excel_backup_path(auction_id))
     except Exception as e:
         print(f'[Excel Backup] failed: {e}', flush=True)
 
-def excel_backup_async():
-    threading.Thread(target=_write_excel_backup, daemon=True).start()
+def excel_backup_async(auction_id):
+    """The auction id is passed in by the caller, never read from flask g: the
+    request context is already gone by the time the thread runs."""
+    if USE_PG:
+        # The local .xlsx is a laptop-only safety net. On a hosted deployment
+        # the filesystem is ephemeral, so writing it there buys nothing.
+        return
+    threading.Thread(target=_write_excel_backup, args=(auction_id,), daemon=True).start()
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
-app.secret_key = 'super_secret_auction_pro_key_2026'
-DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'auction.db')
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+app.secret_key = os.environ.get('SECRET_KEY', 'super_secret_auction_pro_key_2026')
+WIPE_PASSWORD = os.environ.get('WIPE_PASSWORD', 'Wipe@123')
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin@123')
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# ─── Multi-auction storage layout ────────────────────────────────────────────
+# Every auction owns its data physically, rather than sharing tables behind an
+# auction_id column. On SQLite that means one database file per auction; on
+# PostgreSQL, one schema per auction selected with SET search_path. The ~160
+# existing SQL statements are then correctly scoped without being touched, and
+# a forgotten WHERE clause cannot leak one auction's players into another.
+#
+# A small registry — the auctions table — lives outside that isolation and
+# holds the list of auctions, their credentials and their lifecycle status.
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+os.makedirs(DATA_DIR, exist_ok=True)
+REGISTRY_DB = os.path.join(DATA_DIR, 'registry.db')
+
+def auction_db_path(auction_id):
+    return os.path.join(DATA_DIR, 'auction_%d.db' % int(auction_id))
+
+def auction_schema(auction_id):
+    return 'auction_%d' % int(auction_id)
 
 
 # ─── Google Drive photo links ────────────────────────────────────────────────
@@ -229,7 +260,7 @@ def drive_direct_url(url):
     return 'https://lh3.googleusercontent.com/d/%s=w1400' % file_id
 
 
-def download_drive_photo(url, player_id):
+def download_drive_photo(url, auction_id, player_id):
     """Save a Drive-hosted photo into uploads/ and return its local /uploads
     path. Returns None when the link is not a Drive link, the file is not
     shared, or it is not an image — the caller then keeps the original URL."""
@@ -255,7 +286,7 @@ def download_drive_photo(url, player_id):
                 data = resp.read(_DRIVE_MAX_BYTES)
             if not data:
                 continue
-            fname = 'drive_%s_%s.%s' % (player_id, file_id[:12], _DRIVE_IMG_EXT[ctype])
+            fname = 'drive_a%s_p%s_%s.%s' % (auction_id, player_id, file_id[:12], _DRIVE_IMG_EXT[ctype])
             with open(os.path.join(UPLOAD_FOLDER, fname), 'wb') as fh:
                 fh.write(data)
             return '/uploads/' + fname
@@ -264,25 +295,18 @@ def download_drive_photo(url, player_id):
     return None
 
 
-def _hydrate_drive_photos():
-    """Replace every Drive link in players.photo_url with a local file.
+def _hydrate_drive_photos(auction_id):
+    """Replace every Drive link in players.photo_url with a stored file.
 
     Runs on its own connection in a background thread, so a 70-player import
     returns immediately instead of waiting on 70 downloads. Photos appear on
-    the roster as each one lands.
+    the roster as each one lands. The auction id is passed in by the caller,
+    never read from flask g — the request context is gone by the time this runs.
     """
+    placeholder = '%s' if USE_PG else '?'
     try:
-        if USE_PG:
-            import psycopg2, psycopg2.extras
-            raw = psycopg2.connect(DATABASE_URL)
-            cur = raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            placeholder = '%s'
-        else:
-            raw = sqlite3.connect(DB_FILE, timeout=20)
-            raw.row_factory = sqlite3.Row
-            cur = raw.cursor()
-            placeholder = '?'
-
+        conn = open_auction_conn(auction_id)
+        cur = conn.cursor()
         cur.execute("SELECT id, photo_url FROM players "
                     "WHERE photo_url LIKE '%drive.google.com%' "
                     "   OR photo_url LIKE '%googleusercontent.com%'")
@@ -290,11 +314,11 @@ def _hydrate_drive_photos():
 
         done = linked = failed = 0
         for row in rows:
-            local = download_drive_photo(row['photo_url'], row['id'])
+            local = download_drive_photo(row['photo_url'], auction_id, row['id'])
             if local:
                 cur.execute('UPDATE players SET photo_url=' + placeholder +
                             ' WHERE id=' + placeholder, (local, row['id']))
-                raw.commit()
+                conn.commit()
                 done += 1
             else:
                 # Could not store the bytes. Rewrite the link to a form the
@@ -304,32 +328,46 @@ def _hydrate_drive_photos():
                 if direct and direct != row['photo_url']:
                     cur.execute('UPDATE players SET photo_url=' + placeholder +
                                 ' WHERE id=' + placeholder, (direct, row['id']))
-                    raw.commit()
+                    conn.commit()
                     linked += 1
                 else:
                     failed += 1
-        raw.close()
+        conn.close()
         if rows:
-            print('[drive-photos] %d saved locally, %d linked directly, %d failed '
+            print('[drive-photos] auction %s: %d saved, %d linked directly, %d failed '
                   '(a failure usually means the Drive folder is not shared with '
-                  '"Anyone with the link")' % (done, linked, failed))
-        _DRIVE_HYDRATE_STATE.update({'running': False, 'done': done, 'linked': linked,
-                                     'failed': failed, 'total': len(rows)})
+                  '"Anyone with the link")' % (auction_id, done, linked, failed))
+        _set_hydrate_state(auction_id, running=False, done=done, linked=linked,
+                           failed=failed, total=len(rows))
     except Exception as exc:
-        _DRIVE_HYDRATE_STATE.update({'running': False, 'error': str(exc)})
-        print('[drive-photos] failed: %s' % exc)
+        _set_hydrate_state(auction_id, running=False, error=str(exc))
+        print('[drive-photos] auction %s failed: %s' % (auction_id, exc))
 
 
-_DRIVE_HYDRATE_STATE = {'running': False, 'done': 0, 'linked': 0, 'failed': 0, 'total': 0, 'error': ''}
+# Progress is tracked per auction: two admins setting up two auctions at once
+# must not see each other's import running.
+_DRIVE_HYDRATE_STATE = {}
+_DRIVE_HYDRATE_LOCK = threading.Lock()
+
+def _blank_hydrate_state():
+    return {'running': False, 'done': 0, 'linked': 0, 'failed': 0, 'total': 0, 'error': ''}
+
+def _set_hydrate_state(auction_id, **fields):
+    with _DRIVE_HYDRATE_LOCK:
+        state = _DRIVE_HYDRATE_STATE.setdefault(str(auction_id), _blank_hydrate_state())
+        state.update(fields)
+
+def get_hydrate_state(auction_id):
+    with _DRIVE_HYDRATE_LOCK:
+        return dict(_DRIVE_HYDRATE_STATE.get(str(auction_id), _blank_hydrate_state()))
 
 
-def hydrate_drive_photos_async():
-    """Kick off the download pass unless one is already running."""
-    if _DRIVE_HYDRATE_STATE.get('running'):
+def hydrate_drive_photos_async(auction_id):
+    """Kick off the download pass for one auction unless it is already running."""
+    if get_hydrate_state(auction_id).get('running'):
         return
-    _DRIVE_HYDRATE_STATE.update({'running': True, 'done': 0, 'linked': 0,
-                                 'failed': 0, 'total': 0, 'error': ''})
-    threading.Thread(target=_hydrate_drive_photos, daemon=True).start()
+    _set_hydrate_state(auction_id, **dict(_blank_hydrate_state(), running=True))
+    threading.Thread(target=_hydrate_drive_photos, args=(auction_id,), daemon=True).start()
 
 # Cache-busting version for front-end assets. Uses the newest mtime of the JSX
 # bundles so every deploy serves a fresh URL and browsers never run stale JS
@@ -360,28 +398,130 @@ def _get_pg_pool():
         _pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 10, DATABASE_URL)
     return _pg_pool
 
+class _PGOwnedConn(_PGConn):
+    """A PostgreSQL connection this caller owns outright, rather than one
+    borrowed from the request pool. Background threads and the purge sweep use
+    these, so close() must really close instead of being the pool's no-op."""
+    def close(self):
+        try: self._r.close()
+        except Exception: pass
+        self._closed = True
+
+
+def _pg_scope(raw, auction_id):
+    """Point a raw PostgreSQL connection at one auction's schema.
+
+    Issued unconditionally on every checkout and never cached: close_db()
+    rolls back before returning a connection to the pool, and a SET inside
+    that transaction is rolled back with it, so a cached "already scoped" flag
+    would drift out of step with reality and read the wrong auction.
+
+    The search path deliberately omits public, so auction code that reaches
+    for the registry fails loudly instead of succeeding quietly.
+    """
+    cur = raw.cursor()
+    cur.execute('SET search_path TO %s' % auction_schema(auction_id))
+    cur.close()
+
+
+def open_auction_conn(auction_id):
+    """A standalone connection scoped to one auction, owned by the caller.
+
+    Used by background threads and by work that runs after a route has already
+    closed g.db — 50 routes call conn.close() mid-request, which on SQLite
+    really closes the connection, so g.db cannot be reused afterwards.
+    """
+    if USE_PG:
+        import psycopg2
+        raw = psycopg2.connect(DATABASE_URL)
+        _pg_scope(raw, auction_id)
+        return _PGOwnedConn(raw)
+    conn = sqlite3.connect(auction_db_path(auction_id), timeout=20, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys = ON')
+    return conn
+
+
+def open_registry_conn():
+    """A standalone registry connection, owned by the caller."""
+    if USE_PG:
+        import psycopg2
+        raw = psycopg2.connect(DATABASE_URL)
+        cur = raw.cursor()
+        cur.execute('SET search_path TO public')
+        cur.close()
+        return _PGOwnedConn(raw)
+    conn = sqlite3.connect(REGISTRY_DB, timeout=20, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def get_registry_db():
+    """The registry connection for this request. Kept in its own slot so it can
+    never be confused with, or closed by, the auction connection."""
+    if 'registry_db' not in g:
+        if USE_PG:
+            raw = _get_pg_pool().getconn()
+            cur = raw.cursor()
+            cur.execute('SET search_path TO public')
+            cur.close()
+            g.registry_db = (_PGConn(raw), raw)
+        else:
+            conn = sqlite3.connect(REGISTRY_DB, timeout=20, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            g.registry_db = (conn, None)
+    return g.registry_db[0]
+
+
 def get_db():
+    """The auction connection for this request, already scoped to g.auction_id.
+
+    The guard below is the most important line in the multi-auction change: it
+    turns "silently read the wrong auction" into a stack trace.
+    """
+    auction_id = getattr(g, 'auction_id', None)
+    if not auction_id:
+        raise RuntimeError('unscoped database access: no auction bound to this request')
     if 'db' not in g:
         if USE_PG:
             raw = _get_pg_pool().getconn()
+            _pg_scope(raw, auction_id)
             g.db = _PGConn(raw)
         else:
-            g.db = sqlite3.connect(DB_FILE, timeout=20, check_same_thread=False)
+            g.db = sqlite3.connect(auction_db_path(auction_id), timeout=20, check_same_thread=False)
             g.db.row_factory = sqlite3.Row
             g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
 
 @app.teardown_appcontext
 def close_db(exception=None):
+    reg = g.pop('registry_db', None)
+    if reg is not None:
+        conn, raw = reg
+        if USE_PG:
+            try: raw.rollback()
+            except Exception: pass
+            try: _get_pg_pool().putconn(raw)
+            except Exception:
+                try: raw.close()
+                except Exception: pass
+        else:
+            try: conn.close()
+            except Exception: pass
+
     db = g.pop('db', None)
     if db is None:
         return
     if USE_PG:
         # Always reset transaction state before returning to the pool, so a
         # connection is never handed back "idle in transaction" (which would
-        # hold locks and stall the next request). Then return it to the pool
-        # instead of closing — this is what makes reuse fast.
+        # hold locks and stall the next request). Reset the search path too, so
+        # a connection never carries one auction's scope into the next request.
         try: db._r.rollback()
+        except Exception: pass
+        try:
+            cur = db._r.cursor(); cur.execute('SET search_path TO public'); cur.close()
+            db._r.commit()
         except Exception: pass
         try: _get_pg_pool().putconn(db._r)
         except Exception:
@@ -394,19 +534,48 @@ def close_db(exception=None):
         try: db.close()
         except Exception: pass
 
-def init_db():
-    if USE_PG:
-        _init_db_pg()
-    else:
-        _init_db_sqlite()
 
-def _init_db_sqlite():
-    conn = sqlite3.connect(DB_FILE, timeout=20)
-    conn.row_factory = sqlite3.Row
-    try:
-        conn.execute("PRAGMA journal_mode=WAL")
-    except Exception:
-        pass
+# ─── Registry schema ─────────────────────────────────────────────────────────
+
+def init_registry():
+    """Create the auctions table. This is the only schema built at import time;
+    per-auction tables are created when an auction is created, because under
+    gunicorn every worker runs import-time initialisation."""
+    conn = open_registry_conn()
+    c = conn.cursor()
+    if USE_PG:
+        c.execute("""CREATE TABLE IF NOT EXISTS public.auctions (
+            id SERIAL PRIMARY KEY, name TEXT NOT NULL, slug TEXT,
+            login_id TEXT, password_hash TEXT,
+            status TEXT NOT NULL DEFAULT 'setup',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ended_at TIMESTAMP, purge_after TIMESTAMP,
+            logo_url TEXT, sheet_url TEXT, report_json TEXT)""")
+    else:
+        c.execute("""CREATE TABLE IF NOT EXISTS auctions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT,
+            login_id TEXT, password_hash TEXT,
+            status TEXT NOT NULL DEFAULT 'setup',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ended_at TIMESTAMP, purge_after TIMESTAMP,
+            logo_url TEXT, sheet_url TEXT, report_json TEXT)""")
+    # Only one auction may be live at a time. Enforced by the database rather
+    # than by application code, so a race cannot produce two live auctions.
+    tbl = 'public.auctions' if USE_PG else 'auctions'
+    c.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_auctions_one_live "
+              "ON %s (status) WHERE status = 'live'" % tbl)
+    conn.commit()
+    conn.close()
+
+
+# ─── Per-auction schema ──────────────────────────────────────────────────────
+
+DEFAULT_CONFIG = {
+    'event_name': 'Premier Auction 2026', 'common_base_price': '10',
+    'min_players_per_team': '10', 'bid_increment': '2.5', 'setup_done': 'false',
+}
+
+def _create_auction_tables_sqlite(conn):
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS category_rules (
@@ -419,7 +588,7 @@ def _init_db_sqlite():
     c.execute('''CREATE TABLE IF NOT EXISTS players (
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, category TEXT,
         base_price REAL DEFAULT 0, status TEXT DEFAULT 'unsold', team_id INTEGER,
-        sold_price REAL, photo_url TEXT, sold_at TIMESTAMP,
+        sold_price REAL, photo_url TEXT, sold_at TIMESTAMP, attributes TEXT,
         FOREIGN KEY (team_id) REFERENCES teams (id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS auction_state (key TEXT PRIMARY KEY, value TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS action_history (
@@ -427,25 +596,13 @@ def _init_db_sqlite():
         player_id INTEGER NOT NULL, player_name TEXT, old_team_id INTEGER, new_team_id INTEGER,
         old_sold_price REAL, new_sold_price REAL, old_status TEXT, new_status TEXT,
         base_price REAL, category TEXT, photo_url TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    team_cols = [r[1] for r in c.execute("PRAGMA table_info(teams)").fetchall()]
-    if 'logo_url' not in team_cols:
-        c.execute("ALTER TABLE teams ADD COLUMN logo_url TEXT")
-    player_cols = [r[1] for r in c.execute("PRAGMA table_info(players)").fetchall()]
-    for col, typ in [('photo_url', 'TEXT'), ('sold_at', 'TIMESTAMP'), ('attributes', 'TEXT')]:
-        if col not in player_cols:
-            c.execute(f"ALTER TABLE players ADD COLUMN {col} {typ}")
-    cfg_count = c.execute("SELECT COUNT(*) as c FROM config").fetchone()['c']
-    if cfg_count == 0:
-        for k, v in {'event_name': 'Premier Auction 2026', 'common_base_price': '10',
-                     'min_players_per_team': '10', 'bid_increment': '2.5', 'setup_done': 'false'}.items():
-            c.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (k, v))
-    conn.commit()
-    conn.close()
+    for k, v in DEFAULT_CONFIG.items():
+        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (k, v))
 
-def _init_db_pg():
-    import psycopg2
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
+
+def _create_auction_tables_pg(cur, schema):
+    cur.execute('CREATE SCHEMA IF NOT EXISTS %s' % schema)
+    cur.execute('SET search_path TO %s' % schema)
     cur.execute("CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)")
     cur.execute("""CREATE TABLE IF NOT EXISTS category_rules (
         id SERIAL PRIMARY KEY, category TEXT NOT NULL,
@@ -467,26 +624,418 @@ def _init_db_pg():
         old_sold_price DOUBLE PRECISION, new_sold_price DOUBLE PRECISION,
         old_status TEXT, new_status TEXT, base_price DOUBLE PRECISION,
         category TEXT, photo_url TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
-    # Idempotent column additions
-    for stmt in [
-        "ALTER TABLE teams ADD COLUMN IF NOT EXISTS logo_url TEXT",
-        "ALTER TABLE players ADD COLUMN IF NOT EXISTS photo_url TEXT",
-        "ALTER TABLE players ADD COLUMN IF NOT EXISTS sold_at TIMESTAMP",
-        "ALTER TABLE players ADD COLUMN IF NOT EXISTS attributes TEXT",
-    ]:
-        cur.execute(stmt)
-    # Seed config
-    cur.execute("SELECT COUNT(*) FROM config")
-    if cur.fetchone()[0] == 0:
-        for k, v in {'event_name': 'Premier Auction 2026', 'common_base_price': '10',
-                     'min_players_per_team': '10', 'bid_increment': '2.5', 'setup_done': 'false'}.items():
-            cur.execute("INSERT INTO config (key, value) VALUES (%s, %s) ON CONFLICT (key) DO NOTHING", (k, v))
-    conn.commit()
-    conn.close()
-    print('[DB] PostgreSQL schema ready.', flush=True)
+    for k, v in DEFAULT_CONFIG.items():
+        cur.execute("INSERT INTO config (key, value) VALUES (%s, %s) "
+                    "ON CONFLICT (key) DO NOTHING", (k, v))
 
-# Initialize DB on load
-init_db()
+
+def create_auction_storage(auction_id):
+    """Build one auction's tables. Runs synchronously during auction creation so
+    a failure surfaces there rather than halfway through the setup wizard."""
+    if USE_PG:
+        import psycopg2
+        raw = psycopg2.connect(DATABASE_URL)
+        cur = raw.cursor()
+        _create_auction_tables_pg(cur, auction_schema(auction_id))
+        raw.commit()
+        raw.close()
+    else:
+        conn = sqlite3.connect(auction_db_path(auction_id), timeout=20)
+        conn.row_factory = sqlite3.Row
+        try: conn.execute('PRAGMA journal_mode=WAL')
+        except Exception: pass
+        _create_auction_tables_sqlite(conn)
+        conn.commit()
+        conn.close()
+
+
+def destroy_auction_storage(auction_id):
+    """Remove one auction's tables entirely. Used by the retention purge."""
+    if USE_PG:
+        import psycopg2
+        raw = psycopg2.connect(DATABASE_URL)
+        cur = raw.cursor()
+        cur.execute('DROP SCHEMA IF EXISTS %s CASCADE' % auction_schema(auction_id))
+        raw.commit()
+        raw.close()
+    else:
+        for suffix in ('', '-wal', '-shm'):
+            try: os.remove(auction_db_path(auction_id) + suffix)
+            except OSError: pass
+
+
+# Build the registry on load. Per-auction tables are created on demand.
+init_registry()
+
+
+
+
+# ─── Binding each request to one auction ─────────────────────────────────────
+# Endpoints that work outside any auction: the registry itself, login, static
+# files. Everything else needs an auction bound, and get_db() raises if one is
+# not — so a route accidentally left off this list fails loudly rather than
+# reading whichever auction happens to be around.
+AUCTION_FREE_ENDPOINTS = {
+    'static', 'uploaded_file', 'log_error', 'login_portal', 'logout',
+    'auth_login', 'auth_me',
+    'list_auctions', 'create_auction', 'open_auction', 'delete_auction',
+    'list_presets',
+}
+
+# Screens and feeds an audience opens with no login. These bind to whichever
+# auction is currently live.
+PUBLIC_LIVE_ENDPOINTS = {
+    'live_view', 'presentation_view', 'cricket_auction_view', 'roster_view',
+    'get_live_data', 'report_view',
+    # The login page lists the live auction's teams before anyone has a session.
+    'get_teams', 'get_config',
+}
+
+# Endpoints that change auction data. Refused once an auction has ended, so a
+# finished event's record cannot be altered by accident.
+MUTATING_ENDPOINTS = {
+    'save_config', 'restart_setup', 'add_team', 'edit_team', 'add_player',
+    'edit_player', 'upload_photo', 'import_players', 'clear_player_pool',
+    'load_preset', 'load_test_data', 'set_auction_state', 'sell_player',
+    'undo_last_sale', 'edit_player_sale', 'reset_auction', 'sheets_sync_all',
+    'upload_banner', 'upload_org_logo', 'upload_team_logo', 'fetch_drive_photos',
+    'set_common_base_price', 'smart_analyze', 'pass_player', 'revive_player',
+    'bargain_bin', 'go_live_auction',
+}
+
+
+def live_auction_row():
+    conn = get_registry_db()
+    tbl = 'public.auctions' if USE_PG else 'auctions'
+    return conn.execute("SELECT * FROM %s WHERE status = 'live' LIMIT 1" % tbl).fetchone()
+
+
+def auction_row(auction_id):
+    conn = get_registry_db()
+    tbl = 'public.auctions' if USE_PG else 'auctions'
+    return conn.execute('SELECT * FROM %s WHERE id = ?' % tbl, (auction_id,)).fetchone()
+
+
+@app.before_request
+def resolve_auction():
+    endpoint = request.endpoint
+    if endpoint is None or endpoint in AUCTION_FREE_ENDPOINTS:
+        return None
+
+    row = None
+    if endpoint in PUBLIC_LIVE_ENDPOINTS and not session.get('auction_id'):
+        row = live_auction_row()
+    elif session.get('auction_id'):
+        row = auction_row(session['auction_id'])
+        if row is None:
+            # The bound auction was deleted or purged out from under the session.
+            session.pop('auction_id', None)
+    if row is None and endpoint in PUBLIC_LIVE_ENDPOINTS:
+        row = live_auction_row()
+
+    if row is None:
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'no_auction',
+                            'message': 'No auction is open. Choose or create one first.'}), 409
+        return redirect('/login')
+
+    g.auction = dict(row)
+    g.auction_id = g.auction['id']
+
+    if g.auction['status'] in ('ended', 'purged') and endpoint in MUTATING_ENDPOINTS:
+        return jsonify({'error': 'auction_ended',
+                        'message': 'This auction has ended and is read-only. Reopen it to make changes.'}), 403
+    if g.auction['status'] == 'purged' and endpoint not in (
+            'report_view', 'final_report', 'auction_status', 'reopen_auction'):
+        return jsonify({'error': 'auction_purged',
+                        'message': 'This auction\'s data has been purged. Only its report remains.'}), 410
+    return None
+
+
+# ─── Auctions registry ───────────────────────────────────────────────────────
+# Create, list, open and end auctions. These routes are the only ones that talk
+# to the registry rather than to an auction's own tables.
+
+RETENTION_DAYS = 10
+
+def _registry_table():
+    return 'public.auctions' if USE_PG else 'auctions'
+
+def _slugify(name):
+    slug = re.sub(r'[^a-z0-9]+', '-', (name or '').lower()).strip('-')
+    return slug[:60] or 'auction'
+
+def _auction_summary(row):
+    row = dict(row)
+    report = {}
+    if row.get('report_json'):
+        try: report = json.loads(row['report_json'])
+        except Exception: report = {}
+    return {
+        'id': row['id'], 'name': row['name'], 'status': row['status'],
+        'created_at': str(row.get('created_at') or ''),
+        'ended_at': str(row.get('ended_at') or ''),
+        'purge_after': str(row.get('purge_after') or ''),
+        'logo_url': row.get('logo_url') or '',
+        'login_id': row.get('login_id') or '',
+        'players': report.get('player_count'),
+        'teams': report.get('team_count'),
+    }
+
+def require_admin():
+    """None when the caller is the super-admin, otherwise a 401 response."""
+    if session.get('role') == 'admin':
+        return None
+    return jsonify({'error': 'admin_required'}), 401
+
+
+@app.route('/api/auctions', methods=['GET'])
+def list_auctions():
+    guard = require_admin()
+    if guard: return guard
+    # Retention runs here rather than on a timer: a hosted instance idles, so a
+    # scheduled sweep would fire unpredictably. The chooser is opened every time
+    # the admin returns, which makes this deterministic and free of extra moving
+    # parts.
+    purge_expired()
+    conn = get_registry_db()
+    rows = conn.execute('SELECT * FROM %s ORDER BY id DESC' % _registry_table()).fetchall()
+    return jsonify({'auctions': [_auction_summary(r) for r in rows]})
+
+
+@app.route('/api/auctions', methods=['POST'])
+def create_auction():
+    guard = require_admin()
+    if guard: return guard
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Auction name is required'}), 400
+    login_id = (data.get('login_id') or '').strip()
+    password = (data.get('password') or '').strip()
+
+    from werkzeug.security import generate_password_hash
+    pw_hash = generate_password_hash(password) if password else ''
+
+    conn = get_registry_db()
+    tbl = _registry_table()
+    if USE_PG:
+        cur = conn.execute(
+            'INSERT INTO %s (name, slug, login_id, password_hash, status) '
+            'VALUES (?, ?, ?, ?, ?) RETURNING id' % tbl,
+            (name, _slugify(name), login_id, pw_hash, 'setup'))
+        auction_id = cur.fetchone()['id']
+    else:
+        cur = conn.cursor()
+        cur.execute('INSERT INTO %s (name, slug, login_id, password_hash, status) '
+                    'VALUES (?, ?, ?, ?, ?)' % tbl,
+                    (name, _slugify(name), login_id, pw_hash, 'setup'))
+        auction_id = cur.lastrowid
+    conn.commit()
+
+    # Synchronous, so a schema failure surfaces here and not halfway through
+    # the setup wizard.
+    try:
+        create_auction_storage(auction_id)
+    except Exception as exc:
+        conn.execute('DELETE FROM %s WHERE id = ?' % tbl, (auction_id,))
+        conn.commit()
+        return jsonify({'error': 'Could not create auction storage: %s' % exc}), 500
+
+    conn2 = open_auction_conn(auction_id)
+    conn2.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('event_name', ?)", (name,))
+    conn2.commit()
+    conn2.close()
+
+    session['auction_id'] = auction_id
+    return jsonify({'success': True, 'auction': _auction_summary(auction_row(auction_id))})
+
+
+@app.route('/api/auctions/<int:auction_id>/open', methods=['POST'])
+def open_auction(auction_id):
+    guard = require_admin()
+    if guard: return guard
+    row = auction_row(auction_id)
+    if row is None:
+        return jsonify({'error': 'Auction not found'}), 404
+    session['auction_id'] = auction_id
+    return jsonify({'success': True, 'auction': _auction_summary(row)})
+
+
+@app.route('/api/auctions/<int:auction_id>', methods=['DELETE'])
+def delete_auction(auction_id):
+    """Discard an auction that was never finished. Ended auctions are kept
+    until the retention sweep removes them."""
+    guard = require_admin()
+    if guard: return guard
+    row = auction_row(auction_id)
+    if row is None:
+        return jsonify({'error': 'Auction not found'}), 404
+    if row['status'] != 'setup':
+        return jsonify({'error': 'Only an auction still in setup can be deleted.'}), 400
+    destroy_auction_storage(auction_id)
+    conn = get_registry_db()
+    conn.execute('DELETE FROM %s WHERE id = ?' % _registry_table(), (auction_id,))
+    conn.commit()
+    if session.get('auction_id') == auction_id:
+        session.pop('auction_id', None)
+    return jsonify({'success': True})
+
+
+@app.route('/api/auction/go_live', methods=['POST'])
+def go_live_auction():
+    """Setup complete: this auction becomes the one the public screens follow.
+    A unique index on the registry allows only one live auction at a time."""
+    guard = require_admin()
+    if guard: return guard
+    conn = get_registry_db()
+    tbl = _registry_table()
+    if g.auction['status'] == 'live':
+        return jsonify({'success': True, 'already_live': True})
+    other = live_auction_row()
+    if other is not None and other['id'] != g.auction_id:
+        return jsonify({'error': 'auction_already_live',
+                        'message': 'End "%s" before taking another auction live.' % other['name']}), 409
+    try:
+        conn.execute("UPDATE %s SET status = 'live', ended_at = NULL, purge_after = NULL "
+                     'WHERE id = ?' % tbl, (g.auction_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        return jsonify({'error': 'auction_already_live',
+                        'message': 'Another auction is already live.'}), 409
+    return jsonify({'success': True})
+
+
+def build_final_report(conn, auction):
+    """The record kept forever, once the bulky data is purged."""
+    teams = [dict(t) for t in conn.execute('SELECT * FROM teams ORDER BY id').fetchall()]
+    players = [dict(p) for p in conn.execute('SELECT * FROM players ORDER BY id').fetchall()]
+    by_team = {}
+    for p in players:
+        if p.get('status') == 'sold' and p.get('team_id'):
+            by_team.setdefault(p['team_id'], []).append(
+                {'name': p['name'], 'category': p.get('category') or '',
+                 'price': p.get('sold_price') or 0})
+    return {
+        'name': auction['name'],
+        'ended_at': str(datetime.datetime.now()),
+        'player_count': len(players),
+        'team_count': len(teams),
+        'sold_count': sum(1 for p in players if p.get('status') == 'sold'),
+        'total_spend': round(sum((p.get('sold_price') or 0) for p in players
+                                 if p.get('status') == 'sold'), 2),
+        'teams': [{
+            'name': t['name'], 'color': t.get('color') or '#3b82f6',
+            'logo_url': t.get('logo_url') or '',
+            'total_budget': t.get('total_budget') or 0,
+            'remaining_budget': t.get('remaining_budget') or 0,
+            'players': by_team.get(t['id'], []),
+        } for t in teams],
+        'unsold': [{'name': p['name'], 'category': p.get('category') or ''}
+                   for p in players if p.get('status') != 'sold'],
+    }
+
+
+@app.route('/api/auction/end', methods=['POST'])
+def end_auction():
+    """Close the auction and unlock the report.
+
+    The auction's own data is read first and the registry updated once, last.
+    A crash before that single update leaves the auction live and completely
+    intact — there is no half-ended state to recover from.
+    """
+    guard = require_admin()
+    if guard: return guard
+    if g.auction['status'] in ('ended', 'purged'):
+        return jsonify({'success': True, 'already_ended': True})
+
+    conn = get_db()
+    report = build_final_report(conn, g.auction)
+    conn.close()
+
+    purge_after = datetime.datetime.now() + datetime.timedelta(days=RETENTION_DAYS)
+    reg = get_registry_db()
+    reg.execute("UPDATE %s SET status = 'ended', ended_at = ?, purge_after = ?, report_json = ? "
+                'WHERE id = ?' % _registry_table(),
+                (datetime.datetime.now(), purge_after, json.dumps(report), g.auction_id))
+    reg.commit()
+    return jsonify({'success': True, 'purge_after': str(purge_after),
+                    'retention_days': RETENTION_DAYS})
+
+
+@app.route('/api/auction/reopen', methods=['POST'])
+def reopen_auction():
+    guard = require_admin()
+    if guard: return guard
+    if g.auction['status'] == 'purged':
+        return jsonify({'error': 'This auction\'s data has been purged and cannot be reopened.'}), 400
+    if g.auction['status'] != 'ended':
+        return jsonify({'success': True, 'already_open': True})
+    other = live_auction_row()
+    if other is not None and other['id'] != g.auction_id:
+        return jsonify({'error': 'auction_already_live',
+                        'message': 'End "%s" first.' % other['name']}), 409
+    reg = get_registry_db()
+    reg.execute("UPDATE %s SET status = 'live', ended_at = NULL, purge_after = NULL "
+                'WHERE id = ?' % _registry_table(), (g.auction_id,))
+    reg.commit()
+    return jsonify({'success': True})
+
+
+@app.route('/api/auction/status', methods=['GET'])
+def auction_status():
+    return jsonify(_auction_summary(g.auction))
+
+
+def purge_expired():
+    """Delete the bulky data of auctions whose retention window has passed.
+
+    Order matters: the storage goes first and the status flag last, because
+    flipping the flag first would orphan the tables forever if the drop failed.
+    Every step is idempotent, so a crashed sweep simply retries next time.
+    """
+    conn = get_registry_db()
+    tbl = _registry_table()
+    now = datetime.datetime.now()
+    try:
+        rows = conn.execute("SELECT id FROM %s WHERE status = 'ended' AND purge_after IS NOT NULL "
+                            'AND purge_after <= ?' % tbl, (now,)).fetchall()
+    except Exception:
+        return 0
+    purged = 0
+    for row in rows:
+        auction_id = dict(row)['id']
+        try:
+            destroy_auction_storage(auction_id)
+            conn.execute("UPDATE %s SET status = 'purged' WHERE id = ?" % tbl, (auction_id,))
+            conn.commit()
+            purged += 1
+            print('[retention] purged auction %s' % auction_id, flush=True)
+        except Exception as exc:
+            print('[retention] auction %s purge failed: %s' % (auction_id, exc), flush=True)
+    return purged
+
+
+@app.route('/api/report/final', methods=['GET'])
+def final_report():
+    """Report data. Live-shaped while the auction's tables exist, and from the
+    retained record once they have been purged, so the report page renders the
+    same either way."""
+    if g.auction['status'] not in ('ended', 'purged'):
+        return jsonify({'error': 'auction_not_ended',
+                        'message': 'End the auction before generating the report.'}), 403
+    if g.auction['status'] == 'purged' or not g.auction.get('report_json'):
+        stored = {}
+        if g.auction.get('report_json'):
+            try: stored = json.loads(g.auction['report_json'])
+            except Exception: stored = {}
+        return jsonify({'retained': True, 'report': stored})
+    conn = get_db()
+    report = build_final_report(conn, g.auction)
+    conn.close()
+    return jsonify({'retained': False, 'report': report})
+
 
 # ─── Serve uploads ───
 @app.route('/uploads/<path:filename>')
@@ -544,45 +1093,57 @@ def logout():
 
 @app.route('/api/auth/login', methods=['POST'])
 def auth_login():
+    """Three doors. The super-admin opens the auction chooser and picks from
+    there. Team owners and spectators join whichever auction is live, and their
+    session is bound to it — a team password is only ever checked against its
+    own auction's teams table."""
     data = request.json or {}
     role = data.get('role')
     password = data.get('password', '').strip()
-    
+
     if role == 'admin':
-        if password == 'admin@123':
+        if password == ADMIN_PASSWORD:
             session['user'] = 'admin'
             session['role'] = 'admin'
+            session.pop('auction_id', None)   # land on the chooser, not an auction
             return jsonify({'success': True, 'url': '/admin'})
         return jsonify({'error': 'Incorrect admin password'}), 401
-        
+
     elif role == 'team':
+        live = live_auction_row()
+        if live is None:
+            return jsonify({'error': 'No auction is live right now.'}), 409
+        auction_id = dict(live)['id']
         team_id = data.get('team_id')
-        conn = get_db()
-        c = conn.cursor()
-        c.execute('SELECT name FROM teams WHERE id=?', (team_id,))
-        row = c.fetchone()
+        conn = open_auction_conn(auction_id)
+        row = conn.execute('SELECT name FROM teams WHERE id=?', (team_id,)).fetchone()
         conn.close()
-        
+
         if not row:
             return jsonify({'error': 'Team not found'}), 404
-            
+
         team_name = row['name']
         expected_pass = team_name.replace(' ', '').lower()
         entered_pass = password.replace(' ', '').lower()
-        
+
         if expected_pass == entered_pass:
             session['user'] = team_name
             session['role'] = 'team'
             session['team_id'] = team_id
+            session['auction_id'] = auction_id
             return jsonify({'success': True, 'url': f'/team/{team_id}'})
         else:
             return jsonify({'error': 'Incorrect password'}), 401
-            
+
     elif role == 'spectator':
+        live = live_auction_row()
+        if live is None:
+            return jsonify({'error': 'No auction is live right now.'}), 409
         session['user'] = 'spectator'
         session['role'] = 'viewer'
+        session['auction_id'] = dict(live)['id']
         return jsonify({'success': True, 'url': '/live'})
-        
+
     return jsonify({'error': 'Invalid role'}), 400
 
 @app.route('/api/auth/me')
@@ -597,11 +1158,14 @@ def auth_me():
 
 @app.route('/report')
 def report_view():
+    """The report is a record of a finished auction, so it stays locked until
+    the organiser has clicked End Auction."""
     if not session.get('role'):
         return redirect('/login')
+    if g.auction['status'] not in ('ended', 'purged'):
+        return render_template('report_locked.html', auction=g.auction), 403
     return render_template('report.html')
 
-# ─── Config / Setup ───
 @app.route('/api/config', methods=['GET'])
 def get_config():
     conn = get_db()
@@ -643,10 +1207,10 @@ def save_config():
 def restart_setup():
     data = request.json or {}
     wipe_all = data.get('wipe_all', False)
-    if wipe_all and data.get('password') != 'Wipe@123':
+    if wipe_all and data.get('password') != WIPE_PASSWORD:
         return jsonify({'error': 'Incorrect password'}), 403
     # Keep a dated copy of the outgoing auction before erasing it.
-    archive_excel_backup('wipe' if wipe_all else 'restart')
+    archive_excel_backup(g.auction_id, 'wipe' if wipe_all else 'restart')
     conn = get_db()
     c = conn.cursor()
     c.execute('INSERT OR REPLACE INTO config (key, value) VALUES ("setup_done", "false")')
@@ -1136,268 +1700,6 @@ def parse_auction_file(file_storage, default_base_price=10.0):
 
 
 # ─── New Dynamic File Ingestion & Category Rule Endpoints ───
-@app.route('/api/file/inspect', methods=['POST'])
-def inspect_file():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
-    file = request.files['file']
-    if not file.filename:
-        return jsonify({'error': 'Empty filename'}), 400
-
-    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'xlsx'
-    file_id = uuid.uuid4().hex
-    saved_filename = f"temp_{file_id}.{ext}"
-    saved_path = os.path.join(UPLOAD_FOLDER, saved_filename)
-    file.save(saved_path)
-
-    try:
-        headers, dict_rows, data_rows = read_raw_auction_file(saved_path)
-    except Exception as e:
-        return jsonify({'error': f'Failed to read file: {str(e)}'}), 400
-
-    if not dict_rows:
-        return jsonify({'error': 'File contains no data rows'}), 400
-
-    column_details = inspect_file_data(headers, dict_rows)
-
-    # Suggest best default column mappings
-    suggested_name_col = next((h for h in headers if column_details[h]['is_name_candidate']), headers[0])
-    suggested_cat_col = next((h for h in headers if (column_details[h]['is_role_candidate'] or column_details[h]['is_gender_candidate']) and h != suggested_name_col), None)
-    suggested_age_col = next((h for h in headers if column_details[h]['is_age_candidate']), None)
-    suggested_price_col = next((h for h in headers if column_details[h]['is_price_candidate']), None)
-    suggested_photo_col = next((h for h in headers if column_details[h]['is_photo_candidate']), None)
-
-    return jsonify({
-        'success': True,
-        'file_id': file_id,
-        'filename': file.filename,
-        'total_rows': len(dict_rows),
-        'columns': headers,
-        'column_details': column_details,
-        'suggestions': {
-            'name_column': suggested_name_col,
-            'category_column': suggested_cat_col,
-            'age_column': suggested_age_col,
-            'price_column': suggested_price_col,
-            'photo_column': suggested_photo_col
-        },
-        'preview_rows': dict_rows[:10]
-    })
-
-
-@app.route('/api/file/preview_categorization', methods=['POST'])
-def preview_categorization():
-    data = request.json or {}
-    file_id = data.get('file_id')
-    preset_id = data.get('preset_id')
-
-    if file_id:
-        matching_files = [f for f in os.listdir(UPLOAD_FOLDER) if f.startswith(f"temp_{file_id}.")]
-        if not matching_files:
-            return jsonify({'error': 'Uploaded file session expired. Please re-upload.'}), 404
-        file_path = os.path.join(UPLOAD_FOLDER, matching_files[0])
-    elif preset_id:
-        preset_files = {
-            'football': 'test_football.xlsx',
-            'basketball': 'test_basketball.xlsx',
-            'esports': 'test_esports.xlsx',
-            'art': 'test_art_antiques.xlsx',
-            'cricket': 'test_players.csv',
-            'multi_age': 'test_multi_sport_and_age.xlsx'
-        }
-        fname = preset_files.get(preset_id, 'test_multi_sport_and_age.xlsx')
-        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), fname)
-    else:
-        return jsonify({'error': 'No file_id or preset_id provided'}), 400
-
-    try:
-        headers, dict_rows, _ = read_raw_auction_file(file_path)
-    except Exception as e:
-        return jsonify({'error': f'Failed to parse file: {str(e)}'}), 400
-
-    name_col = data.get('name_column') or headers[0]
-    photo_col = data.get('photo_column')
-    base_price_col = data.get('base_price_column')
-    default_bp = float(data.get('default_base_price', 10))
-    rule_config = data.get('rule_config', {'mode': 'column', 'column': headers[1] if len(headers) > 1 else headers[0]})
-
-    cat_counts = {}
-    categorized_samples = {}
-
-    for r in dict_rows:
-        name = str(r.get(name_col) or '').strip()
-        if not name:
-            continue
-        cat = evaluate_row_category(r, rule_config, default_category='General')
-        cat_counts[cat] = cat_counts.get(cat, 0) + 1
-
-        bp = default_bp
-        if base_price_col and r.get(base_price_col) is not None:
-            try:
-                bp = float(r.get(base_price_col))
-            except (ValueError, TypeError):
-                bp = default_bp
-
-        photo = str(r.get(photo_col) or '').strip() if photo_col else ''
-        row_attrs = {k: v for k, v in r.items() if v is not None and str(v).strip() != '' and k not in [name_col, photo_col]}
-
-        if cat not in categorized_samples:
-            categorized_samples[cat] = []
-        if len(categorized_samples[cat]) < 5:
-            categorized_samples[cat].append({
-                'name': name,
-                'category': cat,
-                'base_price': bp,
-                'photo_url': photo,
-                'attributes': row_attrs,
-                'raw': r
-            })
-
-    summary = []
-    for cat_name, count in sorted(cat_counts.items(), key=lambda x: -x[1]):
-        summary.append({
-            'category': cat_name,
-            'count': count,
-            'samples': categorized_samples.get(cat_name, [])
-        })
-
-    return jsonify({
-        'success': True,
-        'total_items': sum(cat_counts.values()),
-        'categories_count': len(cat_counts),
-        'categories': summary
-    })
-
-
-@app.route('/api/file/apply_and_launch', methods=['POST'])
-def apply_and_launch():
-    data = request.json or {}
-    file_id = data.get('file_id')
-    preset_id = data.get('preset_id')
-
-    if file_id:
-        matching_files = [f for f in os.listdir(UPLOAD_FOLDER) if f.startswith(f"temp_{file_id}.")]
-        if not matching_files:
-            return jsonify({'error': 'Uploaded file session expired. Please re-upload.'}), 404
-        file_path = os.path.join(UPLOAD_FOLDER, matching_files[0])
-    elif preset_id:
-        preset_files = {
-            'football': 'test_football.xlsx',
-            'basketball': 'test_basketball.xlsx',
-            'esports': 'test_esports.xlsx',
-            'art': 'test_art_antiques.xlsx',
-            'cricket': 'test_players.csv',
-            'multi_age': 'test_multi_sport_and_age.xlsx'
-        }
-        fname = preset_files.get(preset_id, 'test_multi_sport_and_age.xlsx')
-        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), fname)
-    else:
-        return jsonify({'error': 'No file_id or preset_id provided'}), 400
-
-    try:
-        headers, dict_rows, _ = read_raw_auction_file(file_path)
-    except Exception as e:
-        return jsonify({'error': f'Failed to parse file: {str(e)}'}), 400
-
-    name_col = data.get('name_column') or headers[0]
-    photo_col = data.get('photo_column')
-    base_price_col = data.get('base_price_column')
-    default_bp = float(data.get('default_base_price', 10))
-    rule_config = data.get('rule_config', {'mode': 'column', 'column': headers[1] if len(headers) > 1 else headers[0]})
-    user_cat_rules = {r['category']: r for r in data.get('category_rules', [])}
-
-    conn = get_db()
-    c = conn.cursor()
-
-    # Clear previous state
-    c.execute('DELETE FROM players')
-    c.execute('DELETE FROM category_rules')
-    c.execute('DELETE FROM teams')
-    c.execute('DELETE FROM auction_state')
-    c.execute('DELETE FROM action_history')
-
-    # Save Config
-    cfg_data = data.get('config', {})
-    event_name = cfg_data.get('event_name', 'Premier Auction 2026')
-    common_bp = float(cfg_data.get('common_base_price', default_bp))
-    min_players = int(cfg_data.get('min_players_per_team', 10))
-    bid_inc = float(cfg_data.get('bid_increment', 2.5))
-
-    c.execute('INSERT OR REPLACE INTO config (key, value) VALUES ("event_name", ?)', (event_name,))
-    c.execute('INSERT OR REPLACE INTO config (key, value) VALUES ("common_base_price", ?)', (str(common_bp),))
-    c.execute('INSERT OR REPLACE INTO config (key, value) VALUES ("min_players_per_team", ?)', (str(min_players),))
-    c.execute('INSERT OR REPLACE INTO config (key, value) VALUES ("bid_increment", ?)', (str(bid_inc),))
-    c.execute('INSERT OR REPLACE INTO config (key, value) VALUES ("setup_done", "true")')
-
-    # Insert Categorized Players
-    cat_counts = {}
-    player_count = 0
-
-    for r in dict_rows:
-        name = str(r.get(name_col) or '').strip()
-        if not name:
-            continue
-        cat = evaluate_row_category(r, rule_config, default_category='General')
-        cat_counts[cat] = cat_counts.get(cat, 0) + 1
-
-        bp = common_bp
-        if base_price_col and r.get(base_price_col) is not None:
-            try:
-                bp = float(r.get(base_price_col))
-            except (ValueError, TypeError):
-                bp = common_bp
-
-        photo = str(r.get(photo_col) or '').strip() if photo_col else ''
-        row_attrs = {k: v for k, v in r.items() if v is not None and str(v).strip() != '' and k not in [name_col, photo_col]}
-
-        c.execute('INSERT INTO players (name, category, base_price, photo_url, attributes) VALUES (?, ?, ?, ?, ?)',
-                  (name, cat, bp, photo, json.dumps(row_attrs)))
-        player_count += 1
-
-    # Insert Category Rules with quotas
-    saved_rules = []
-    for cat_name, cnt in cat_counts.items():
-        rule_info = user_cat_rules.get(cat_name, {})
-        bp = float(rule_info.get('base_price', common_bp))
-        min_req = int(rule_info.get('min_per_team', 0))
-        max_req = int(rule_info.get('max_per_team', 99))
-        c.execute('INSERT INTO category_rules (category, base_price, min_per_team, max_per_team) VALUES (?, ?, ?, ?)',
-                  (cat_name, bp, min_req, max_req))
-        saved_rules.append({
-            'category': cat_name,
-            'base_price': bp,
-            'min_per_team': min_req,
-            'max_per_team': max_req,
-            'count': cnt
-        })
-
-    # Insert Custom Teams
-    teams_data = data.get('teams', [])
-    for t in teams_data:
-        t_name = t.get('name', '').strip()
-        if not t_name:
-            continue
-        budget = float(t.get('total_budget', 1000))
-        color = t.get('color', '#3b82f6')
-        c.execute('INSERT INTO teams (name, total_budget, remaining_budget, color) VALUES (?, ?, ?, ?)',
-                  (t_name, budget, budget, color))
-
-    conn.commit()
-    conn.close()
-
-    # Photos that came in as Google Drive share links are downloaded into
-    # uploads/ in the background, so the import returns straight away.
-    hydrate_drive_photos_async()
-
-    return jsonify({
-        'success': True,
-        'player_count': player_count,
-        'categories': saved_rules,
-        'teams_count': len(teams_data),
-        'event_name': event_name
-    })
-
-
 @app.route('/api/players/import', methods=['POST'])
 def import_players():
     if 'file' not in request.files:
@@ -1455,7 +1757,7 @@ def import_players():
 
     conn.commit()
     conn.close()
-    hydrate_drive_photos_async()
+    hydrate_drive_photos_async(g.auction_id)
     return jsonify({
         'success': True,
         'count': count,
@@ -1675,10 +1977,11 @@ def sell_player():
     c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_sold_team_color', ?)", (team['color'] if team else '#3b82f6',))
     c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_sold_photo', ?)", (player['photo_url'] or '',))
     conn.commit()
+    webhook = auction_sheets_webhook(conn)
     conn.close()
-    excel_backup_async()
+    excel_backup_async(g.auction_id)
     # Push to Google Sheets in background (non-blocking)
-    sheets_push_async({
+    sheets_push_async(webhook, {
         'player_name': player['name'],
         'category':    player['category'] or '',
         'base_price':  player['base_price'],
@@ -1740,7 +2043,7 @@ def undo_last_sale():
         rem_history = c.execute('SELECT COUNT(*) as c FROM action_history').fetchone()['c']
         conn.commit()
         conn.close()
-        excel_backup_async()
+        excel_backup_async(g.auction_id)
         return jsonify({
             'success': True,
             'player': player_dict,
@@ -1774,7 +2077,7 @@ def undo_last_sale():
 
         conn.commit()
         conn.close()
-        excel_backup_async()
+        excel_backup_async(g.auction_id)
         return jsonify({
             'success': True,
             'player': player_dict,
@@ -1836,14 +2139,14 @@ def edit_player_sale():
 
     conn.commit()
     conn.close()
-    excel_backup_async()
+    excel_backup_async(g.auction_id)
     return jsonify({'success': True})
 
 @app.route('/api/reset', methods=['POST'])
 def reset_auction():
     # Archive first: clearing every sale would otherwise overwrite the backup
     # of a finished auction with an empty snapshot.
-    archive_excel_backup('reset')
+    archive_excel_backup(g.auction_id, 'reset')
     conn = get_db()
     c = conn.cursor()
     c.execute('UPDATE players SET status="unsold", team_id=NULL, sold_price=NULL, sold_at=NULL')
@@ -1852,7 +2155,7 @@ def reset_auction():
     c.execute('DELETE FROM action_history')
     conn.commit()
     conn.close()
-    excel_backup_async()
+    excel_backup_async(g.auction_id)
     return jsonify({'success': True})
 
 # ─── Google Sheets sync ───
@@ -1865,11 +2168,12 @@ def sheets_sync_all():
         FROM players p JOIN teams t ON p.team_id = t.id
         WHERE p.status = 'sold' ORDER BY p.sold_at
     ''').fetchall()
+    webhook = auction_sheets_webhook(conn)
     conn.close()
     count = 0
     for r in rows:
         rd = dict(r)
-        sheets_push_async({
+        sheets_push_async(webhook, {
             'player_name': rd['name'],
             'category':    rd['category'] or '',
             'base_price':  rd['base_price'],
@@ -1880,50 +2184,6 @@ def sheets_sync_all():
         count += 1
     return jsonify({'success': True, 'synced': count})
 
-# ─── DB migration (SQLite → PostgreSQL) ───
-@app.route('/api/db/migrate_to_pg', methods=['POST'])
-def migrate_to_pg():
-    """Copy all data from local auction.db into the configured PostgreSQL database."""
-    if not USE_PG:
-        return jsonify({'error': 'DATABASE_URL not configured'}), 400
-    try:
-        import psycopg2
-        src = sqlite3.connect(DB_FILE, timeout=20)
-        src.row_factory = sqlite3.Row
-        dst = psycopg2.connect(DATABASE_URL)
-        dc = dst.cursor()
-
-        tables = ['config', 'category_rules', 'teams', 'players', 'auction_state', 'action_history']
-        counts = {}
-        for tbl in tables:
-            rows = src.execute(f'SELECT * FROM {tbl}').fetchall()
-            if not rows:
-                counts[tbl] = 0
-                continue
-            cols = rows[0].keys()
-            col_str = ', '.join(cols)
-            ph = ', '.join(['%s'] * len(cols))
-            conflict = ''
-            if tbl in ('config', 'auction_state'):
-                conflict = ' ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value'
-            dc.executemany(
-                f'INSERT INTO {tbl} ({col_str}) VALUES ({ph}){conflict}',
-                [tuple(r) for r in rows]
-            )
-            counts[tbl] = len(rows)
-
-        # Reset sequences so auto-increment stays correct
-        for tbl, col in [('teams','id'), ('players','id'), ('category_rules','id'), ('action_history','id')]:
-            dc.execute(f"SELECT setval(pg_get_serial_sequence('{tbl}','{col}'), COALESCE((SELECT MAX({col}) FROM {tbl}), 1))")
-
-        dst.commit()
-        dst.close()
-        src.close()
-        return jsonify({'success': True, 'migrated': counts})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-# ─── Stats ───
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     conn = get_db()
@@ -2153,8 +2413,8 @@ def fetch_drive_photos():
     """Re-run the Drive photo download for any player still holding a Drive
     link. Use it after sharing the Drive folder, or if some photos failed the
     first time. GET the same path for progress."""
-    hydrate_drive_photos_async()
-    return jsonify({'success': True, 'status': dict(_DRIVE_HYDRATE_STATE)})
+    hydrate_drive_photos_async(g.auction_id)
+    return jsonify({'success': True, 'status': get_hydrate_state(g.auction_id)})
 
 
 @app.route('/api/players/fetch_photos', methods=['GET'])
@@ -2165,7 +2425,7 @@ def fetch_drive_photos_status():
         "WHERE photo_url LIKE '%drive.google.com%' "
         "   OR photo_url LIKE '%googleusercontent.com%'").fetchone()
     conn.close()
-    status = dict(_DRIVE_HYDRATE_STATE)
+    status = get_hydrate_state(g.auction_id)
     status['pending'] = pending['n'] if pending else 0
     return jsonify(status)
 
@@ -2602,7 +2862,7 @@ def pass_player():
     c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_passed_photo', ?)", (player['photo_url'] or '',))
     conn.commit()
     conn.close()
-    excel_backup_async()
+    excel_backup_async(g.auction_id)
     return jsonify({'success': True, 'player_name': player['name']})
 
 @app.route('/api/action/revive', methods=['POST'])
@@ -2622,7 +2882,7 @@ def revive_player():
         c.execute('UPDATE players SET status="unsold" WHERE id=?', (player_id,))
     conn.commit()
     conn.close()
-    excel_backup_async()
+    excel_backup_async(g.auction_id)
     return jsonify({'success': True})
 
 @app.route('/api/action/bargain_bin', methods=['POST'])
@@ -2637,7 +2897,7 @@ def bargain_bin():
             c.execute("UPDATE players SET base_price=? WHERE id=?", (new_price, p['id']))
             count += 1
         conn.commit()
-        excel_backup_async()
+        excel_backup_async(g.auction_id)
         return jsonify({'success': True, 'count': count})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -2645,7 +2905,6 @@ def bargain_bin():
         conn.close()
 
 if __name__ == '__main__':
-    init_db()
     Timer(1, lambda: webbrowser.open_new('http://127.0.0.1:5000/')).start()
     # use_debugger=False disables the interactive Werkzeug pin console so crashed
     # requests don't hold SQLite write locks open; error tracebacks still appear.
