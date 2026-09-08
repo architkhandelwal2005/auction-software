@@ -2170,6 +2170,12 @@ function App() {
                              `Every player uses the ${fixedTemplate.charAt(0).toUpperCase()+fixedTemplate.slice(1)} template.`}
                             {' '} Changes are broadcast live to the Cinematic Stage.
                         </p>
+                        {auctionSport==='multi' && (
+                            <p className="text-[0.55rem] text-amber-500/80 font-bold flex items-center gap-1.5">
+                                <i className="fa-solid fa-wand-magic-sparkles"></i>
+                                Per-player sport: if your sheet has a “Preferred Sport” column, each player is shown on that sport’s own template &amp; backdrop (cricket, football, badminton, pickleball, table tennis). Others use the Multi look.
+                            </p>
+                        )}
                     </div>
 
                     {/* Franchises */}

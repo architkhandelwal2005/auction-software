@@ -188,6 +188,60 @@
     if (pool.includes(stageFixedTemplate)) return stageFixedTemplate;
     return pool[0];
   }
+
+  /* ── Per-player sport in a MULTI auction ──────────────────────────────
+     A multi-sport sheet can name each player's own sport in a column
+     (Sport / Preferred Sport / Discipline / Game). When it does, and the
+     value names a sport we actually have stage templates for, that player
+     is shown on that sport's own template + environment instead of the
+     generic multi look — so a cricketer gets a cricket card, a paddler a
+     table-tennis card, in the same auction. Values are fuzzy-matched, so
+     "Table Tennis", "TT", "Ping Pong", "Soccer" all resolve. Only applies
+     when the auction sport is 'multi'; every other sport is unchanged. */
+  const PREFERRED_SPORT_RE = /sport|discipline|\bgame\b/i;
+  function normalizeSport(raw) {
+    const s = String(raw || '').toLowerCase().replace(/[^a-z]/g, '');
+    if (!s) return null;
+    if (s === 'tt' || s.includes('tabletennis') || s.includes('pingpong')) return 'tabletennis';
+    if (s.includes('cricket')) return 'cricket';
+    if (s.includes('football') || s.includes('soccer') || s.includes('futsal')) return 'football';
+    if (s.includes('badminton') || s.includes('shuttle')) return 'badminton';
+    if (s.includes('pickle')) return 'pickleball';
+    return null;  // basketball, esports, … have no stage templates → generic multi
+  }
+  // The effective sport for a player: their preferred sport in a multi
+  // auction (when recognised), else the auction's own sport.
+  function effectiveSportFor(player) {
+    if (stageSport === 'multi' && player) {
+      const pref = normalizeSport(attrFind(player.attrs, PREFERRED_SPORT_RE));
+      if (pref && SPORT_TEMPLATES[pref]) return { sport: pref, overridden: true };
+    }
+    return { sport: stageSport, overridden: false };
+  }
+  // Pick the template to show a player. Has side effects for random /
+  // sequential (a fresh pick / an advanced index), so call once per player.
+  function pickStageForPlayer(player) {
+    const { sport, overridden } = effectiveSportFor(player);
+    const pool = SPORT_TEMPLATES[sport] || TEMPLATES;
+    let template;
+    if (stageTemplateMode === 'random') {
+      template = pool[Math.floor(Math.random() * pool.length)];
+    } else if (stageTemplateMode === 'sequential') {
+      template = pool[seqIndex % pool.length];
+      seqIndex++;
+    } else {
+      // Fixed: the admin's chosen template only belongs to the auction's own
+      // sport, so an overridden player falls to their sport's default.
+      template = overridden ? pool[0] : resolveFixedTemplate();
+    }
+    return { sport, template };
+  }
+  // Apply a resolved {sport, template} to the stage. The sport drives the
+  // environment/photo via data-sport; setTemplate refreshes its backdrop.
+  function applyStageChoice(sport, template) {
+    if (stage.dataset.sport !== sport) stage.dataset.sport = sport;
+    setTemplate(template);
+  }
   /* ───────────── player display templates ─────────────
      Only this region changes between templates. Header, price zone,
      team purse panel and the bottom information strip are shared chrome. */
@@ -831,25 +885,25 @@
     stageTemplateMode = newMode;
     stageFixedTemplate = newFixed;
 
-    // Resolve which template to show based on mode and player change
+    // Resolve which template to show based on mode and player change. In a
+    // multi auction the player's own preferred sport (if the sheet names one)
+    // is resolved here too, via pickStageForPlayer / effectiveSportFor.
     const currentPlayerName = state.player ? state.player.name : null;
     const playerJustChanged = currentPlayerName !== null && currentPlayerName !== prevPlayerName;
     if (playerJustChanged) {
       prevPlayerName = currentPlayerName;
-      const pool = SPORT_TEMPLATES[stageSport] || TEMPLATES;
-      if (stageTemplateMode === 'random') {
-        const pick = pool[Math.floor(Math.random() * pool.length)];
-        setTemplate(pick);
-      } else if (stageTemplateMode === 'sequential') {
-        const pick = pool[seqIndex % pool.length];
-        seqIndex++;
-        setTemplate(pick);
-      } else {
-        setTemplate(resolveFixedTemplate());
+      const c = pickStageForPlayer(state.player);
+      applyStageChoice(c.sport, c.template);
+    } else if (currentPlayerName && stageTemplateMode === 'fixed') {
+      // Same player still on the block, fixed mode: re-resolve without the
+      // random/sequential side effects, and re-apply only if the admin's
+      // change actually moved the sport or template (no per-poll flicker).
+      const { sport, overridden } = effectiveSportFor(state.player);
+      const pool = SPORT_TEMPLATES[sport] || TEMPLATES;
+      const template = overridden ? pool[0] : resolveFixedTemplate();
+      if (sport !== stage.dataset.sport || template !== stage.dataset.template) {
+        applyStageChoice(sport, template);
       }
-    } else if (currentPlayerName && stageTemplateMode === 'fixed' && stageFixedTemplate !== stage.dataset.template) {
-      // Same player on block but admin changed the fixed template — apply within next poll cycle
-      setTemplate(resolveFixedTemplate());
     } else if (!currentPlayerName && prevPlayerName !== null) {
       prevPlayerName = null;
     } else if (!currentPlayerName && stageTemplateMode === 'fixed' && stageFixedTemplate !== stage.dataset.template) {
