@@ -2714,3 +2714,334 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 .bdn-name { font-size: 62px !important; }
 .bdc-name { font-size: 62px !important; }
 .bds-cat, .bdn-cat, .bdc-cat { font-size: 21px !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TABLE TENNIS — three templates, same pattern as badminton and pickleball:
+   one photograph, one palette and one construction each.
+
+     tt-table  blue tournament table   portrait rises behind the net, scoreboard
+     tt-rally  dark match hall         medallion portrait, orbiting ball, streak
+     tt-blade  red/black paddle rubber split card, editorial name on the black
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* The photograph carries the scene; the drawn environment is switched off. */
+.stage[data-sport='tabletennis'] .sport-environment > *:not(.env-photo):not(.env-photo-grade):not(.env-grain),
+.stage[data-sport='tabletennis'] .drama { display: none; }
+
+.tpl-tt { width: 100%; height: 100%; display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          font-family: var(--display-font, 'Barlow Condensed', sans-serif); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   1 — TABLE  ·  blue tournament table, white net
+   ══════════════════════════════════════════════════════════════════════ */
+.stage[data-template='tt-table'] .env-photo {
+  opacity: 1 !important;
+  background-image: url('img/bg-tt-table.jpg');
+  background-size: cover; background-position: center 54%;
+  filter: brightness(.82) contrast(1.08) saturate(1.14) blur(2.6px);
+}
+.stage[data-template='tt-table'] .env-photo-grade {
+  opacity: 1;
+  background:
+    radial-gradient(ellipse 66% 62% at 50% 48%, rgba(3,12,30,.18) 0 42%, rgba(3,10,26,.56) 82%, rgba(2,7,20,.84) 100%),
+    linear-gradient(180deg, rgba(3,10,26,.66) 0%, rgba(3,10,26,.16) 26%, rgba(3,10,26,.24) 66%, rgba(2,7,20,.84) 100%);
+}
+.stage[data-template='tt-table'] .env-grain { opacity: .16; }
+
+.stage[data-template='tt-table'] {
+  --tt-blue: #3f8be0;
+  --tt-blue-lt: #cbe6ff;
+  --tt-orange: #ff6a2c;
+  --tt-orange-lt: #ffc7a4;
+  --tt-ink: rgba(5,16,34,.86);
+  --tt-line: rgba(63,139,224,.34);
+}
+
+.tpl-tt-table { position: relative; gap: 0; padding-top: 30px; }
+
+/* The white net running across the middle, its cord and tape */
+.ttt-net { position: absolute; left: 50%; top: 52%; transform: translate(-50%,-50%); z-index: 0;
+  width: 132%; height: 118px; pointer-events: none; }
+.ttt-net i {
+  position: absolute; inset: 0;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,.16) 0 2px, rgba(255,255,255,0) 2px 12px),
+    repeating-linear-gradient(0deg, rgba(255,255,255,.16) 0 2px, rgba(255,255,255,0) 2px 12px);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  opacity: .5;
+}
+.ttt-net b {
+  position: absolute; left: 0; right: 0; top: 0; height: 5px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.85) 18%, rgba(255,255,255,.9) 82%, transparent);
+  box-shadow: 0 0 18px rgba(203,230,255,.5);
+}
+
+/* Portrait rising behind the table */
+.ttt-frame {
+  position: relative; z-index: 1; flex: none;
+  width: 452px; height: 560px;
+  padding: 5px;
+  border-radius: 14px 14px 8px 8px;
+  background: linear-gradient(180deg, var(--tt-blue), rgba(63,139,224,.12) 55%, rgba(63,139,224,.3));
+  box-shadow: 0 26px 64px rgba(0,0,0,.52), 0 0 52px rgba(63,139,224,.16);
+}
+.ttt-photo {
+  width: 100%; height: 100%;
+  border-radius: 10px 10px 5px 5px;
+  overflow: hidden; background: #061426;
+}
+.ttt-shadow {
+  position: absolute; left: 50%; bottom: -22px; transform: translateX(-50%);
+  width: 400px; height: 42px; border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.5) 0 40%, rgba(0,0,0,0) 74%);
+  filter: blur(7px);
+}
+
+.ttt-board {
+  position: relative; z-index: 2; flex: none;
+  margin-top: 24px; width: 560px; padding: 15px 26px 18px; text-align: center;
+  background: var(--tt-ink);
+  border: 1px solid var(--tt-line);
+  border-top: 3px solid var(--tt-orange);
+  border-radius: 8px;
+  box-shadow: 0 22px 52px rgba(0,0,0,.5);
+  backdrop-filter: blur(10px);
+}
+.ttt-cat {
+  font-weight: 800; letter-spacing: 4px; text-transform: uppercase;
+  color: var(--tt-orange); font-size: 21px;
+}
+.ttt-name {
+  margin-top: 5px; font-weight: 900; font-size: 62px; line-height: .96;
+  letter-spacing: 1px; text-transform: uppercase; color: #eef5ff;
+}
+.tpl-tt-table .mh { margin-top: 12px; color: #d8e6f7; justify-content: center; text-align: center; }
+.tpl-tt-table .mh .mh-star { color: var(--tt-orange); }
+
+.stage[data-template='tt-table'] .price-zone { background: none; border: none; box-shadow: none; }
+.stage[data-template='tt-table'] .status-pill { background: var(--tt-ink); border: 1px solid var(--tt-line); }
+.stage[data-template='tt-table'] .status-pill span { background: var(--tt-orange); box-shadow: 0 0 12px var(--tt-orange); }
+.stage[data-template='tt-table'] .status-pill b { color: var(--tt-orange-lt); letter-spacing: 3px; }
+.stage[data-template='tt-table'] .price-label { color: rgba(226,240,255,.6); letter-spacing: 5px; }
+.stage[data-template='tt-table'] .current-price { color: #f2f9ff; text-shadow: 0 0 48px rgba(255,106,44,.3); }
+.stage[data-template='tt-table'] .price-meta-card { background: var(--tt-ink); border-color: var(--tt-line); }
+.stage[data-template='tt-table'] .price-meta-card span { color: rgba(226,240,255,.5); }
+.stage[data-template='tt-table'] .price-meta-card strong { color: var(--tt-orange-lt); }
+.stage[data-template='tt-table'] .tournament-header { border-bottom-color: var(--tt-line); }
+.stage[data-template='tt-table'] .tournament-name { color: #f2f9ff; }
+.stage[data-template='tt-table'] .brand-mark { border-color: var(--tt-line); color: var(--tt-orange-lt); }
+.stage[data-template='tt-table'] .progress-box { background: var(--tt-ink); border-color: var(--tt-line); }
+.stage[data-template='tt-table'] .progress-box strong { color: var(--tt-orange-lt); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   2 — RALLY  ·  dark match hall, ball mid-flight
+   ══════════════════════════════════════════════════════════════════════ */
+.stage[data-template='tt-rally'] .env-photo {
+  opacity: 1 !important;
+  background-image: url('img/bg-tt-rally.jpg');
+  background-size: cover; background-position: center 46%;
+  filter: brightness(.7) contrast(1.12) saturate(1.16) blur(3px);
+}
+.stage[data-template='tt-rally'] .env-photo-grade {
+  opacity: 1;
+  background:
+    radial-gradient(ellipse 62% 60% at 30% 50%, rgba(14,6,2,.16) 0 42%, rgba(12,5,2,.56) 82%, rgba(8,3,1,.84) 100%),
+    linear-gradient(180deg, rgba(12,5,2,.66) 0%, rgba(12,5,2,.12) 28%, rgba(12,5,2,.22) 66%, rgba(8,3,1,.82) 100%);
+}
+.stage[data-template='tt-rally'] .env-grain { opacity: .2; }
+
+.stage[data-template='tt-rally'] {
+  --tt-volt: #ff6a2c;
+  --tt-volt-lt: #ffcaa6;
+  --tt-deep: rgba(22,9,3,.86);
+  --tt-vline: rgba(255,106,44,.34);
+}
+
+.tpl-tt-rally { position: relative; gap: 0; }
+
+/* Ball streak sweeping across the frame */
+.ttr-streak { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.ttr-streak i {
+  position: absolute; left: -6%; top: 30%; width: 62%; height: 6px;
+  background: linear-gradient(90deg, rgba(255,106,44,0), rgba(255,140,80,.7), rgba(255,106,44,0));
+  transform: rotate(-16deg); filter: blur(2px);
+  animation: ttrStreak 6s ease-in-out infinite;
+}
+.ttr-streak b {
+  position: absolute; left: 54%; top: 24%;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #ffd9b0, #ff7a2c 60%, #e6531a 100%);
+  box-shadow: 0 0 26px rgba(255,122,44,.75), 0 0 60px rgba(255,106,44,.35);
+  animation: ttrBall 6s ease-in-out infinite;
+}
+@keyframes ttrStreak { 0%,100% { opacity: .25; } 50% { opacity: .7; } }
+@keyframes ttrBall { 0%,100% { transform: translateY(0); } 50% { transform: translate(-14px,10px); } }
+
+/* Round medallion: portrait, with a ball orbiting the rim */
+.ttr-medal {
+  position: relative; z-index: 1; flex: none;
+  width: 496px; height: 496px; display: grid; place-items: center;
+}
+.ttr-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid rgba(255,106,44,.4);
+  box-shadow: inset 0 0 42px rgba(255,106,44,.14);
+  animation: ttrSpin 18s linear infinite;
+}
+.ttr-ring s {
+  position: absolute; top: -9px; left: 50%; margin-left: -9px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #ffd9b0, #ff7a2c 60%, #e6531a 100%);
+  box-shadow: 0 0 18px rgba(255,122,44,.8);
+}
+@keyframes ttrSpin { to { transform: rotate(360deg); } }
+.ttr-photo {
+  width: 404px; height: 404px; border-radius: 50%;
+  overflow: hidden; z-index: 2;
+  border: 4px solid var(--tt-volt);
+  background: #160903;
+  box-shadow: inset 0 0 0 7px rgba(22,9,3,.9), 0 22px 58px rgba(0,0,0,.5), 0 0 56px rgba(255,106,44,.22);
+}
+.ttr-glow {
+  position: absolute; left: 50%; bottom: -12px; transform: translateX(-50%);
+  width: 380px; height: 44px; border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(255,106,44,.28) 0 34%, rgba(255,106,44,0) 72%);
+  filter: blur(7px);
+}
+
+.ttr-plate {
+  position: relative; z-index: 2; flex: none;
+  margin-top: 20px; width: 560px; padding: 15px 26px 18px; text-align: center;
+  background: var(--tt-deep);
+  border: 1px solid var(--tt-vline);
+  border-left: 4px solid var(--tt-volt);
+  border-radius: 6px;
+  box-shadow: 0 22px 52px rgba(0,0,0,.5);
+  backdrop-filter: blur(10px);
+}
+.ttr-cat {
+  font-weight: 800; letter-spacing: 4px; text-transform: uppercase;
+  color: var(--tt-volt); font-size: 21px;
+}
+.ttr-name {
+  margin-top: 5px; font-weight: 900; font-size: 62px; line-height: .96;
+  letter-spacing: 1px; text-transform: uppercase; color: #fdefe6;
+}
+.tpl-tt-rally .mh { margin-top: 12px; color: #f0ddd0; justify-content: center; text-align: center; }
+.tpl-tt-rally .mh .mh-star { color: var(--tt-volt); }
+
+.stage[data-template='tt-rally'] .price-zone { background: none; border: none; box-shadow: none; }
+.stage[data-template='tt-rally'] .status-pill { background: var(--tt-deep); border: 1px solid var(--tt-vline); }
+.stage[data-template='tt-rally'] .status-pill span { background: var(--tt-volt); box-shadow: 0 0 12px var(--tt-volt); }
+.stage[data-template='tt-rally'] .status-pill b { color: var(--tt-volt-lt); letter-spacing: 3px; }
+.stage[data-template='tt-rally'] .price-label { color: rgba(246,232,222,.6); letter-spacing: 5px; }
+.stage[data-template='tt-rally'] .current-price { color: #fff3ea; text-shadow: 0 0 48px rgba(255,106,44,.34); }
+.stage[data-template='tt-rally'] .price-meta-card { background: var(--tt-deep); border-color: var(--tt-vline); }
+.stage[data-template='tt-rally'] .price-meta-card span { color: rgba(246,232,222,.5); }
+.stage[data-template='tt-rally'] .price-meta-card strong { color: var(--tt-volt-lt); }
+.stage[data-template='tt-rally'] .tournament-header { border-bottom-color: var(--tt-vline); }
+.stage[data-template='tt-rally'] .tournament-name { color: #fff3ea; }
+.stage[data-template='tt-rally'] .brand-mark { border-color: var(--tt-vline); color: var(--tt-volt-lt); }
+.stage[data-template='tt-rally'] .progress-box { background: var(--tt-deep); border-color: var(--tt-vline); }
+.stage[data-template='tt-rally'] .progress-box strong { color: var(--tt-volt-lt); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   3 — BLADE  ·  red/black paddle rubber, editorial
+   ══════════════════════════════════════════════════════════════════════ */
+.stage[data-template='tt-blade'] .env-photo {
+  opacity: 1 !important;
+  background-image: url('img/bg-tt-blade.jpg');
+  background-size: cover; background-position: center 50%;
+  filter: brightness(.66) contrast(1.1) saturate(1.12) blur(3.2px);
+}
+.stage[data-template='tt-blade'] .env-photo-grade {
+  opacity: 1;
+  background:
+    radial-gradient(ellipse 66% 62% at 34% 50%, rgba(14,4,4,.22) 0 42%, rgba(12,3,3,.6) 82%, rgba(8,2,2,.86) 100%),
+    linear-gradient(180deg, rgba(12,3,3,.72) 0%, rgba(12,3,3,.22) 28%, rgba(12,3,3,.3) 66%, rgba(8,2,2,.86) 100%);
+}
+.stage[data-template='tt-blade'] .env-grain { opacity: .2; }
+
+.stage[data-template='tt-blade'] {
+  --tt-red: #e5322b;
+  --tt-red-lt: #ff9384;
+  --tt-black: #0d0d0e;
+  --tt-rline: rgba(229,50,43,.4);
+}
+
+.tpl-tt-blade { flex-direction: row; align-items: stretch; gap: 0; }
+
+/* Red rubber face holding the portrait */
+.ttb-red {
+  flex: none; width: 452px; height: 596px; position: relative;
+  padding: 12px;
+  background:
+    radial-gradient(circle at 30% 26%, rgba(255,120,110,.28), rgba(0,0,0,0) 46%),
+    linear-gradient(150deg, #e5322b 0%, #a41c17 58%, #7c110d 100%);
+  border-radius: 14px 4px 4px 14px;
+  box-shadow: 0 28px 66px rgba(0,0,0,.56), inset 0 1px 0 rgba(255,180,170,.3);
+}
+/* rubber pips */
+.ttb-red::before {
+  content: ''; position: absolute; inset: 12px; border-radius: 8px; pointer-events: none;
+  background-image: radial-gradient(rgba(0,0,0,.16) 1.1px, transparent 1.3px);
+  background-size: 9px 9px; opacity: .5; mix-blend-mode: multiply;
+}
+.ttb-photo {
+  width: 100%; height: 100%; position: relative; z-index: 1;
+  border-radius: 6px; overflow: hidden; background: #2a0a08;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.4);
+}
+
+/* Black side: editorial name block */
+.ttb-black {
+  flex: 1; min-width: 470px; max-width: 620px; position: relative;
+  padding: 54px 46px; display: flex; flex-direction: column; justify-content: center;
+  background:
+    radial-gradient(circle at 74% 22%, rgba(60,60,64,.4), rgba(0,0,0,0) 50%),
+    linear-gradient(150deg, #17171a 0%, #0d0d0e 60%, #050506 100%);
+  border-radius: 4px 14px 14px 4px;
+  box-shadow: 0 28px 66px rgba(0,0,0,.56), inset 0 1px 0 rgba(255,255,255,.05);
+}
+.ttb-mark {
+  font-weight: 800; letter-spacing: 6px; text-transform: uppercase;
+  font-size: 15px; color: rgba(255,147,132,.8);
+}
+.ttb-cat {
+  margin-top: 22px; font-weight: 800; letter-spacing: 4px; text-transform: uppercase;
+  color: var(--tt-red-lt); font-size: 22px;
+}
+.ttb-name {
+  margin-top: 8px; font-weight: 900; font-size: 74px; line-height: .92;
+  letter-spacing: 1px; text-transform: uppercase; color: #f6f2f2;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+}
+/* blade handle motif bridging the faces */
+.ttb-handle {
+  margin: 20px 0 0; width: 128px; height: 8px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--tt-red), rgba(229,50,43,.15));
+}
+.tpl-tt-blade .mh { margin-top: 20px; color: #e6dede; justify-content: flex-start; text-align: left; }
+.tpl-tt-blade .mh .mh-star { color: var(--tt-red-lt); }
+
+.stage[data-template='tt-blade'] .price-zone { background: none; border: none; box-shadow: none; }
+.stage[data-template='tt-blade'] .status-pill { background: rgba(13,13,14,.82); border: 1px solid var(--tt-rline); }
+.stage[data-template='tt-blade'] .status-pill span { background: var(--tt-red); box-shadow: 0 0 12px var(--tt-red); }
+.stage[data-template='tt-blade'] .status-pill b { color: var(--tt-red-lt); letter-spacing: 3px; }
+.stage[data-template='tt-blade'] .price-label { color: rgba(240,228,228,.6); letter-spacing: 5px; }
+.stage[data-template='tt-blade'] .current-price { color: #fff2f1; text-shadow: 0 0 48px rgba(229,50,43,.36); }
+.stage[data-template='tt-blade'] .price-meta-card { background: rgba(13,13,14,.8); border-color: var(--tt-rline); }
+.stage[data-template='tt-blade'] .price-meta-card span { color: rgba(240,228,228,.5); }
+.stage[data-template='tt-blade'] .price-meta-card strong { color: var(--tt-red-lt); }
+.stage[data-template='tt-blade'] .tournament-header { border-bottom-color: var(--tt-rline); }
+.stage[data-template='tt-blade'] .tournament-name { color: #fff2f1; }
+.stage[data-template='tt-blade'] .brand-mark { border-color: var(--tt-rline); color: var(--tt-red-lt); }
+.stage[data-template='tt-blade'] .progress-box { background: rgba(13,13,14,.8); border-color: var(--tt-rline); }
+.stage[data-template='tt-blade'] .progress-box strong { color: var(--tt-red-lt); }
+
+/* Hall readability — same enlarged scale as the other sets. */
+.ttt-name, .ttr-name { font-size: 62px !important; }
+.ttb-name { font-size: 74px !important; }
+.ttt-cat, .ttr-cat, .ttb-cat { font-size: 21px !important; }

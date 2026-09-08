@@ -34,6 +34,7 @@ const SPORT_TEMPLATE_OPTIONS = {
     football:   [{id:'arena',label:'Arena Portrait'},{id:'broadcast',label:'Broadcast Panel'},{id:'poster',label:'Photo Poster'}],
     badminton:  [{id:'bd-smash',label:'Smash — Match Night'},{id:'bd-net',label:'Net — Close Court'},{id:'bd-court',label:'Court — Indoor Hall'}],
     pickleball: [{id:'pb-hall',label:'Hall'},{id:'pb-sunset',label:'Sunset'},{id:'pb-press',label:'Press'}],
+    tabletennis:[{id:'tt-table',label:'Table — Tournament'},{id:'tt-rally',label:'Rally — Match Hall'},{id:'tt-blade',label:'Blade — Paddle'}],
     multi:      [{id:'arena',label:'Arena Portrait'},{id:'collector',label:'Collector Card'},{id:'broadcast',label:'Broadcast Panel'},{id:'ck-house',label:'Full House — Packed Stand'}],
 };
 
@@ -102,9 +103,13 @@ const SPORT_THEMES = {
         bg: 'radial-gradient(ellipse at 50% 120%, #0a1a3a 0%, #060f2a 40%, #030818 100%)',
         overlay: 'radial-gradient(circle at 50% 0%, rgba(59,130,246,0.06) 0%, transparent 60%)',
         cardStyle: 'spotlight' },
-    pickleball: { id: 'pickleball', name: 'Pickleball', emoji: '🏓', accent: '#14b8a6', accentName: 'teal',
+    pickleball: { id: 'pickleball', name: 'Pickleball', emoji: '🎾', accent: '#14b8a6', accentName: 'teal',
         bg: 'radial-gradient(ellipse at 50% 120%, #0a2a2a 0%, #061a1a 40%, #030d0d 100%)',
         overlay: 'radial-gradient(circle at 50% 0%, rgba(20,184,166,0.06) 0%, transparent 60%)',
+        cardStyle: 'spotlight' },
+    tabletennis: { id: 'tabletennis', name: 'Table Tennis', emoji: '🏓', accent: '#ff5a34', accentName: 'orange',
+        bg: 'radial-gradient(ellipse at 50% 120%, #0a1c3a 0%, #06122a 40%, #030a18 100%)',
+        overlay: 'radial-gradient(circle at 50% 0%, rgba(255,90,52,0.06) 0%, transparent 60%)',
         cardStyle: 'spotlight' },
     basketball: { id: 'basketball', name: 'Basketball', emoji: '🏀', accent: '#f97316', accentName: 'orange',
         bg: 'radial-gradient(ellipse at 50% 120%, #2a1a0a 0%, #1a0f06 40%, #0d0803 100%)',
@@ -2109,6 +2114,7 @@ function App() {
                                         {id:'football',icon:'⚽',label:'Football'},
                                         {id:'badminton',icon:'🏸',label:'Badminton'},
                                         {id:'pickleball',icon:'🎾',label:'Pickleball'},
+                                        {id:'tabletennis',icon:'🏓',label:'Table Tennis'},
                                         {id:'multi',icon:'🏆',label:'Multi'},
                                     ].map(s=>(
                                         <button key={s.id}

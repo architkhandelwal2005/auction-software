@@ -35,14 +35,19 @@
   /* Badminton templates, built the same way: each owns its photograph and
      its own construction rather than sharing one backdrop. */
   const BD_TEMPLATES = ['bd-smash', 'bd-net', 'bd-court'];
-  const TEMPLATES = ['arena', 'collector', 'broadcast', 'poster', ...CK_TEMPLATES, ...BD_TEMPLATES, ...PB_TEMPLATES];
-  const SPORTS = ['cricket', 'football', 'badminton', 'pickleball', 'multi'];
+  /* Table-tennis templates, same architecture again: each owns its photograph
+     and its own construction. Table (blue tournament table + net), Rally (dark
+     hall, ball mid-flight), Blade (red/black split like a paddle's rubbers). */
+  const TT_TEMPLATES = ['tt-table', 'tt-rally', 'tt-blade'];
+  const TEMPLATES = ['arena', 'collector', 'broadcast', 'poster', ...CK_TEMPLATES, ...BD_TEMPLATES, ...PB_TEMPLATES, ...TT_TEMPLATES];
+  const SPORTS = ['cricket', 'football', 'badminton', 'pickleball', 'tabletennis', 'multi'];
   // Available templates per sport for random/sequential modes
   const SPORT_TEMPLATES = {
     cricket: ['arena', ...CK_TEMPLATES],
     football: ['arena', 'broadcast', 'poster'],
     badminton: BD_TEMPLATES,
     pickleball: PB_TEMPLATES,
+    tabletennis: TT_TEMPLATES,
     multi: ['arena', 'collector', 'broadcast', 'ck-house'],
   };
 
@@ -55,6 +60,7 @@
     football: 'football-stadium',
     badminton: 'none',
     pickleball: 'none',
+    tabletennis: 'none',
     multi: 'none',
   };
   let bgManual = false;
@@ -382,6 +388,60 @@
             ${MH}
           </div>
         </article>`;
+
+    } else if (template === 'tt-table') {
+      /* TABLE — the blue tournament table caught in low perspective, the white
+         net running across the middle. The portrait rises from behind the table
+         in a clean panel; the name reads on a scoreboard slab. Official, broadcast. */
+      html = `
+        <article class="tpl-tt tpl-tt-table">
+          <div class="ttt-net" aria-hidden="true"><i></i><b></b></div>
+          <div class="ttt-frame">
+            ${photoShell('ttt-photo')}
+            <div class="ttt-shadow" aria-hidden="true"></div>
+          </div>
+          <div class="ttt-board">
+            <div class="ttt-cat" data-slot="player.category">CATEGORY</div>
+            <div class="ttt-name" data-slot="player.name">PLAYER NAME</div>
+            ${MH}
+          </div>
+        </article>`;
+
+    } else if (template === 'tt-rally') {
+      /* RALLY — a dark match hall, one orange ball frozen mid-flight trailing a
+         light streak. The portrait sits inside a round medallion with a ball
+         orbiting its rim; the name burns on a slim electric plate. */
+      html = `
+        <article class="tpl-tt tpl-tt-rally">
+          <div class="ttr-streak" aria-hidden="true"><i></i><b></b></div>
+          <div class="ttr-medal">
+            <div class="ttr-ring" aria-hidden="true"><s></s></div>
+            ${photoShell('ttr-photo')}
+            <div class="ttr-glow" aria-hidden="true"></div>
+          </div>
+          <div class="ttr-plate">
+            <div class="ttr-cat" data-slot="player.category">CATEGORY</div>
+            <div class="ttr-name" data-slot="player.name">PLAYER NAME</div>
+            ${MH}
+          </div>
+        </article>`;
+
+    } else if (template === 'tt-blade') {
+      /* BLADE — the card split like a paddle's two rubbers, red against black.
+         The portrait sits on the red face, the name set editorial on the black,
+         a thin blade-handle motif bridging the two. */
+      html = `
+        <article class="tpl-tt tpl-tt-blade">
+          <div class="ttb-red">${photoShell('ttb-photo')}</div>
+          <div class="ttb-black">
+            <div class="ttb-mark">TABLE TENNIS</div>
+            <div class="ttb-cat" data-slot="player.category">CATEGORY</div>
+            <div class="ttb-name" data-slot="player.name">PLAYER NAME</div>
+            <div class="ttb-handle" aria-hidden="true"></div>
+            ${MH}
+          </div>
+        </article>`;
+
     } else {
       html = `
         <article class="tpl-arena">
@@ -1443,12 +1503,14 @@
       'bd-net': 'Net — Close Court',
       'bd-court': 'Court — Indoor Hall',
       'pb-hall': 'PB — Hall', 'pb-sunset': 'PB — Sunset', 'pb-press': 'PB — Press',
+      'tt-table': 'Table — Tournament', 'tt-rally': 'Rally — Match Hall', 'tt-blade': 'Blade — Paddle',
     };
     const SPORT_VALID_TEMPLATES = {
       cricket: SPORT_TEMPLATES.cricket,
       pickleball: PB_TEMPLATES,
       football: ['arena','broadcast','poster'],
       badminton: SPORT_TEMPLATES.badminton,
+      tabletennis: TT_TEMPLATES,
       multi: SPORT_TEMPLATES.multi
     };
     const defaultTemplateFor = sport => (SPORT_VALID_TEMPLATES[sport] || ['arena'])[0];
