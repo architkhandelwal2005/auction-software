@@ -2471,7 +2471,10 @@ def get_auction_state():
     if state.get('current_player'):
         p_row = conn.execute('SELECT * FROM players WHERE name = ?', (state['current_player'],)).fetchone()
         if p_row and p_row['attributes']:
-            state['attributes'] = p_row['attributes']
+            try:
+                state['attributes'] = json.loads(p_row['attributes'])
+            except Exception:
+                state['attributes'] = {}
     conn.close()
     return jsonify(state)
 
@@ -2909,7 +2912,14 @@ def build_live_report(conn):
     if state.get('current_player'):
         p_row = conn.execute('SELECT * FROM players WHERE name = ?', (state['current_player'],)).fetchone()
         if p_row and p_row['attributes']:
-            state['attributes'] = p_row['attributes']
+            # Parsed to an object, not left as the raw JSON string from the DB —
+            # the spectator screen's PlayerAttributesBadges checks
+            # `typeof attributes === 'object'` and silently renders nothing
+            # otherwise, so the on-stage attributes row never showed up.
+            try:
+                state['attributes'] = json.loads(p_row['attributes'])
+            except Exception:
+                state['attributes'] = {}
 
     # Sold players
     sold = conn.execute('''
