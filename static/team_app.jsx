@@ -105,12 +105,12 @@ const TeamApp = () => {
             {/* Header */}
             <header className="bg-zinc-900/90 border-b border-zinc-800 p-4 sticky top-0 z-30 shadow-lg">
                 <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-bold text-white shadow-lg" style={{backgroundColor: team.color || '#10b981'}}>
+                    <div className="flex items-center gap-4 min-w-0 w-full md:w-auto">
+                        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-xl sm:text-2xl font-bold text-white shadow-lg shrink-0" style={{backgroundColor: team.color || '#10b981'}}>
                             {team.logo_url ? <img src={team.logo_url} className="w-full h-full object-cover rounded-2xl" /> : team.name[0]}
                         </div>
-                        <div>
-                            <h1 className="fredoka text-2xl md:text-3xl font-bold">{team.name}</h1>
+                        <div className="min-w-0 flex-1">
+                            <h1 className="fredoka text-xl sm:text-2xl md:text-3xl font-bold truncate">{team.name}</h1>
                             <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mt-1 flex items-center gap-1.5">
                                 {config.org_logo && <img src={config.org_logo} alt="" className="w-4 h-4 object-contain rounded" />}
                                 <span className="truncate">{config.event_name || 'Team Dashboard'}{config.organisation_name ? ' · ' + config.organisation_name : ''}</span>

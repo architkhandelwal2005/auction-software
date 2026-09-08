@@ -48,6 +48,31 @@
 
         @keyframes ticker { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } }
         .ticker-text { white-space: nowrap; animation: ticker 25s linear infinite; padding-right: 50px; }
+
+        /* Live news ticker pinned to the bottom of the screen. Fixed so it
+           stays visible while the viewer scrolls the feed. Content gets
+           bottom padding (below) so nothing hides behind it. */
+        .ticker-wrap {
+            position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+            padding: 9px 0;
+            background: rgba(9,9,11,0.94);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(63,63,70,0.6);
+            box-shadow: 0 -6px 24px rgba(0,0,0,0.5);
+            overflow: hidden;
+        }
+        /* Keep the last content clear of the fixed ticker. */
+        .has-ticker { padding-bottom: 64px; }
+
+        .hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+
+        /* Phone: the on-stage player photo must not overflow its card. */
+        @media (max-width: 640px) {
+            .stage-photo > img, .stage-photo > div {
+                width: 104px !important; height: 104px !important; font-size: 40px !important;
+            }
+        }
     </style>
 </head>
 <body class="min-h-screen">
@@ -271,7 +296,7 @@
             const allCategories = [...new Set(unsoldPlayers.map(p => p.category).filter(Boolean))];
 
             return (
-                <div className="min-h-screen flex flex-col pb-10 text-white selection:bg-amber-500/30"
+                <div className="min-h-screen flex flex-col has-ticker text-white selection:bg-amber-500/30"
                      style={{ background: currentTheme.bg, '--accent-rgb': currentTheme.accent === '#f59e0b' ? '245,158,11' : currentTheme.accent === '#22c55e' ? '34,197,94' : '59,130,246' }}>
                     <div className="fixed inset-0 pointer-events-none z-0" style={{ background: currentTheme.overlay }}></div>
 
@@ -332,13 +357,13 @@
                     </header>
 
                     {/* Main Content Area */}
-                    <main className="flex-1 p-6 max-w-[1700px] w-full mx-auto relative z-10">
+                    <main className="flex-1 p-3 sm:p-6 max-w-[1700px] w-full mx-auto relative z-10">
                         {/* TAB 1: LIVE STAGE */}
                         {activeTab === 'stage' && (
                             <div className="space-y-6">
                                 {/* Top Banner: Active Bidder Stage */}
                                 {isBiddingActive ? (
-                                    <div className={`relative overflow-hidden rounded-3xl bg-zinc-950/80 backdrop-blur-2xl border border-zinc-700/50 p-10 transition-all duration-1000 ${revealPhase >= 0 ? 'anim-cardGlow opacity-100' : 'opacity-0 scale-95'}`}
+                                    <div className={`relative overflow-hidden rounded-3xl bg-zinc-950/80 backdrop-blur-2xl border border-zinc-700/50 p-5 sm:p-10 transition-all duration-1000 ${revealPhase >= 0 ? 'anim-cardGlow opacity-100' : 'opacity-0 scale-95'}`}
                                          style={revealPhase >= 0 ? {boxShadow: `0 0 100px rgba(0,0,0,0.6)`} : {}}>
                                          
                                         {/* Watermark Background Emoji */}
@@ -351,21 +376,21 @@
                                             </div>
                                         </div>
 
-                                        <div className="flex flex-col md:flex-row items-center justify-between gap-8 mt-4 relative z-10">
+                                        <div className="flex flex-col md:flex-row items-center justify-between gap-6 md:gap-8 mt-4 relative z-10">
                                             {/* Player Details */}
-                                            <div className="flex items-center gap-6">
+                                            <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 text-center sm:text-left min-w-0">
                                                 <div className={`relative shrink-0 ${revealPhase >= 3 ? 'anim-dramaticZoom' : 'opacity-0 hidden'}`}>
                                                     <div className="absolute inset-0 rounded-full blur-2xl opacity-40" style={{background: currentTheme.accent}}></div>
-                                                    <div className="relative z-10 border-4 rounded-full overflow-hidden shadow-2xl" style={{borderColor: currentTheme.accent}}>
+                                                    <div className="stage-photo relative z-10 border-4 rounded-full overflow-hidden shadow-2xl" style={{borderColor: currentTheme.accent}}>
                                                         <PlayerPhoto url={state.photo_url} name={state.current_player} size={150} />
                                                     </div>
                                                 </div>
-                                                <div>
+                                                <div className="min-w-0">
                                                     <div className={`mb-3 ${revealPhase >= 1 ? 'anim-slideInLeft' : 'opacity-0'}`}>
                                                         {state.category && <span className="px-3 py-1 rounded-full font-black text-[0.65rem] uppercase tracking-widest text-black shadow-lg" style={{background: currentTheme.accent}}>{state.category}</span>}
                                                     </div>
                                                     <div className={`${revealPhase >= 4 ? 'anim-slamIn' : 'opacity-0'}`}>
-                                                        <h2 className="fredoka text-5xl md:text-6xl font-black text-white tracking-tight uppercase" style={{textShadow: `0 4px 20px ${currentTheme.accent}40`}}>{state.current_player}</h2>
+                                                        <h2 className="fredoka text-3xl sm:text-5xl md:text-6xl font-black text-white tracking-tight uppercase break-words" style={{textShadow: `0 4px 20px ${currentTheme.accent}40`}}>{state.current_player}</h2>
                                                     </div>
                                                     {state.base_price && (
                                                         <div className={`mt-3 text-zinc-400 font-bold text-sm ${revealPhase >= 5 ? 'anim-fadeInUp' : 'opacity-0'}`}>
@@ -378,7 +403,7 @@
                                             {/* Live Bid */}
                                             <div className={`text-center md:text-right ${revealPhase >= 5 ? 'anim-fadeInUp' : 'opacity-0'}`}>
                                                 <p className="fredoka text-zinc-400 text-xs font-bold mb-2 uppercase tracking-[0.3em]">Current Live Bid</p>
-                                                <div className="fredoka text-[5rem] md:text-[6.5rem] leading-none font-black tracking-tight" style={{color: currentTheme.accent, textShadow: `0 0 40px ${currentTheme.accent}40`}}>
+                                                <div className="fredoka text-6xl sm:text-[5rem] md:text-[6.5rem] leading-none font-black tracking-tight" style={{color: currentTheme.accent, textShadow: `0 0 40px ${currentTheme.accent}40`}}>
                                                     ₹{state.current_bid}L
                                                 </div>
                                                 {state.bidder_team_name && <div className="mt-3 inline-flex items-center gap-3 px-5 py-2.5 rounded-full border"
@@ -397,7 +422,7 @@
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="rounded-3xl bg-zinc-950/80 backdrop-blur-2xl border border-zinc-800/50 p-16 text-center shadow-2xl flex flex-col items-center">
+                                    <div className="rounded-3xl bg-zinc-950/80 backdrop-blur-2xl border border-zinc-800/50 p-8 sm:p-16 text-center shadow-2xl flex flex-col items-center">
                                         <div className="w-32 h-32 rounded-full flex items-center justify-center border-2 mb-6" style={{borderColor: currentTheme.accent, background: `${currentTheme.accent}20`, boxShadow: `0 0 60px ${currentTheme.accent}40`}}>
                                             <span className="text-6xl filter drop-shadow-xl animate-bounce">{currentTheme.emoji}</span>
                                         </div>
@@ -429,7 +454,7 @@
                                                                 {t.logo_url ? <img src={t.logo_url} className="w-6 h-6 object-contain" /> : t.name[0]}
                                                             </div>
                                                             <div>
-                                                                <h4 className="font-extrabold text-white text-sm truncate max-w-[120px]">{t.name}</h4>
+                                                                <h4 className="font-extrabold text-white text-sm truncate max-w-[55vw] sm:max-w-[120px]">{t.name}</h4>
                                                                 <span className="text-[0.6rem] text-zinc-400 font-bold">{t.player_count || 0}/{t.target_squad_size || 10} players</span>
                                                             </div>
                                                         </div>
