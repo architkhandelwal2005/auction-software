@@ -599,9 +599,23 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
     const [displayFields, setDisplayFields] = useState([]);
     const STANDARD_FIELDS = ['Plays As', 'How They Rate Themselves', 'How Often They Play', 'Availability', 'Can Also Play As', 'City / Area', 'Nickname'];
     const toggleDisplayField = (f) => setDisplayFields(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
-    const excelColumns = importedPreview.length > 0
-        ? Object.keys(importedPreview[0].attributes || {}).filter(k => !['name','photo','id','category','base_price','photo_url','team_id','sold_price','status','sold_at'].includes(k.toLowerCase()))
-        : [];
+    // A column already shown as its own dedicated field (name/photo/category/price)
+    // — or one that only exists because someone re-imported the app's own Excel
+    // backup (team_id, status, ...) — isn't offered again as an "extra" column.
+    // [\s_]* tolerates both "Base Price" (a real header) and "base_price" (a
+    // backup column name) matching the same rule.
+    const STANDARD_COL_RE = /^(name|player[\s_]*name|full[\s_]*name|photo|photo[\s_]*url|photo[\s_]*preview|image|base[\s_]*price|price|category|role|id|player[\s_]*id|mobile|mobile[\s_]*(no|number)|phone|contact|email|whatsapp|address|team[\s_]*id|sold[\s_]*price|status|sold[\s_]*at)$/i;
+    // Aggregate keys across every imported player, not just the first — a
+    // column left blank for player #1 would otherwise never appear at all.
+    const excelColumns = (() => {
+        const seen = new Set();
+        importedPreview.forEach(p => {
+            Object.keys(p.attributes || {}).forEach(k => {
+                if (!STANDARD_COL_RE.test(k.trim())) seen.add(k);
+            });
+        });
+        return [...seen];
+    })();
 
     const updateCat = (i, field, val) => {
         const c = [...categories];
@@ -730,12 +744,11 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
     // already-imported preview. Detect numeric (age-like) vs categorical columns.
     const splitCandidates = (() => {
         if (!importedPreview.length) return [];
-        const skip = ['name','photo','id','category','base_price','photo_url','team_id','sold_price','status','sold_at'];
         const cols = {};
         importedPreview.forEach(p => {
             const attrs = p.attributes || {};
             Object.entries(attrs).forEach(([k, v]) => {
-                if (skip.includes(k.toLowerCase())) return;
+                if (STANDARD_COL_RE.test(k.trim())) return;
                 if (v === null || v === undefined || String(v).trim() === '') return;
                 if (!cols[k]) cols[k] = { name: k, values: new Set(), allNumeric: true, filled: 0 };
                 cols[k].filled++;
@@ -1310,8 +1323,8 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                 {/* ── STEP 5: Player Card Fields ── */}
                 {step === 5 && <div className="space-y-5 anim-slideUp">
                     <div>
-                        <h2 className="fredoka text-xl font-bold text-white mb-1">Player Card Display</h2>
-                        <p className="text-zinc-400 text-xs">Pick what teams see on the player card during bidding. Blank values are automatically hidden.</p>
+                        <h2 className="fredoka text-xl font-bold text-white mb-1">Player Roster Display</h2>
+                        <p className="text-zinc-400 text-xs">Pick which extra columns from your file show on the player roster (and the player card during bidding). Blank values are automatically hidden.</p>
                     </div>
 
                     {excelColumns.length > 0 && <div>

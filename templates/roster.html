@@ -51,15 +51,28 @@
         const catColor = (c) => { if(!c) return '#71717a'; let h=0; for(let i=0;i<c.length;i++) h=c.charCodeAt(i)+((h<<5)-h); return PALETTE[Math.abs(h)%PALETTE.length]; };
         const initials = (n) => String(n||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase() || '?';
 
-        const HIDE_ATTRS = /^(name|player\s*name|full\s*name|photo|photo\s*url|photo\s*preview|image|base\s*price|price|category|role|id|player\s*id|mobile|mobile\s*(no|number)|phone|contact|email|whatsapp|address)$/i;
+        const HIDE_ATTRS = /^(name|player\s*name|full\s*name|photo|photo\s*url|photo\s*preview|image|base\s*price|price|category|role|id|player\s*id|mobile|mobile\s*(no|number)|phone|contact|email|whatsapp|address|team[\s_]*id|sold[\s_]*price|status|sold[\s_]*at)$/i;
 
-        function PlayerCard({ p, theme, idx }) {
+        // displayFields is null when the organiser never visited the wizard's
+        // "Player Roster Display" step (older/untouched auctions) — fall back to
+        // auto-picking the first few non-standard columns, same as before this
+        // was selectable. An explicit empty selection ([]) means "show none",
+        // and is respected as-is.
+        function PlayerCard({ p, theme, idx, displayFields }) {
             const [imgErr, setImgErr] = useState(false);
             const cc = catColor(p.category);
             const attrs = (p.attributes && typeof p.attributes === 'object') ? p.attributes : {};
-            const chips = Object.entries(attrs)
-                .filter(([k, v]) => v != null && String(v).trim() !== '' && !HIDE_ATTRS.test(k.trim()))
-                .slice(0, 3);
+            let chips;
+            if (displayFields) {
+                const wanted = displayFields.map(f => f.toLowerCase());
+                chips = Object.entries(attrs)
+                    .filter(([k, v]) => v != null && String(v).trim() !== '' && wanted.includes(k.trim().toLowerCase()))
+                    .sort(([a], [b]) => wanted.indexOf(a.trim().toLowerCase()) - wanted.indexOf(b.trim().toLowerCase()));
+            } else {
+                chips = Object.entries(attrs)
+                    .filter(([k, v]) => v != null && String(v).trim() !== '' && !HIDE_ATTRS.test(k.trim()))
+                    .slice(0, 3);
+            }
             return (
                 <div className="print-card card-in bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden hover:border-white/25 transition"
                      style={{ animationDelay: `${Math.min(idx * 25, 600)}ms` }}>
@@ -118,6 +131,17 @@
             const orgName = cfg.organisation_name || '';
             const orgLogo = cfg.org_logo || '';
             const players = data.players;
+
+            // Which extra columns the organiser chose in the wizard's "Player
+            // Roster Display" step. null = never chosen (older auction) → each
+            // card falls back to auto-picking a few columns on its own.
+            let displayFields = null;
+            if (cfg.display_fields != null) {
+                try {
+                    const parsed = JSON.parse(cfg.display_fields);
+                    if (Array.isArray(parsed)) displayFields = parsed;
+                } catch (e) { /* leave as auto-pick */ }
+            }
 
             const cats = [...new Set(players.map(p => p.category).filter(Boolean))];
             const filtered = players.filter(p => {
@@ -196,7 +220,7 @@
                                     <div className="flex-1 h-px" style={{ background: `${catColor(cat)}33` }}></div>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {groups[cat].map(p => <PlayerCard key={p.id} p={p} theme={theme} idx={flatIdx++} />)}
+                                    {groups[cat].map(p => <PlayerCard key={p.id} p={p} theme={theme} idx={flatIdx++} displayFields={displayFields} />)}
                                 </div>
                             </div>
                         ))}
