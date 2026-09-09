@@ -2579,7 +2579,15 @@ def sell_player():
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         ('sell', pid, player['name'], player['team_id'], tid, player['sold_price'], price, player['status'], 'sold', player['base_price'], player['category'], player['photo_url']))
 
-    c.execute('UPDATE players SET status="sold", team_id=?, sold_price=?, sold_at=CURRENT_TIMESTAMP WHERE id=?', (tid, price, pid))
+    # Conditional on still-unsold to close the check-then-act race: two SOLD
+    # taps (double-tap, or two control devices) could otherwise both pass the
+    # status check above and double-charge the team. If another action won the
+    # race, this updates 0 rows — roll back (discarding the history row too).
+    c.execute('UPDATE players SET status="sold", team_id=?, sold_price=?, sold_at=CURRENT_TIMESTAMP WHERE id=? AND status != \'sold\'', (tid, price, pid))
+    if c.rowcount == 0:
+        conn.rollback()
+        conn.close()
+        return jsonify({'error': '%s was just sold by another action. Refresh and try again.' % player['name']}), 409
     c.execute('UPDATE teams SET remaining_budget=remaining_budget-? WHERE id=?', (price, tid))
     # Clear player-specific auction state but preserve stage settings (sport, template mode)
     c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
