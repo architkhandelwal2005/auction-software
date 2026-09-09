@@ -486,13 +486,17 @@
          a thin blade-handle motif bridging the two. */
       html = `
         <article class="tpl-tt tpl-tt-blade">
-          <div class="ttb-red">${photoShell('ttb-photo')}</div>
-          <div class="ttb-black">
-            <div class="ttb-mark">TABLE TENNIS</div>
-            <div class="ttb-cat" data-slot="player.category">CATEGORY</div>
-            <div class="ttb-name" data-slot="player.name">PLAYER NAME</div>
-            <div class="ttb-handle" aria-hidden="true"></div>
-            ${MH}
+          <div class="ttb-card">
+            <div class="ttb-face">
+              <div class="ttb-mark">TABLE TENNIS</div>
+              ${photoShell('ttb-photo')}
+            </div>
+            <div class="ttb-plate">
+              <div class="ttb-cat" data-slot="player.category">CATEGORY</div>
+              <div class="ttb-name" data-slot="player.name">PLAYER NAME</div>
+              <div class="ttb-handle" aria-hidden="true"></div>
+              ${MH}
+            </div>
           </div>
         </article>`;
 
