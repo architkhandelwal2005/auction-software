@@ -1187,14 +1187,8 @@
         o.start(t0); o.stop(t0 + dur);
       } catch (e) { /* audio is a nicety — never break the auction for it */ }
     }
-    const SFX = {
-      bid:   () => tone(600, 1000, 0.12, 'sine', 0.2),
-      draw:  () => tone(300, 800, 0.35, 'sine', 0.25),
-      click: () => tone(1200, null, 0.05, 'sine', 0.1),
-      undo:  () => tone(500, 200, 0.2, 'sawtooth', 0.1),
-      sold:  () => [523, 659, 784, 1047].forEach((f, i) =>
-                     tone(f, null, 0.4, i < 3 ? 'sine' : 'triangle', 0.2, i * 0.1)),
-    };
+    // Sound effects removed by request — no-op stubs keep the call sites valid.
+    const SFX = { bid(){}, draw(){}, click(){}, undo(){}, sold(){} };
     function say(text) {
       if (!audioOn || !window.speechSynthesis) return;
       try {

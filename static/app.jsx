@@ -3,14 +3,9 @@ const { useState, useEffect, useRef, useCallback } = React;
 // ═══════════════════════════════════════════════
 // SOUND & VOICE ENGINE
 // ═══════════════════════════════════════════════
-const SFX = {
-    bid: () => { try { const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type='sine';o.frequency.setValueAtTime(600,c.currentTime);o.frequency.exponentialRampToValueAtTime(1000,c.currentTime+0.08);g.gain.setValueAtTime(0.2,c.currentTime);g.gain.exponentialRampToValueAtTime(0.01,c.currentTime+0.12);o.start();o.stop(c.currentTime+0.12); } catch(e){} },
-    sold: () => { try { const c=new AudioContext();[523,659,784,1047].forEach((f,i)=>{const o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type=i<3?'sine':'triangle';o.frequency.setValueAtTime(f,c.currentTime+i*0.1);g.gain.setValueAtTime(0.2,c.currentTime+i*0.1);g.gain.exponentialRampToValueAtTime(0.01,c.currentTime+i*0.1+0.4);o.start(c.currentTime+i*0.1);o.stop(c.currentTime+i*0.1+0.4);}); } catch(e){} },
-    draw: () => { try { const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type='sine';o.frequency.setValueAtTime(300,c.currentTime);o.frequency.exponentialRampToValueAtTime(800,c.currentTime+0.25);g.gain.setValueAtTime(0.25,c.currentTime);g.gain.exponentialRampToValueAtTime(0.01,c.currentTime+0.35);o.start();o.stop(c.currentTime+0.35); } catch(e){} },
-    reveal: () => { try { const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type='sine';o.frequency.setValueAtTime(200,c.currentTime);o.frequency.exponentialRampToValueAtTime(400,c.currentTime+1.5);g.gain.setValueAtTime(0.15,c.currentTime);g.gain.exponentialRampToValueAtTime(0.01,c.currentTime+2.5);o.start();o.stop(c.currentTime+2.5); } catch(e){} },
-    click: () => { try { const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type='sine';o.frequency.setValueAtTime(1200,c.currentTime);g.gain.setValueAtTime(0.1,c.currentTime);g.gain.exponentialRampToValueAtTime(0.01,c.currentTime+0.05);o.start();o.stop(c.currentTime+0.05); } catch(e){} },
-    undo: () => { try { const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type='sawtooth';o.frequency.setValueAtTime(500,c.currentTime);o.frequency.exponentialRampToValueAtTime(200,c.currentTime+0.2);g.gain.setValueAtTime(0.1,c.currentTime);g.gain.exponentialRampToValueAtTime(0.01,c.currentTime+0.2);o.start();o.stop(c.currentTime+0.2); } catch(e){} }
-};
+// Sound effects removed by request. Kept as no-op stubs so the existing
+// SFX.bid()/sold()/draw()/reveal()/click()/undo() call sites stay valid.
+const SFX = { bid(){}, sold(){}, draw(){}, reveal(){}, click(){}, undo(){} };
 
 const speakCommentary = (text, enabled = true) => {
     if (!enabled || !window.speechSynthesis) return;
