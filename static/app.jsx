@@ -7,16 +7,8 @@ const { useState, useEffect, useRef, useCallback } = React;
 // SFX.bid()/sold()/draw()/reveal()/click()/undo() call sites stay valid.
 const SFX = { bid(){}, sold(){}, draw(){}, reveal(){}, click(){}, undo(){} };
 
-const speakCommentary = (text, enabled = true) => {
-    if (!enabled || !window.speechSynthesis) return;
-    try {
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        u.rate = 1.05;
-        u.pitch = 1.0;
-        window.speechSynthesis.speak(u);
-    } catch(e) {}
-};
+// Voice commentary removed by request — no-op stub keeps call sites valid.
+const speakCommentary = () => {};
 
 // ═══════════════════════════════════════════════
 // SHARED COMPONENTS (Dark Themed)
@@ -2033,12 +2025,6 @@ function App() {
 
                     {/* Right: Actions */}
                     <div className="flex items-center gap-2 shrink-0">
-                        {/* Voice toggle — icon only */}
-                        <button onClick={()=>setVoiceEnabled(!voiceEnabled)} title={voiceEnabled?'Voice On (click to mute)':'Voice Off (click to unmute)'}
-                            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition ${voiceEnabled?'bg-amber-500/15 text-amber-300 border-amber-500/30':'bg-slate-800 text-slate-500 border-slate-700'}`}>
-                            <i className={`fa-solid text-sm ${voiceEnabled?'fa-volume-high':'fa-volume-xmark'}`}></i>
-                        </button>
-
                         {/* Public Screen */}
                         <button onClick={()=>window.open('/live','_blank')} title="Open Projector / Public Screen"
                             className="w-9 h-9 rounded-xl border border-slate-700 bg-slate-800 text-blue-300 hover:text-white hover:bg-blue-500/20 hover:border-blue-500/40 flex items-center justify-center transition">
@@ -2471,9 +2457,6 @@ function App() {
                 <div className="flex items-center gap-2 flex-wrap">
                     <button onClick={()=>setQuickMode(!quickMode)} className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 border ${quickMode ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' : 'bg-slate-900/80 text-slate-500 border-slate-800'}`} title="Skip animations">
                         <i className="fa-solid fa-bolt"></i> {quickMode ? 'Quick Mode ON' : 'Quick Mode OFF'}
-                    </button>
-                    <button onClick={()=>setVoiceEnabled(!voiceEnabled)} className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 border ${voiceEnabled ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-slate-900/80 text-slate-500 border-slate-800'}`}>
-                        <i className={`fa-solid ${voiceEnabled ? 'fa-volume-high' : 'fa-volume-xmark'}`}></i> {voiceEnabled ? 'Voice ON' : 'Voice OFF'}
                     </button>
                     <button onClick={()=>window.open('/live', '_blank')} className="text-blue-300 hover:text-white font-bold text-xs bg-blue-500/15 px-3 py-1.5 rounded-xl border border-blue-500/30 hover:bg-blue-500/25 transition">
                         Public Screen ↗

@@ -1189,15 +1189,8 @@
     }
     // Sound effects removed by request — no-op stubs keep the call sites valid.
     const SFX = { bid(){}, draw(){}, click(){}, undo(){}, sold(){} };
-    function say(text) {
-      if (!audioOn || !window.speechSynthesis) return;
-      try {
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        u.rate = 1.05; u.pitch = 1.0;
-        window.speechSynthesis.speak(u);
-      } catch (e) { /* ignore */ }
-    }
+    // Voice commentary removed by request — no-op stub keeps call sites valid.
+    function say() {}
     function renderMute() {
       if (!adminMuteBtn) return;
       adminMuteBtn.textContent = audioOn ? 'SOUND ON' : 'SOUND OFF';
