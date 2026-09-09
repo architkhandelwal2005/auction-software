@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Auction Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #09090b; color: #fff; -webkit-tap-highlight-color: transparent; }
+        .fredoka { font-family: 'Fredoka', sans-serif; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { scrollbar-width: none; }
+        button { touch-action: manipulation; }
+        @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.06)} 100%{transform:scale(1)} }
+        .pop { animation: pop .18s ease; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    {% raw %}
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        const initials = (n) => String(n||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase() || '?';
+        const post = (url, body) => fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{}) });
+
+        function Control() {
+            const [data, setData] = useState(null);        // /api/live_data
+            const [players, setPlayers] = useState([]);     // /api/players (for draw + ids)
+            const [err, setErr] = useState('');
+            // Optimistic bid/leader so taps feel instant; reconciled from polling.
+            const local = useRef({ player: null, bid: null, leaderId: null });
+            const [, force] = useState(0);
+            const rerender = () => force(x => x + 1);
+
+            const load = useCallback(async () => {
+                try {
+                    const [ld, pl] = await Promise.all([
+                        fetch('/api/live_data').then(r=>r.json()),
+                        fetch('/api/players').then(r=>r.json()).catch(()=>[]),
+                    ]);
+                    setData(ld); setPlayers(Array.isArray(pl)?pl:[]);
+                    const st = ld.auction_state || {};
+                    const name = st.current_player || null;
+                    // Reset optimistic state when the player on the block changes.
+                    if (local.current.player !== name) {
+                        local.current = { player: name, bid: name ? (parseFloat(st.current_bid)||0) : null, leaderId: st.bidder_team_id || null };
+                    } else if (name) {
+                        // Same player: trust server bid only if it's ahead (another
+                        // control device) so our just-tapped value isn't clobbered.
+                        const sb = parseFloat(st.current_bid)||0;
+                        if (sb > (local.current.bid||0)) { local.current.bid = sb; local.current.leaderId = st.bidder_team_id || local.current.leaderId; }
+                    }
+                } catch(e){ setErr('Connection lost — retrying'); }
+            }, []);
+
+            useEffect(() => { load(); const i=setInterval(load, 1500); return ()=>clearInterval(i); }, [load]);
+
+            if (!data) return <div className="min-h-screen flex items-center justify-center text-zinc-500 fredoka text-lg">Connecting…</div>;
+
+            const st = data.auction_state || {};
+            const teams = data.teams || [];
+            const cfg = data.config || {};
+            const inc = parseFloat(cfg.bid_increment) || 5;
+            const orgName = cfg.organisation_name || '';
+            const eventName = cfg.event_name || 'Auction';
+            const onBlock = !!st.current_player;
+            const cur = players.find(p => p.name === st.current_player) || null;   // for id/base/photo
+            const bid = local.current.bid != null ? local.current.bid : (parseFloat(st.current_bid)||0);
+            const basePrice = cur ? cur.base_price : (parseFloat(st.base_price)||0);
+            const leaderId = local.current.leaderId;
+            const leader = teams.find(t => String(t.id) === String(leaderId)) || null;
+            const unsold = players.filter(p => p.status === 'unsold');
+
+            const raise = (t) => {
+                const nb = Math.round((bid + inc) * 100) / 100;
+                local.current.bid = nb; local.current.leaderId = t.id; rerender();
+                post('/api/auction/state', { current_bid: nb, bidder_team_id: String(t.id), bidder_team_name: t.name, bidder_team_color: t.color || '#3b82f6' });
+            };
+            const lower = () => {
+                const nb = Math.max(basePrice, Math.round((bid - inc) * 100) / 100);
+                local.current.bid = nb; rerender();
+                post('/api/auction/state', { current_bid: nb, bidder_team_id: leader?String(leader.id):'', bidder_team_name: leader?leader.name:'', bidder_team_color: leader?(leader.color||''):'' });
+            };
+            const sell = async () => {
+                if (!cur) { alert('No player is on the block.'); return; }
+                if (!leader) { alert('Tap a franchise first to set the winning bid.'); return; }
+                const res = await post('/api/sell_player', { player_id: cur.id, team_id: parseInt(leader.id), sold_price: bid });
+                const j = await res.json().catch(()=>({}));
+                if (!res.ok || j.error) { alert('Sale rejected: ' + (j.error || 'Unknown error')); await load(); return; }
+                await post('/api/auction/state', { current_player:'', current_bid:0, category:'', base_price:0, photo_url:'', bidder_team_id:'', bidder_team_name:'', bidder_team_color:'' });
+                local.current = { player:null, bid:null, leaderId:null }; await load();
+            };
+            const pass = async () => {
+                if (!cur) return;
+                if (!confirm('Mark this player UNSOLD / passed?')) return;
+                await post('/api/action/pass', { player_id: cur.id });
+                await post('/api/auction/state', { current_player:'', current_bid:0, category:'', base_price:0, photo_url:'', bidder_team_id:'', bidder_team_name:'', bidder_team_color:'' });
+                local.current = { player:null, bid:null, leaderId:null }; await load();
+            };
+            const draw = async (pick) => {
+                const p = pick || (unsold.length ? unsold[Math.floor(Math.random()*unsold.length)] : null);
+                if (!p) { alert('No players left in the pool.'); return; }
+                local.current = { player: p.name, bid: p.base_price||0, leaderId: null };
+                await post('/api/auction/state', { current_player: p.name, current_bid: p.base_price||0, category: p.category||'', base_price: p.base_price||0, photo_url: p.photo_url||'', bidder_team_id:'', bidder_team_name:'', bidder_team_color:'' });
+                await load();
+            };
+            const undo = async () => { if(!confirm('Undo the last sale?')) return; await post('/api/undo'); local.current={player:null,bid:null,leaderId:null}; await load(); };
+
+            return (
+                <div className="min-h-screen flex flex-col max-w-3xl mx-auto">
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 sticky top-0 bg-zinc-950/90 backdrop-blur z-10">
+                        <div className="min-w-0">
+                            {orgName && <div className="text-[0.6rem] font-extrabold uppercase tracking-widest text-amber-500/80 truncate">{orgName}</div>}
+                            <div className="fredoka font-bold text-amber-400 truncate">{eventName}</div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[0.6rem] font-extrabold uppercase tracking-widest text-red-400 flex items-center gap-1.5"><span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>Control</span>
+                            <button onClick={undo} title="Undo last sale" className="w-9 h-9 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-white text-sm"><i className="fa-solid fa-rotate-left"></i></button>
+                        </div>
+                    </div>
+
+                    {err && <div className="bg-red-500/10 text-red-400 text-xs font-bold text-center py-1">{err}</div>}
+
+                    {onBlock ? (
+                        <div className="flex-1 flex flex-col p-4 gap-4">
+                            {/* Player + current bid */}
+                            <div className="flex items-center gap-3">
+                                <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border-2 border-amber-500/40 bg-zinc-900 flex items-center justify-center">
+                                    {cur && cur.photo_url ? <img src={cur.photo_url} className="w-full h-full object-cover" /> : <span className="fredoka font-bold text-lg text-amber-400">{initials(st.current_player)}</span>}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="fredoka text-2xl font-bold text-white truncate leading-tight">{st.current_player}</div>
+                                    <div className="text-[0.7rem] font-bold text-zinc-500 uppercase tracking-wider">{st.category || '—'} · Base ₹{basePrice}L</div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl bg-zinc-900/70 border border-zinc-800 p-4 text-center">
+                                <div className="text-[0.65rem] font-extrabold uppercase tracking-[0.3em] text-zinc-500">Current Bid</div>
+                                <div className="fredoka text-6xl font-black text-amber-400 leading-none my-1">₹{bid}L</div>
+                                {leader
+                                    ? <div className="inline-flex items-center gap-2 mt-1 px-3 py-1 rounded-full text-sm font-bold" style={{ background:`${leader.color||'#3b82f6'}22`, color: leader.color||'#93c5fd' }}>Leading: {leader.name}</div>
+                                    : <div className="text-xs text-zinc-600 font-bold mt-1">Tap a franchise to bid</div>}
+                            </div>
+
+                            {/* Team buttons — tap to raise */}
+                            <div className="grid grid-cols-2 gap-2.5">
+                                {teams.map(t => {
+                                    const nb = bid + inc;
+                                    const maxBid = t.max_allowed_bid != null ? t.max_allowed_bid : t.remaining_budget;
+                                    const cant = nb > maxBid;
+                                    const isLeader = leader && String(leader.id)===String(t.id);
+                                    return (
+                                        <button key={t.id} onClick={()=>raise(t)} disabled={cant}
+                                            className={`relative rounded-2xl p-3 text-left border-2 transition active:scale-95 ${cant?'opacity-40 border-zinc-800 bg-zinc-900':'bg-zinc-900 hover:bg-zinc-800'} ${isLeader?'':'border-zinc-700'}`}
+                                            style={isLeader?{ borderColor: t.color||'#3b82f6', boxShadow:`0 0 0 1px ${t.color||'#3b82f6'}` }:{}}>
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-white font-bold text-xs overflow-hidden" style={{ background: t.color||'#3b82f6' }}>
+                                                    {t.logo_url ? <img src={t.logo_url} className="w-full h-full object-contain" /> : (t.name||'T')[0]}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="font-extrabold text-white text-sm truncate">{t.name}</div>
+                                                    <div className="text-[0.6rem] font-bold text-zinc-500">Purse ₹{t.remaining_budget}L · Max ₹{maxBid}L</div>
+                                                </div>
+                                            </div>
+                                            <div className={`mt-1.5 text-center text-xs font-black rounded-lg py-1 ${cant?'text-zinc-600 bg-zinc-950':'text-black'}`} style={cant?{}:{ background: t.color||'#3b82f6' }}>
+                                                {cant ? 'MAX REACHED' : `BID ₹${nb}L`}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Bottom actions */}
+                            <div className="mt-auto grid grid-cols-4 gap-2 pt-2">
+                                <button onClick={lower} className="rounded-2xl bg-zinc-900 border border-zinc-700 text-zinc-300 font-bold py-4 text-lg active:scale-95">−₹{inc}</button>
+                                <button onClick={pass} className="rounded-2xl bg-red-500/15 border border-red-500/40 text-red-400 font-extrabold py-4 active:scale-95">PASS</button>
+                                <button onClick={sell} disabled={!leader} className="col-span-2 rounded-2xl bg-green-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-black font-black text-xl py-4 active:scale-95 flex items-center justify-center gap-2"><i className="fa-solid fa-gavel"></i>SOLD</button>
+                            </div>
+                        </div>
+                    ) : (
+                        /* No player on the block — draw the next one */
+                        <div className="flex-1 flex flex-col p-4 gap-4">
+                            <div className="text-center py-6">
+                                <div className="text-5xl mb-2">🎯</div>
+                                <div className="fredoka text-xl font-bold text-white">No player on the block</div>
+                                <div className="text-xs text-zinc-500 font-bold mt-1">{unsold.length} players left in the pool</div>
+                            </div>
+                            <button onClick={()=>draw()} disabled={!unsold.length} className="rounded-2xl bg-amber-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-black font-black text-lg py-5 active:scale-95 flex items-center justify-center gap-2"><i className="fa-solid fa-shuffle"></i>Draw Random Player</button>
+                            <div className="text-[0.65rem] font-extrabold uppercase tracking-widest text-zinc-600 mt-2">Or pick one</div>
+                            <div className="grid grid-cols-2 gap-2 overflow-y-auto hide-scrollbar" style={{maxHeight:'50vh'}}>
+                                {unsold.map(p => (
+                                    <button key={p.id} onClick={()=>draw(p)} className="rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 p-2.5 flex items-center gap-2 text-left active:scale-95">
+                                        <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-zinc-800 flex items-center justify-center text-[0.65rem] font-bold text-zinc-400">
+                                            {p.photo_url ? <img src={p.photo_url} className="w-full h-full object-cover" /> : initials(p.name)}
+                                        </div>
+                                        <div className="min-w-0"><div className="font-bold text-white text-xs truncate">{p.name}</div><div className="text-[0.55rem] text-zinc-500 font-bold truncate">{p.category||'—'} · ₹{p.base_price}L</div></div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<Control />);
+    </script>
+    {% endraw %}
+</body>
+</html>

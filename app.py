@@ -808,7 +808,7 @@ ROUTE_POLICY = {
     'team_dashboard': 'team', 'get_team_data': 'team',
 
     # The auctioneer's console: everything that writes.
-    'admin_dashboard': 'admin',
+    'admin_dashboard': 'admin', 'control_view': 'admin',
     'list_auctions': 'admin', 'create_auction': 'admin', 'open_auction': 'admin',
     'delete_auction': 'admin', 'go_live_auction': 'admin', 'end_auction': 'admin',
     'reopen_auction': 'admin',
@@ -1319,6 +1319,15 @@ def admin_dashboard():
     if session.get('role') not in ('admin', 'auctioneer'):
         return redirect('/login')
     return render_template('index.html')
+
+@app.route('/control')
+def control_view():
+    """Dedicated auctioneer control screen. Click a franchise to raise the bid
+    and mark them the leader; sell to the leader; pass; draw the next player.
+    Meant for a second device while the stage/spectator screens display only."""
+    if session.get('role') not in ('admin', 'auctioneer'):
+        return redirect('/login')
+    return render_template('control.html')
 
 @app.route('/team/<int:team_id>')
 def team_dashboard(team_id):

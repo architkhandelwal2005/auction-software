@@ -2064,6 +2064,8 @@ function App() {
 
                         {/* More dropdown */}
                         <MoreMenu items={[
+                            {icon:'fa-gamepad', label:'Open Control Page', onClick:()=>window.open('/control','_blank')},
+                            {divider:true},
                             {icon:'fa-dharmachakra', label:'Spin Draw', onClick:()=>{setWheelMode('player');setShowWheel(true);}},
                             {icon:'fa-shuffle', label:'Random Draw', onClick:drawRandom},
                             {divider:true},
@@ -2464,7 +2466,10 @@ function App() {
         {/* Main Stage */}
         <div className="flex-1 flex flex-col relative z-10">
             <header className="flex justify-between items-center px-6 py-2 bg-slate-950/60 backdrop-blur-md border-b border-slate-800/50">
-                <button onClick={()=>setView('dashboard')} className="text-slate-400 hover:text-white font-bold text-xs transition flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-800 hover:bg-slate-800"><i className="fa-solid fa-arrow-left"></i>Dashboard</button>
+                <div className="flex items-center gap-2">
+                    <button onClick={()=>setView('dashboard')} className="text-slate-400 hover:text-white font-bold text-xs transition flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-800 hover:bg-slate-800"><i className="fa-solid fa-arrow-left"></i>Dashboard</button>
+                    <button onClick={()=>window.open('/control','_blank')} className="text-emerald-300 hover:text-white font-bold text-xs transition flex items-center gap-2 bg-emerald-500/15 px-3 py-1.5 rounded-xl border border-emerald-500/30 hover:bg-emerald-500/25" title="Open the tap-a-team control page on another device"><i className="fa-solid fa-gamepad"></i>Control</button>
+                </div>
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 bg-red-500/15 border border-red-500/30 px-3 py-1 rounded-full"><div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div><span className="fredoka text-red-400 font-bold text-[0.65rem] uppercase tracking-widest">Live Hammer</span></div>
                 </div>
