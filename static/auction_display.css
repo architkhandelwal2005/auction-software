@@ -2739,19 +2739,20 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
   opacity: 1 !important;
   background-image: url('img/bg-tt-table.jpg');
   background-size: cover; background-position: center 54%;
-  /* Held well back: the arena is bright and busy, so it is dimmed and
-     desaturated to a blue-lit suggestion of a hall. The player card and
-     name must be the brightest things on the screen, not the crowd. */
-  filter: brightness(.48) contrast(.98) saturate(.72) blur(4.4px);
+  /* The arena stays bright and blue — that is the table-tennis read. Text
+     legibility is bought with solid plates behind the copy (below), not by
+     draining the photograph. */
+  filter: brightness(.92) contrast(1.04) saturate(1.14) blur(2.2px);
 }
 .stage[data-template='tt-table'] .env-photo-grade {
   opacity: 1;
-  /* Heavy behind the card, easing right so the hall and net still register. */
+  /* Light touch: a soft pool behind the card, and just enough top/bottom
+     falloff for the header and the info strip. */
   background:
-    radial-gradient(ellipse 68% 64% at 26% 50%, rgba(2,8,20,.74) 0 28%, rgba(2,7,18,.62) 66%, rgba(1,5,14,.44) 100%),
-    linear-gradient(180deg, rgba(2,7,18,.82) 0%, rgba(2,7,18,.40) 30%, rgba(2,7,18,.46) 68%, rgba(1,5,14,.90) 100%);
+    radial-gradient(ellipse 66% 62% at 26% 50%, rgba(2,8,20,.46) 0 28%, rgba(2,7,18,.20) 66%, rgba(1,5,14,.06) 100%),
+    linear-gradient(180deg, rgba(2,7,18,.58) 0%, rgba(2,7,18,.04) 26%, rgba(2,7,18,.06) 68%, rgba(1,5,14,.66) 100%);
 }
-.stage[data-template='tt-table'] .env-grain { opacity: .18; }
+.stage[data-template='tt-table'] .env-grain { opacity: .12; }
 
 .stage[data-template='tt-table'] {
   --tt-blue: #3f8be0;
@@ -2806,11 +2807,12 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 .ttt-board {
   position: relative; z-index: 2; flex: none;
   margin-top: 24px; width: 560px; padding: 15px 26px 18px; text-align: center;
-  background: var(--tt-ink);
+  /* Near-solid: this is what keeps the name readable over a bright arena. */
+  background: linear-gradient(180deg, rgba(5,16,34,.95), rgba(3,10,24,.97));
   border: 1px solid var(--tt-line);
   border-top: 3px solid var(--tt-orange);
   border-radius: 8px;
-  box-shadow: 0 22px 52px rgba(0,0,0,.5);
+  box-shadow: 0 22px 60px rgba(0,0,0,.7), 0 0 0 1px rgba(0,0,0,.45);
   backdrop-filter: blur(10px);
 }
 .ttt-cat {
@@ -2847,18 +2849,19 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
   background-image: url('img/bg-tt-rally.jpg');
   /* Framed right-of-centre so the serving hand, the ball in flight and the
      blue table edge sit beside the player card rather than behind it. */
-  background-size: cover; background-position: 72% 52%;
-  /* Kept legible on purpose: the previous grade crushed this to near-black
-     and the sport was unreadable. Warm and dim, but you can see the game. */
-  filter: brightness(.66) contrast(1.04) saturate(1.06) blur(3px);
+  background-size: cover; background-position: 68% 52%;
+  /* The serve, the ball and the blue table edge are the whole point — keep
+     them bright. At cover this image is exactly viewport-width, so it cannot
+     be shifted horizontally; the card's side is cleared with the scrim below. */
+  filter: brightness(.84) contrast(1.03) saturate(1.12) blur(2.2px);
 }
 .stage[data-template='tt-rally'] .env-photo-grade {
   opacity: 1;
-  /* Darkest across the card and the price column, easing off to the right so
-     the ball, paddle and table edge still read. */
+  /* A deep pool under the player card only. The right half — hand, ball,
+     paddle, table edge — stays bright so the sport reads at a glance. */
   background:
-    radial-gradient(ellipse 74% 68% at 30% 50%, rgba(14,6,2,.84) 0 30%, rgba(12,5,2,.60) 68%, rgba(10,4,2,.26) 100%),
-    linear-gradient(180deg, rgba(10,4,2,.66) 0%, rgba(10,4,2,.14) 30%, rgba(10,4,2,.20) 64%, rgba(8,3,1,.76) 100%);
+    radial-gradient(ellipse 52% 70% at 20% 52%, rgba(12,5,2,.88) 0 30%, rgba(12,5,2,.55) 62%, rgba(10,4,2,.06) 100%),
+    linear-gradient(180deg, rgba(10,4,2,.56) 0%, rgba(10,4,2,.04) 28%, rgba(10,4,2,.06) 66%, rgba(8,3,1,.64) 100%);
 }
 .stage[data-template='tt-rally'] .env-grain { opacity: .16; }
 
@@ -2924,11 +2927,12 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 .ttr-plate {
   position: relative; z-index: 2; flex: none;
   margin-top: 20px; width: 560px; padding: 15px 26px 18px; text-align: center;
-  background: var(--tt-deep);
+  /* Near-solid: keeps the name readable over the lit hall behind it. */
+  background: linear-gradient(180deg, rgba(22,9,3,.95), rgba(14,5,2,.97));
   border: 1px solid var(--tt-vline);
   border-left: 4px solid var(--tt-volt);
   border-radius: 6px;
-  box-shadow: 0 22px 52px rgba(0,0,0,.5);
+  box-shadow: 0 22px 60px rgba(0,0,0,.7), 0 0 0 1px rgba(0,0,0,.45);
   backdrop-filter: blur(10px);
 }
 .ttr-cat {
@@ -2964,15 +2968,15 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
   opacity: 1 !important;
   background-image: url('img/bg-tt-blade.jpg');
   background-size: cover; background-position: center 50%;
-  /* Softened so the red paddle reads as a mood, not a second subject
-     competing with the card. */
-  filter: brightness(.44) contrast(1.02) saturate(.9) blur(5px);
+  /* Red rubber and the ball stay vivid — the card is opaque, so it holds its
+     own without dimming the photograph. */
+  filter: brightness(.86) contrast(1.04) saturate(1.1) blur(2.6px);
 }
 .stage[data-template='tt-blade'] .env-photo-grade {
   opacity: 1;
   background:
-    radial-gradient(ellipse 60% 60% at 28% 50%, rgba(14,4,4,.62) 0 30%, rgba(12,3,3,.74) 70%, rgba(8,2,2,.90) 100%),
-    linear-gradient(180deg, rgba(12,3,3,.80) 0%, rgba(12,3,3,.42) 30%, rgba(12,3,3,.48) 66%, rgba(8,2,2,.90) 100%);
+    radial-gradient(ellipse 64% 62% at 28% 50%, rgba(14,4,4,.50) 0 28%, rgba(12,3,3,.24) 66%, rgba(8,2,2,.08) 100%),
+    linear-gradient(180deg, rgba(12,3,3,.58) 0%, rgba(12,3,3,.06) 28%, rgba(12,3,3,.10) 66%, rgba(8,2,2,.66) 100%);
 }
 .stage[data-template='tt-blade'] .env-grain { opacity: .2; }
 
