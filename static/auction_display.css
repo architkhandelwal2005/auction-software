@@ -2742,7 +2742,7 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
   /* The arena stays bright and blue — that is the table-tennis read. Text
      legibility is bought with solid plates behind the copy (below), not by
      draining the photograph. */
-  filter: brightness(.92) contrast(1.04) saturate(1.14) blur(2.2px);
+  filter: brightness(.76) contrast(1.04) saturate(1.14) blur(2.2px);
 }
 .stage[data-template='tt-table'] .env-photo-grade {
   opacity: 1;
@@ -2853,7 +2853,7 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
   /* The serve, the ball and the blue table edge are the whole point — keep
      them bright. At cover this image is exactly viewport-width, so it cannot
      be shifted horizontally; the card's side is cleared with the scrim below. */
-  filter: brightness(.84) contrast(1.03) saturate(1.12) blur(2.2px);
+  filter: brightness(.70) contrast(1.03) saturate(1.12) blur(2.2px);
 }
 .stage[data-template='tt-rally'] .env-photo-grade {
   opacity: 1;
@@ -2970,7 +2970,7 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
   background-size: cover; background-position: center 50%;
   /* Red rubber and the ball stay vivid — the card is opaque, so it holds its
      own without dimming the photograph. */
-  filter: brightness(.86) contrast(1.04) saturate(1.1) blur(2.6px);
+  filter: brightness(.72) contrast(1.04) saturate(1.1) blur(2.6px);
 }
 .stage[data-template='tt-blade'] .env-photo-grade {
   opacity: 1;
