@@ -1572,6 +1572,7 @@ function App() {
     const [showShareModal, setShowShareModal] = useState(false);
     const [editTeam, setEditTeam] = useState(null);
     const [editPlayer, setEditPlayer] = useState(null);
+    const [reAnalyze, setReAnalyze] = useState(null); // re-run smart analysis modal
     const [showConfetti, setShowConfetti] = useState(false);
     const [bidAnim, setBidAnim] = useState(false);
     const [playerFilter, setPlayerFilter] = useState('all');
@@ -1736,6 +1737,46 @@ function App() {
     const addPlayer = async e => { e.preventDefault(); await fetch('/api/players',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newPlayer.name,category:newPlayer.category,base_price:parseFloat(newPlayer.base_price||0)})}); setNewPlayer({name:'',category:'',base_price:''}); loadData(); };
     const updatePlayer = async e => { e.preventDefault(); await fetch('/api/players/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:editPlayer.id,name:editPlayer.name,category:editPlayer.category,base_price:parseFloat(editPlayer.base_price||0)})}); setEditPlayer(null); loadData(); };
     const uploadPhoto = async (pid,file) => { const fd=new FormData();fd.append('photo',file); await fetch(`/api/players/photo/${pid}`,{method:'POST',body:fd}); loadData(); };
+    const deletePlayer = async (p) => {
+        if (p.status==='sold') { alert('Player is sold. Unsell them first (Undo the sale), then delete.'); return; }
+        if (!confirm(`Remove "${p.name}" from the player pool? This cannot be undone.`)) return;
+        const r = await fetch(`/api/players/${p.id}`,{method:'DELETE'});
+        if (!r.ok) { const d=await r.json().catch(()=>({})); alert(d.error||'Delete failed'); return; }
+        loadData();
+    };
+    // Columns the current pool can be divided by (from each player's stored
+    // sheet attributes), mirroring the setup wizard's split picker.
+    const POOL_SKIP_COL = /^(name|player[\s_]*name|full[\s_]*name|photo|photo[\s_]*url|image|base[\s_]*price|price|category|role|id|player[\s_]*id|mobile|phone|contact|email|whatsapp|address|team[\s_]*id|sold[\s_]*price|status|sold[\s_]*at)$/i;
+    const poolSplitCandidates = (() => {
+        const cols = {};
+        players.forEach(p => Object.entries(p.attributes||{}).forEach(([k,v])=>{
+            if (POOL_SKIP_COL.test(k.trim())) return;
+            if (v==null || String(v).trim()==='') return;
+            if (!cols[k]) cols[k]={name:k,vals:new Set(),allNum:true};
+            cols[k].vals.add(String(v).trim());
+            if (isNaN(parseFloat(v))) cols[k].allNum=false;
+        }));
+        return Object.values(cols).map(c=>{const numeric=(c.allNum&&c.vals.size>6)||/age|yr|year/i.test(c.name);return {name:c.name,distinct:c.vals.size,numeric};}).sort((a,b)=>a.name.localeCompare(b.name));
+    })();
+    const runReanalyze = async () => {
+        setReAnalyze(s=>({...s,loading:true}));
+        const r = await fetch('/api/players/analyze',{method:'POST',headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({num_teams: teams.length||2, num_splits: reAnalyze.numSplits, base_price: parseFloat(config.common_base_price||10), split_by: reAnalyze.splitCols})}).then(r=>r.json()).catch(()=>null);
+        if (!r || !r.success) { alert((r&&r.error)||'Analysis failed'); setReAnalyze(s=>({...s,loading:false})); return; }
+        const cats = r.suggestions.map(s=>({category:s.category, per_team_min:s.per_team_min, per_team_max:s.per_team_max||99, count:s.count}));
+        setReAnalyze(s=>({...s,loading:false,result:r,cats}));
+        loadData();  // labels are applied server-side; refresh the pool
+    };
+    const applyReanalyze = async () => {
+        const cats = reAnalyze.cats; if (!cats) return;
+        const total = cats.reduce((a,c)=>a+(c.count||0),0);
+        const target = (teams.length? Math.ceil(total/teams.length) : total);
+        setReAnalyze(s=>({...s,saving:true}));
+        await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({config:{min_players_per_team:String(target)},
+                category_rules: cats.map(c=>({category:c.category, base_price: parseFloat(config.common_base_price||10), min_per_team: parseInt(c.per_team_min)||0, max_per_team: parseInt(c.per_team_max)||99}))})});
+        setReAnalyze(null); loadData();
+    };
     // Go Live: optionally flag the welcome intro (both screens read it via
     // polling), then open the cinematic stage. Resuming mid-auction skips it.
     const goLive = async (withIntro) => {
@@ -2264,6 +2305,11 @@ function App() {
                                 {['all','unsold','passed','sold',...categoryList].map(f=><button key={f} onClick={()=>setPlayerFilter(f)}
                                     className={`px-2.5 py-1 rounded-lg text-[0.6rem] font-extrabold uppercase tracking-wider transition ${playerFilter===f?'bg-amber-500 text-black shadow':'text-slate-400 hover:text-white'}`}>{f}</button>)}
                             </div>
+                            <button onClick={()=>setReAnalyze({splitCols:[],numSplits:3,result:null,cats:null,loading:false,saving:false})}
+                                className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded-xl hover:bg-emerald-500/25 font-bold text-xs transition flex items-center gap-1.5"
+                                title="Recompute categories & team quotas from the current pool">
+                                <i className="fa-solid fa-wand-magic-sparkles"></i>Re-run Analysis
+                            </button>
                             <button onClick={()=>setShowPresetsModal(true)}
                                 className="bg-amber-500/15 text-amber-300 border border-amber-500/30 px-3 py-1.5 rounded-xl hover:bg-amber-500/25 font-bold text-xs transition flex items-center gap-1.5">
                                 <i className="fa-solid fa-bolt"></i>Presets
@@ -2304,7 +2350,10 @@ function App() {
                             <div className="flex flex-col items-end gap-0.5 shrink-0">
                                 <span className="text-[0.55rem] text-slate-400 font-bold">₹{p.base_price}L</span>
                                 {p.status==='sold'?<span className="text-[0.5rem] text-green-400 font-extrabold">SOLD ₹{p.sold_price}L</span>:p.status==='passed'?<span className="text-[0.5rem] text-red-400 font-bold">PASSED</span>:<span className="text-[0.5rem] text-amber-400 font-bold">POOL</span>}
-                                <button onClick={()=>setEditPlayer(p)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-purple-400 transition text-[0.6rem]"><i className="fa-solid fa-pen"></i></button>
+                                <div className="flex items-center gap-1.5">
+                                    <button onClick={()=>setEditPlayer(p)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-purple-400 transition text-[0.6rem]"><i className="fa-solid fa-pen"></i></button>
+                                    {p.status!=='sold' && <button onClick={()=>deletePlayer(p)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition text-[0.6rem]" title="Remove player"><i className="fa-solid fa-trash"></i></button>}
+                                </div>
                             </div>
                             {p.status==='passed' && (
                                 <div className="absolute inset-0 bg-slate-900/95 backdrop-blur flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-2 rounded-xl border border-red-500/50 p-2 z-10">
@@ -2350,6 +2399,53 @@ function App() {
                     <input type="number" className="w-full bg-slate-950 border border-slate-700 text-white p-3 rounded-xl font-bold text-sm" value={editPlayer.base_price} onChange={e=>setEditPlayer({...editPlayer,base_price:e.target.value})} />
                     <div className="flex gap-3"><button type="submit" className="flex-1 bg-purple-600 hover:bg-purple-500 text-white py-2.5 rounded-xl font-bold text-sm">Save</button><button type="button" onClick={()=>setEditPlayer(null)} className="bg-slate-800 text-slate-300 px-5 py-2.5 rounded-xl font-bold text-sm">Cancel</button></div>
                 </form>
+            </div>}
+
+            {reAnalyze && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md anim-scaleIn p-4" onClick={()=>!reAnalyze.saving&&setReAnalyze(null)}>
+                <div onClick={e=>e.stopPropagation()} className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl max-h-[88vh] overflow-y-auto custom-scrollbar">
+                    <div>
+                        <h3 className="fredoka text-lg font-bold text-white flex items-center gap-2"><i className="fa-solid fa-wand-magic-sparkles text-emerald-400"></i>Re-run Smart Analysis</h3>
+                        <p className="text-xs text-slate-500 mt-1">Recompute categories and per-team quotas from the current {players.length} players. Applying updates the team structure everywhere.</p>
+                    </div>
+
+                    <div>
+                        <div className="text-[0.6rem] text-slate-400 font-extrabold uppercase tracking-widest mb-1.5">Divide players by</div>
+                        {poolSplitCandidates.length===0
+                            ? <p className="text-xs text-slate-600">No extra columns to divide by — leave blank to auto-split by age/gender if present.</p>
+                            : <div className="flex flex-wrap gap-1.5">
+                                {poolSplitCandidates.map(c=>{const on=reAnalyze.splitCols.includes(c.name);return (
+                                    <button key={c.name} onClick={()=>setReAnalyze(s=>({...s,splitCols:on?s.splitCols.filter(x=>x!==c.name):[...s.splitCols,c.name],result:null,cats:null}))}
+                                        className={`px-3 py-1.5 rounded-xl border font-bold text-xs transition ${on?'border-emerald-500 bg-emerald-500/10 text-emerald-300':'border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-500'}`}>
+                                        {c.name} <span className="text-slate-600 font-normal">({c.distinct}{c.numeric?', num':''})</span>
+                                    </button>);})}
+                              </div>}
+                    </div>
+
+                    <button onClick={runReanalyze} disabled={reAnalyze.loading}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2">
+                        {reAnalyze.loading ? <><i className="fa-solid fa-spinner animate-spin"></i>Analyzing…</> : <><i className="fa-solid fa-bolt"></i>Run Analysis on {players.length} players</>}
+                    </button>
+
+                    {reAnalyze.cats && <div className="space-y-2">
+                        <div className="flex justify-between items-center text-[0.6rem] text-slate-400 font-extrabold uppercase tracking-widest px-1">
+                            <span>Category</span><div className="flex gap-3"><span>Min/team</span><span>Max/team</span></div>
+                        </div>
+                        {reAnalyze.cats.map((c,i)=>(
+                            <div key={i} className="flex items-center justify-between gap-2 bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+                                <div className="min-w-0"><div className="font-bold text-white text-xs truncate">{c.category}</div><div className="text-[0.55rem] text-slate-500 font-bold">{c.count} players</div></div>
+                                <div className="flex gap-2 shrink-0">
+                                    <input type="number" value={c.per_team_min} onChange={e=>setReAnalyze(s=>{const cats=[...s.cats];cats[i]={...cats[i],per_team_min:e.target.value};return {...s,cats};})} className="w-14 bg-slate-900 border border-slate-700 text-white p-1.5 rounded-lg text-xs font-bold text-center" />
+                                    <input type="number" value={c.per_team_max} onChange={e=>setReAnalyze(s=>{const cats=[...s.cats];cats[i]={...cats[i],per_team_max:e.target.value};return {...s,cats};})} className="w-14 bg-slate-900 border border-slate-700 text-white p-1.5 rounded-lg text-xs font-bold text-center" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>}
+
+                    <div className="flex gap-3 pt-1">
+                        {reAnalyze.cats && <button onClick={applyReanalyze} disabled={reAnalyze.saving} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white py-2.5 rounded-xl font-bold text-sm">{reAnalyze.saving?'Applying…':'Apply — update team structure'}</button>}
+                        <button onClick={()=>setReAnalyze(null)} disabled={reAnalyze.saving} className="bg-slate-800 text-slate-300 px-5 py-2.5 rounded-xl font-bold text-sm">{reAnalyze.cats?'Cancel':'Close'}</button>
+                    </div>
+                </div>
             </div>}
         </div>;
     }

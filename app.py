@@ -815,6 +815,7 @@ ROUTE_POLICY = {
     'save_config': 'admin', 'restart_setup': 'admin', 'reset_auction': 'admin',
     'add_team': 'admin', 'edit_team': 'admin',
     'add_player': 'admin', 'edit_player': 'admin', 'upload_photo': 'admin',
+    'delete_player': 'admin', 'analyze_pool': 'admin',
     'import_players': 'admin', 'clear_player_pool': 'admin', 'load_preset': 'admin',
     'load_test_data': 'admin', 'smart_analyze': 'admin',
     'import_from_sheet': 'admin', 'resync_sheet': 'admin', 'apply_sheet_changes': 'admin',
@@ -906,7 +907,7 @@ PUBLIC_LIVE_ENDPOINTS = {
 # finished event's record cannot be altered by accident.
 MUTATING_ENDPOINTS = {
     'save_config', 'restart_setup', 'add_team', 'edit_team', 'add_player',
-    'edit_player', 'upload_photo', 'import_players', 'clear_player_pool',
+    'edit_player', 'upload_photo', 'delete_player', 'analyze_pool', 'import_players', 'clear_player_pool',
     'load_preset', 'load_test_data', 'set_auction_state', 'sell_player',
     'undo_last_sale', 'edit_player_sale', 'reset_auction', 'sheets_sync_all',
     'upload_banner', 'upload_org_logo', 'upload_team_logo', 'fetch_drive_photos',
@@ -1731,6 +1732,24 @@ def upload_photo(player_id):
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'photo_url': url})
+
+@app.route('/api/players/<int:player_id>', methods=['DELETE'])
+def delete_player(player_id):
+    conn = get_db()
+    row = conn.execute('SELECT status FROM players WHERE id=?', (player_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': 'Player not found'}), 404
+    # A sold player is tied to a team's purse and squad. Refuse deletion so no
+    # budget silently changes; the admin unsells first, then deletes.
+    if row['status'] == 'sold':
+        conn.close()
+        return jsonify({'error': 'Player is sold. Unsell them first, then delete.'}), 409
+    conn.execute('DELETE FROM players WHERE id=?', (player_id,))
+    conn.commit()
+    conn.close()
+    excel_backup_async(g.auction_id)
+    return jsonify({'success': True})
 
 def read_raw_auction_file(file_storage_or_path):
     """
@@ -3114,6 +3133,22 @@ def smart_analyze():
     if not dict_rows:
         return jsonify({'error': 'No valid rows found in file'}), 400
 
+    try:
+        _sb = json.loads(request.form.get('split_by', '[]')) or []
+    except Exception:
+        _sb = []
+    try:
+        _bins = json.loads(request.form.get('bins', '{}')) or {}
+    except Exception:
+        _bins = {}
+    return jsonify(_run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val, _sb, _bins))
+
+
+def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val, split_by, bins_map):
+    """Shared category/quota analysis. Used by the wizard (file/sheet) and the
+    live Player Pool re-analysis (rows rebuilt from the database). Computes the
+    category suggestions + per-team quotas, persists each player's assigned
+    category label, and returns the review payload."""
     total = len(dict_rows)
     col_details = inspect_file_data(headers, dict_rows)
 
@@ -3248,19 +3283,9 @@ def smart_analyze():
     # divide players by (gender, age, skill level, role, …). Numeric columns
     # (e.g. age) are binned; categorical columns use their distinct values.
     # Multiple columns produce the cross-product (e.g. "Male · 18–26"). ──
-    split_by = []
-    try:
-        split_by = json.loads(request.form.get('split_by', '[]')) or []
-    except Exception:
-        split_by = []
     split_by = [c for c in split_by if c in headers]
 
     if split_by:
-        try:
-            bins_map = json.loads(request.form.get('bins', '{}')) or {}
-        except Exception:
-            bins_map = {}
-
         col_thresholds, col_is_numeric = {}, {}
         for col in split_by:
             det = col_details.get(col, {})
@@ -3440,7 +3465,7 @@ def smart_analyze():
     visible_cols = [h for h in headers if h not in photo_cols]
     preview = [{k: v for k, v in row.items() if k not in photo_cols} for row in dict_rows[:6]]
 
-    return jsonify({
+    return {
         'success': True,
         'total_players': total,
         'num_teams': num_teams,
@@ -3455,7 +3480,46 @@ def smart_analyze():
         'suggestions': suggestions,
         'preview': preview,
         'columns': visible_cols,
-    })
+    }
+
+
+@app.route('/api/players/analyze', methods=['POST'])
+def analyze_pool():
+    """Re-run the category/quota analysis on the CURRENT database pool (after
+    the admin has added, removed or amended players), not on the original
+    uploaded file. Rows are rebuilt from each player's stored attributes."""
+    body = request.json or {}
+    num_teams  = max(1, int(body.get('num_teams', 4)))
+    num_splits = max(2, min(4, int(body.get('num_splits', 3))))
+    base_price_val = float(body.get('base_price', 10.0))
+    split_by = list(body.get('split_by') or [])
+    bins_map = body.get('bins') or {}
+
+    # Read from the shared request connection; do NOT close it — _run_pool_analysis
+    # re-acquires get_db() to persist the labels and closing here would leave it
+    # pointing at a closed handle.
+    conn = get_db()
+    players = conn.execute('SELECT name, base_price, attributes FROM players').fetchall()
+    if not players:
+        return jsonify({'error': 'No players in the pool to analyze.'}), 400
+
+    headers, dict_rows = [], []
+    for p in players:
+        try:
+            attrs = json.loads(p['attributes']) if p['attributes'] else {}
+        except Exception:
+            attrs = {}
+        row = dict(attrs) if isinstance(attrs, dict) else {}
+        # Guarantee a name column the analysis can key on, even if the sheet
+        # had none in the stored attributes.
+        if not any(str(k).strip().lower() in ('name', 'player name', 'full name') for k in row):
+            row['Name'] = p['name']
+        dict_rows.append(row)
+        for k in row:
+            if k not in headers:
+                headers.append(k)
+
+    return jsonify(_run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val, split_by, bins_map))
 
 
 
