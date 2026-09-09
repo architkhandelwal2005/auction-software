@@ -187,6 +187,11 @@
             const [isFullscreen, setIsFullscreen] = useState(false);
             const [revealPhase, setRevealPhase] = useState(6);
             const [lastPlayerId, setLastPlayerId] = useState(null);
+            // SOLD / UNSOLD celebration. Driven by auction_status + the
+            // last_sold_* / last_passed_* fields the backend already broadcasts.
+            const [result, setResult] = useState(null);
+            const resultKeyRef = useRef(null);   // dedupe: fire once per sale
+            const resultTimerRef = useRef(null);
 
             const loadData = async () => {
                 try {
@@ -194,7 +199,31 @@
                     if (res.ok) {
                         const d = await res.json();
                         setData(d);
-                        
+
+                        // Flash a SOLD / UNSOLD overlay when a sale/pass lands.
+                        // The key includes player + price so back-to-back sales
+                        // (both status "sold") each re-trigger it.
+                        const st = d.auction_state || {};
+                        const status = st.auction_status || '';
+                        const key = status + '|' + (st.last_sold_player || st.last_passed_player || '') + '|' + (st.last_sold_price || '');
+                        if (key !== resultKeyRef.current) {
+                            const first = resultKeyRef.current === null;
+                            resultKeyRef.current = key;
+                            if (!first && status === 'sold') {
+                                setResult({ status, player: st.last_sold_player || '', price: st.last_sold_price || '',
+                                    teamName: st.last_sold_team_name || '', teamColor: st.last_sold_team_color || '#10b981',
+                                    photo: st.last_sold_photo || '' });
+                                clearTimeout(resultTimerRef.current);
+                                resultTimerRef.current = setTimeout(() => setResult(null), 5000);
+                            } else if (!first && status === 'passed') {
+                                setResult({ status, player: st.last_passed_player || '', photo: st.last_passed_photo || '' });
+                                clearTimeout(resultTimerRef.current);
+                                resultTimerRef.current = setTimeout(() => setResult(null), 5000);
+                            } else {
+                                setResult(null);
+                            }
+                        }
+
                         // Check if a new player has appeared on stage for animation
                         if (d.auction_state?.current_player) {
                             if (d.auction_state.current_player !== lastPlayerId) {
@@ -299,6 +328,37 @@
                 <div className="min-h-screen flex flex-col has-ticker text-white selection:bg-amber-500/30"
                      style={{ background: currentTheme.bg, '--accent-rgb': currentTheme.accent === '#f59e0b' ? '245,158,11' : currentTheme.accent === '#22c55e' ? '34,197,94' : '59,130,246' }}>
                     <div className="fixed inset-0 pointer-events-none z-0" style={{ background: currentTheme.overlay }}></div>
+
+                    {/* SOLD / UNSOLD celebration overlay — phone-first, auto-hides */}
+                    {result && (() => {
+                        const sold = result.status === 'sold';
+                        const col = sold ? (result.teamColor || '#10b981') : '#ef4444';
+                        return (
+                            <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 anim-fadeIn"
+                                 style={{ background: 'rgba(4,8,16,0.92)', backdropFilter: 'blur(16px)' }}>
+                                <div className="text-center anim-slamIn flex flex-col items-center gap-4 max-w-full">
+                                    <div className="rounded-full overflow-hidden border-4 shadow-2xl shrink-0" style={{ borderColor: col }}>
+                                        <PlayerPhoto url={result.photo} name={result.player} size={128} />
+                                    </div>
+                                    <div className="fredoka font-black leading-none uppercase tracking-[0.15em] text-6xl sm:text-8xl"
+                                         style={{ color: col, textShadow: `0 0 50px ${col}, 0 0 110px ${col}80` }}>
+                                        {sold ? 'SOLD' : 'UNSOLD'}
+                                    </div>
+                                    <div className="fredoka font-bold text-white uppercase tracking-wide text-2xl sm:text-4xl break-words max-w-[92vw]">
+                                        {result.player}
+                                    </div>
+                                    {sold && result.teamName && (
+                                        <div className="font-bold uppercase tracking-[0.3em] text-sm sm:text-base" style={{ color: col }}>
+                                            to {result.teamName}
+                                        </div>
+                                    )}
+                                    {sold && result.price !== '' && result.price != null && (
+                                        <div className="fredoka font-black text-white text-4xl sm:text-6xl">₹{result.price}L</div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* Header */}
                     <header className="bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/50 sticky top-0 z-30 px-4 md:px-6 py-3 md:py-3.5 flex flex-col gap-3 md:gap-4 shadow-lg">
