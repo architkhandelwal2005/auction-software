@@ -1114,8 +1114,8 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                         )}
                     </div>
 
-                    <button onClick={runAnalysis} disabled={analyzing || !uploadedFile}
-                        className={`w-full py-4 rounded-2xl font-extrabold text-sm transition flex items-center justify-center gap-2 ${analyzing || !uploadedFile ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' : 'bg-gradient-to-r from-amber-500 to-orange-600 text-black hover:from-amber-400 hover:to-orange-500 shadow-lg shadow-amber-500/20 hover:scale-[1.02]'}`}>
+                    <button onClick={runAnalysis} disabled={analyzing || (!uploadedFile && !usedSheet)}
+                        className={`w-full py-4 rounded-2xl font-extrabold text-sm transition flex items-center justify-center gap-2 ${analyzing || (!uploadedFile && !usedSheet) ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' : 'bg-gradient-to-r from-amber-500 to-orange-600 text-black hover:from-amber-400 hover:to-orange-500 shadow-lg shadow-amber-500/20 hover:scale-[1.02]'}`}>
                         {analyzing ? <><i className="fa-solid fa-spinner animate-spin"></i> Analysing {uploadedCount} players...</>
                             : <><i className="fa-solid fa-wand-magic-sparkles"></i> Run Analysis — {uploadedCount} players, {numTeams} teams{splitColumns.length ? `, by ${splitColumns.join(' + ')}` : ', auto age & gender'}</>}
                     </button>
