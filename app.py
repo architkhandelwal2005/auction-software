@@ -2037,7 +2037,11 @@ def sheet_csv_url(url):
     if not match:
         return None
     gid = _SHEET_GID_RE.search(url or '')
-    return 'https://docs.google.com/spreadsheets/d/%s/export?format=csv&gid=%s' % (
+    # The gviz endpoint is used instead of /export?format=csv: the classic
+    # export endpoint 400s for some public spreadsheets (Google Forms
+    # response sheets in particular), while gviz serves the same public
+    # data reliably.
+    return 'https://docs.google.com/spreadsheets/d/%s/gviz/tq?tqx=out:csv&gid=%s' % (
         match.group(1), gid.group(1) if gid else '0')
 
 
