@@ -559,6 +559,24 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
     const [orgLogo, setOrgLogo] = useState('');
     const [orgLogoUploading, setOrgLogoUploading] = useState(false);
     const [importedPreview, setImportedPreview] = useState([]);
+    // True when this auction already had players before this wizard instance
+    // mounted (e.g. the organiser imported a file/sheet, then reloaded the
+    // page or reopened "Continue Setup" later). uploadedFile/usedSheet only
+    // ever live in this component's memory, so without this check Step 2's
+    // Run Analysis would stay disabled forever on a resumed setup even
+    // though the players are already sitting in the database.
+    const [hasStoredPlayers, setHasStoredPlayers] = useState(false);
+
+    useEffect(() => {
+        fetch('/api/players').then(r => r.json()).then(players => {
+            if (Array.isArray(players) && players.length > 0) {
+                setHasStoredPlayers(true);
+                setUploadedCount(players.length);
+                setUploadedFileName('Previously imported players');
+                setImportedPreview(players);
+            }
+        }).catch(() => {});
+    }, []);
 
     // Step 2
     const [numTeams, setNumTeams] = useState(4);
@@ -768,23 +786,36 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
 
     const runAnalysis = async () => {
         // A sheet import leaves no file on the client, so the server re-reads
-        // the copy it stored at import time.
-        if (!uploadedFile && !usedSheet) {
+        // the copy it stored at import time. A resumed setup (page reload /
+        // reopened "Continue Setup") has neither a file nor a sheet in memory
+        // either, so it re-derives rows from the players already in the DB.
+        if (!uploadedFile && !usedSheet && !hasStoredPlayers) {
             setAnalyzeError('Please add your players in Step 1 first.');
             return;
         }
         setAnalyzing(true);
         setAnalyzeError('');
         try {
-            const fd = new FormData();
-            if (usedSheet) fd.append('source', 'snapshot');
-            else fd.append('file', uploadedFile);
-            fd.append('num_teams', numTeams);
-            fd.append('num_splits', numSplits);
-            fd.append('base_price', basePrice);
-            fd.append('split_by', JSON.stringify(splitColumns));
-            fd.append('bins', JSON.stringify(columnBins));
-            const res = await fetch('/api/file/smart_analyze', { method: 'POST', body: fd });
+            let res;
+            if (!uploadedFile && !usedSheet && hasStoredPlayers) {
+                res = await fetch('/api/players/analyze', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        num_teams: numTeams, num_splits: numSplits, base_price: basePrice,
+                        split_by: splitColumns, bins: columnBins,
+                    }),
+                });
+            } else {
+                const fd = new FormData();
+                if (usedSheet) fd.append('source', 'snapshot');
+                else fd.append('file', uploadedFile);
+                fd.append('num_teams', numTeams);
+                fd.append('num_splits', numSplits);
+                fd.append('base_price', basePrice);
+                fd.append('split_by', JSON.stringify(splitColumns));
+                fd.append('bins', JSON.stringify(columnBins));
+                res = await fetch('/api/file/smart_analyze', { method: 'POST', body: fd });
+            }
             const d = await res.json();
             if (d.success) {
                 setAnalysisResult(d);
@@ -1114,8 +1145,8 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                         )}
                     </div>
 
-                    <button onClick={runAnalysis} disabled={analyzing || (!uploadedFile && !usedSheet)}
-                        className={`w-full py-4 rounded-2xl font-extrabold text-sm transition flex items-center justify-center gap-2 ${analyzing || (!uploadedFile && !usedSheet) ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' : 'bg-gradient-to-r from-amber-500 to-orange-600 text-black hover:from-amber-400 hover:to-orange-500 shadow-lg shadow-amber-500/20 hover:scale-[1.02]'}`}>
+                    <button onClick={runAnalysis} disabled={analyzing || (!uploadedFile && !usedSheet && !hasStoredPlayers)}
+                        className={`w-full py-4 rounded-2xl font-extrabold text-sm transition flex items-center justify-center gap-2 ${analyzing || (!uploadedFile && !usedSheet && !hasStoredPlayers) ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' : 'bg-gradient-to-r from-amber-500 to-orange-600 text-black hover:from-amber-400 hover:to-orange-500 shadow-lg shadow-amber-500/20 hover:scale-[1.02]'}`}>
                         {analyzing ? <><i className="fa-solid fa-spinner animate-spin"></i> Analysing {uploadedCount} players...</>
                             : <><i className="fa-solid fa-wand-magic-sparkles"></i> Run Analysis — {uploadedCount} players, {numTeams} teams{splitColumns.length ? `, by ${splitColumns.join(' + ')}` : ', auto age & gender'}</>}
                     </button>
@@ -1631,7 +1662,12 @@ function App() {
         (async()=>{
             const info = await refreshAuctionInfo();
             if(!info || !info.id) { setView('chooser'); return; }
-            await enterAuction(info, false);
+            // Same rule the chooser uses when opening this auction: a setup
+            // still in progress always goes back to the wizard, even on a
+            // page reload — otherwise importing players (Step 1) and then
+            // reloading before Step 5 drops the organiser onto a half-built
+            // dashboard with no way back into categories/teams.
+            await enterAuction(info, info.status === 'setup');
         })();
     }, []);
 
