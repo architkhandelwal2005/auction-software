@@ -11,7 +11,19 @@ try:
 except ImportError:
     pass
 
-DATABASE_URL = os.environ.get('DATABASE_URL', '')
+def _normalize_database_url(url):
+    """Supabase's connection pooler logs in as postgres.<project-ref>, not plain
+    postgres. The direct-connection string copied from a .env carries the plain
+    form, which the pooler rejects with "password authentication failed", so
+    add the project ref (taken from SUPABASE_URL) when it is missing."""
+    match = re.match(r'^(postgres(?:ql)?://)postgres(:.*@[^/@]*\.pooler\.supabase\.com[:/])', url or '')
+    ref = re.match(r'https?://([a-z0-9]+)\.supabase\.co', os.environ.get('SUPABASE_URL', ''))
+    if match and ref:
+        return url.replace(match.group(0), match.group(1) + 'postgres.' + ref.group(1) + match.group(2), 1)
+    return url
+
+
+DATABASE_URL = _normalize_database_url(os.environ.get('DATABASE_URL', ''))
 USE_PG = bool(DATABASE_URL)
 
 # ── PostgreSQL thin wrapper (speaks the same API as sqlite3) ─────────────────
