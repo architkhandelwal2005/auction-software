@@ -2293,13 +2293,15 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
   opacity: 1 !important;
   background-image: url('img/bg-cricket-arena.jpg');
   background-size: cover; background-position: center 38%;
-  filter: brightness(.86) contrast(1.1) saturate(1.14) blur(2.6px);
+  filter: brightness(1.0) contrast(1.08) saturate(1.2) blur(3px);
 }
 .stage[data-template='ck-house'] .env-photo-grade {
   opacity: 1;
   background:
-    radial-gradient(ellipse 66% 62% at 50% 48%, rgba(2,7,20,.26) 0 42%, rgba(2,6,18,.62) 82%, rgba(1,4,13,.86) 100%),
-    linear-gradient(180deg, rgba(2,6,18,.74) 0%, rgba(2,6,18,.28) 30%, rgba(2,6,18,.38) 68%, rgba(1,4,13,.86) 100%);
+    radial-gradient(ellipse 52% 40% at 14% 0%, rgba(255,226,160,.34), transparent 70%),
+    radial-gradient(ellipse 52% 40% at 86% 0%, rgba(255,226,160,.28), transparent 70%),
+    radial-gradient(ellipse 70% 62% at 50% 50%, rgba(2,7,20,.2) 0 40%, rgba(2,6,18,.52) 84%, rgba(1,4,13,.78) 100%),
+    linear-gradient(180deg, rgba(2,6,18,.62) 0%, rgba(2,6,18,.14) 28%, rgba(2,6,18,.22) 66%, rgba(1,4,13,.78) 100%);
 }
 .stage[data-template='ck-house'] .env-grain { opacity: .22; }
 
@@ -2312,52 +2314,42 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 
 .tpl-ck-house { gap: 22px; }
 
-/* Hexagonal LED medallion */
+/* Framed portrait: a clean gold-edged print, name plate overlapping its foot */
 .ckh-medal {
-  position: relative; width: 500px; height: 540px;
-  display: flex; align-items: center; justify-content: center;
+  position: relative; width: 640px; height: 590px; flex: none;
+  border-radius: 26px; padding: 5px;
+  background: linear-gradient(150deg, #ffe3a1, #d99a2b 38%, #8a5412 62%, #ffd77f);
+  box-shadow: 0 34px 80px rgba(0,0,0,.6), 0 0 70px rgba(255,179,31,.22);
 }
-.ckh-ring {
-  position: absolute; inset: 0;
-  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
-  background: linear-gradient(160deg, var(--ck-led), rgba(255,179,31,.18) 46%, var(--ck-led));
-  box-shadow: 0 0 60px rgba(255,179,31,.34);
-}
+.ckh-ring, .ckh-scan { display: none; }
 .ckh-photo {
-  position: absolute; inset: 9px;
-  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
-  border-radius: 0; overflow: hidden;
-  background: #061021;
+  position: absolute; inset: 5px;
+  border-radius: 21px; overflow: hidden; background: #0a1424;
 }
-/* Scoreboard scanlines drawn over the portrait, very faint */
-.ckh-scan {
-  position: absolute; inset: 9px; pointer-events: none;
-  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
-  background: repeating-linear-gradient(180deg, rgba(255,255,255,.05) 0 1px, rgba(0,0,0,0) 1px 4px);
-  mix-blend-mode: screen; opacity: .8;
-}
-
-/* Board underneath: amber strip for the category, name burnt in beneath */
+/* Plate: deep navy, amber top rule, sits over the bottom of the photo */
 .ckh-board {
-  width: 640px; text-align: center;
-  padding: 18px 26px 20px;
-  background: var(--ck-board);
-  border: 1px solid var(--ck-board-line);
-  border-radius: 14px;
-  box-shadow: 0 24px 58px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
-  backdrop-filter: blur(10px);
+  position: relative; z-index: 2; width: 600px; margin-top: -54px;
+  text-align: center; padding: 0 32px 26px;
+  background: linear-gradient(180deg, #0d1b38, #070f21);
+  border: 1px solid rgba(255,179,31,.4); border-top: 5px solid var(--ck-led);
+  border-radius: 20px;
+  box-shadow: 0 28px 64px rgba(0,0,0,.6);
 }
-.ckh-strip { display: flex; justify-content: center; }
+.ckh-strip { display: flex; justify-content: center; transform: translateY(-50%); margin-bottom: -14px; }
 .ckh-cat {
-  display: inline-block; padding: 7px 20px; border-radius: 4px;
-  background: var(--ck-led); color: #14100a;
-  font-weight: 900; letter-spacing: 4px; font-size: 20px; text-transform: uppercase;
-  box-shadow: 0 0 26px rgba(255,179,31,.45);
+  display: inline-block; padding: 9px 28px; border-radius: 999px;
+  background: var(--ck-led); color: #1a1205;
+  font-weight: 900; letter-spacing: 5px; font-size: 26px; text-transform: uppercase;
+  box-shadow: 0 10px 28px rgba(255,179,31,.4);
 }
 .ckh-name {
-  margin-top: 13px; font-weight: 900; font-size: 64px; line-height: .98;
-  letter-spacing: 2px; text-transform: uppercase; color: var(--ck-led-lt);
-  text-shadow: 0 0 30px rgba(255,179,31,.42);
+  margin-top: 4px; font-weight: 900; font-size: 80px; line-height: .98;
+  letter-spacing: 1.5px; text-transform: uppercase; color: #fff;
+  text-shadow: 0 4px 24px rgba(0,0,0,.6);
+}
+.ckh-name::after {
+  content: ''; display: block; width: 90px; height: 4px; margin: 14px auto 0;
+  border-radius: 2px; background: var(--ck-led);
 }
 .tpl-ck-house .mh { color: #eaf1fb; justify-content: center; text-align: center; }
 .tpl-ck-house .mh .mh-star { color: var(--ck-led); }
@@ -2466,9 +2458,8 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 
 /* Hall readability — these names sit on the same enlarged scale as the rest. */
 .ckc-name { font-size: 66px !important; }
-.ckh-name { font-size: 64px !important; }
 .ckn-name { font-size: 62px !important; }
-.ckc-cat, .ckh-cat, .ckn-cat { font-size: 21px !important; }
+.ckc-cat, .ckn-cat { font-size: 21px !important; }
 
 /* ═══════════════════════════════════════════════════════════════════════
    BADMINTON — THREE SELF-CONTAINED TEMPLATES
@@ -3136,11 +3127,6 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 .ckc-cat  { font-size: 28px !important; letter-spacing: 5px !important; }
 .ckc-name { font-size: 84px !important; margin-top: 8px !important; }
 
-/* — Full House: wider LED medallion and board — */
-.ckh-medal { width: 580px !important; height: 470px !important; }
-.ckh-board { width: 660px !important; padding: 20px 30px 22px !important; }
-.ckh-cat   { font-size: 28px !important; padding: 8px 24px !important; letter-spacing: 5px !important; }
-.ckh-name  { font-size: 82px !important; margin-top: 14px !important; }
 
 /* — Nets: wider report card, taller print — */
 .ckn-card  { width: 660px !important; padding: 26px 30px 28px !important; }
