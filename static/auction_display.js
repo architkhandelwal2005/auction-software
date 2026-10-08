@@ -24,7 +24,7 @@
   /* Cricket templates that own their own photographic background and their own
      construction, the way the pickleball set does. The five original cricket
      templates share one backdrop; these three do not. */
-  const CK_TEMPLATES = ['ck-crease', 'ck-house', 'ck-nets'];
+  const CK_TEMPLATES = ['ck-gilded', 'ck-obsidian', 'ck-editorial'];
   // Older saved template names map onto the current set
   const PB_ALIAS = {
     'pb-glass': 'pb-hall', 'pb-dash': 'pb-hall', 'pb-grid': 'pb-hall',
@@ -39,11 +39,11 @@
      and its own construction. Table (blue tournament table + net), Rally (dark
      hall, ball mid-flight), Blade (red/black split like a paddle's rubbers). */
   const TT_TEMPLATES = ['tt-table', 'tt-rally', 'tt-blade'];
-  const TEMPLATES = ['arena', 'collector', 'broadcast', 'poster', ...CK_TEMPLATES, ...BD_TEMPLATES, ...PB_TEMPLATES, ...TT_TEMPLATES];
+  const TEMPLATES = ['arena', 'collector', 'broadcast', 'poster', 'ck-house', ...CK_TEMPLATES, ...BD_TEMPLATES, ...PB_TEMPLATES, ...TT_TEMPLATES];
   const SPORTS = ['cricket', 'football', 'badminton', 'pickleball', 'tabletennis', 'multi'];
   // Available templates per sport for random/sequential modes
   const SPORT_TEMPLATES = {
-    cricket: ['arena', ...CK_TEMPLATES],
+    cricket: CK_TEMPLATES,
     football: ['arena', 'broadcast', 'poster'],
     badminton: BD_TEMPLATES,
     pickleball: PB_TEMPLATES,
@@ -290,21 +290,57 @@
           </div>
           <div class="poster-stamp">SPORTS<br>AUCTION<br>LIVE</div>
         </article>`;
-    } else if (template === 'ck-crease') {
-      /* CREASE — the player stands at the wicket on a floodlit pitch. Three
-         stumps rise behind the portrait, the turf throws a shadow, and the
-         name is set on a sightscreen slab the way ground boards read. */
+    } else if (template === 'ck-gilded') {
+      /* GILDED FRAME — black and gold, formal. An arch-topped portrait in a
+         gold frame under a floodlit night pitch; Cinzel capitals; the
+         player's short facts set in gold-ruled boxes. */
       html = `
-        <article class="tpl-ck tpl-ck-crease">
-          <div class="ckc-stumps" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
-          <div class="ckc-figure">
-            ${photoShell('ckc-photo')}
-            <div class="ckc-turf" aria-hidden="true"></div>
+        <article class="tpl-ckx tpl-ckg">
+          <div class="ckg-arch">${photoShell('ckg-photo')}</div>
+          <div class="ckg-cat"><i></i><span data-slot="player.category">CATEGORY</span><i></i></div>
+          <div class="ckg-name" data-slot="player.name">PLAYER NAME</div>
+          <div class="ckg-rule"><i></i><b></b><i></i></div>
+          <div class="ckx-facts">
+              <div class="ckx-fact"><span>AGE</span><strong data-slot="player.age">--</strong></div>
+              <div class="ckx-fact"><span>ROLE</span><strong data-slot="player.role">--</strong></div>
+              <div class="ckx-fact"><span>CITY</span><strong data-slot="player.city">--</strong></div>
           </div>
-          <div class="ckc-screen">
-            <div class="ckc-cat" data-slot="player.category">CATEGORY</div>
-            <div class="ckc-name" data-slot="player.name">PLAYER NAME</div>
-            ${MH}
+        </article>`;
+
+    } else if (template === 'ck-obsidian') {
+      /* OBSIDIAN PLATE — bold black and gold over a packed stand. A cut-corner
+         portrait with a gold edge, then a black plate: gold category tab,
+         big condensed name (surname in gold), facts in ruled columns. */
+      html = `
+        <article class="tpl-ckx tpl-cko">
+          <div class="cko-shot">${photoShell('cko-photo')}<i class="cko-edge"></i></div>
+          <div class="cko-plate">
+            <div class="cko-catrow"><span class="cko-cat" data-slot="player.category">CATEGORY</span><i></i></div>
+            <div class="cko-name ckx-split" data-slot="player.name">PLAYER NAME</div>
+            <div class="ckx-facts">
+              <div class="ckx-fact"><span>AGE</span><strong data-slot="player.age">--</strong></div>
+              <div class="ckx-fact"><span>ROLE</span><strong data-slot="player.role">--</strong></div>
+              <div class="ckx-fact"><span>CITY</span><strong data-slot="player.city">--</strong></div>
+            </div>
+          </div>
+        </article>`;
+
+    } else if (template === 'ck-editorial') {
+      /* EDITORIAL — the portrait fills the whole column over a ground at
+         dusk; the name is set huge across the foot of the photo, surname in
+         gold, with the facts on a gold rule beneath. */
+      html = `
+        <article class="tpl-ckx tpl-cke">
+          ${photoShell('cke-photo')}
+          <div class="cke-shade"></div>
+          <div class="cke-cat" data-slot="player.category">CATEGORY</div>
+          <div class="cke-copy">
+            <div class="cke-name ckx-split" data-slot="player.name">PLAYER NAME</div>
+            <div class="ckx-facts">
+              <div class="ckx-fact"><span>AGE</span><strong data-slot="player.age">--</strong></div>
+              <div class="ckx-fact"><span>ROLE</span><strong data-slot="player.role">--</strong></div>
+              <div class="ckx-fact"><span>CITY</span><strong data-slot="player.city">--</strong></div>
+            </div>
           </div>
         </article>`;
 
@@ -322,24 +358,6 @@
           <div class="ckh-board">
             <div class="ckh-strip"><span class="ckh-cat" data-slot="player.category">CATEGORY</span></div>
             <div class="ckh-name" data-slot="player.name">PLAYER NAME</div>
-            ${MH}
-          </div>
-        </article>`;
-
-    } else if (template === 'ck-nets') {
-      /* NETS — a scouting report clipped up at the practice nets. Squared
-         photographic print on cream card, red ball-seam stitching down the
-         rule, everything set precise and editorial. */
-      html = `
-        <article class="tpl-ck tpl-ck-nets">
-          <div class="ckn-card">
-            <div class="ckn-head">
-              <span class="ckn-mark">CRICKET</span>
-              <span class="ckn-cat" data-slot="player.category">CATEGORY</span>
-            </div>
-            <div class="ckn-print">${photoShell('ckn-photo')}</div>
-            <div class="ckn-name" data-slot="player.name">PLAYER NAME</div>
-            <div class="ckn-seam" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
             ${MH}
           </div>
         </article>`;
@@ -544,7 +562,7 @@
     /* Pickleball chips/rails: drop entries with no value, and collapse
        duplicates — many sheets carry the same text in role and category. */
     const seenChip = new Set();
-    playerZone.querySelectorAll('.pbh-meta span, .pbd-fact, .pbe-item').forEach(el => {
+    playerZone.querySelectorAll('.pbh-meta span, .pbd-fact, .pbe-item, .ckx-fact').forEach(el => {
       const valEl = el.querySelector('strong, dd') || el;
       const val = valEl.textContent.replace(/\s+/g, ' ').replace(/--/g, '').trim();
       const key = val.replace(/[^A-Z0-9]/gi, '');
@@ -573,9 +591,16 @@
         first.textContent = '';
       }
     }
+    // Obsidian / Editorial: first names on one line, surname below in gold.
+    playerZone.querySelectorAll('.ckx-split').forEach(el => {
+      const parts = (p && p.name ? p.name : 'AWAITING PLAYER').trim().split(/\s+/);
+      el.innerHTML = parts.length > 1
+        ? `<span>${esc(parts.slice(0, -1).join(' '))}</span><span class="ckx-last">${esc(parts[parts.length - 1])}</span>`
+        : `<span>${esc(parts[0] || '')}</span>`;
+    });
     // Cricket cards: a name keeps its large size unless one word is wider than
     // its plate, in which case only that name shrinks (never mid-word breaks).
-    playerZone.querySelectorAll('.ckc-name, .ckh-name, .ckn-name, .player-name').forEach(el => {
+    playerZone.querySelectorAll('.ckg-name, .cko-name, .cke-name, .ckh-name, .player-name').forEach(el => {
       el.style.fontSize = '';
       let fs = parseFloat(getComputedStyle(el).fontSize) || 60;
       while (el.scrollWidth > el.clientWidth + 1 && fs > 36) {
@@ -1609,9 +1634,8 @@
     const TEMPLATE_LABELS = {
       arena: 'Arena Portrait', collector: 'Collector Card',
       broadcast: 'Broadcast Panel', poster: 'Photo Poster',
-      'ck-crease': 'Crease — Night Pitch',
+      'ck-gilded': 'Gilded Frame', 'ck-obsidian': 'Obsidian Plate', 'ck-editorial': 'Editorial',
       'ck-house': 'Full House — Packed Stand',
-      'ck-nets': 'Dusk — Ground at Dusk',
       'bd-smash': 'Smash — Match Night',
       'bd-net': 'Net — Close Court',
       'bd-court': 'Court — Indoor Hall',

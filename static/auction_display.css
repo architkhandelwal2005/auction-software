@@ -2168,123 +2168,17 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 .team-row.team-leading .team-copy span { color:var(--team-color); font-weight:800; letter-spacing:2.4px; }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   CRICKET — THREE SELF-CONTAINED TEMPLATES
-   The five original cricket templates share one backdrop and differ only in
-   the shape of the photo. These three do not: each owns its own photograph,
-   its own palette and its own construction, the way the pickleball set does.
-
-     ck-crease  night pitch       portrait at the wicket, sightscreen plate
-     ck-house   packed stand      LED scoreboard medallion
-     ck-dusk    ground at dusk    scouting-report print on cream card
+   FULL HOUSE (ck-house) — packed stand, framed portrait. Used by the
+   multi-sport pool; the cricket set is further down (CRICKET — ROYAL SET).
    ═══════════════════════════════════════════════════════════════════════ */
 
 /* The photograph is the whole environment; the CSS scene is switched off. */
-.stage[data-template='ck-crease'] .sport-environment > *:not(.env-photo):not(.env-photo-grade):not(.env-grain),
-.stage[data-template='ck-house']  .sport-environment > *:not(.env-photo):not(.env-photo-grade):not(.env-grain),
-.stage[data-template='ck-nets']   .sport-environment > *:not(.env-photo):not(.env-photo-grade):not(.env-grain),
-.stage[data-template='ck-crease'] .drama,
-.stage[data-template='ck-house']  .drama,
-.stage[data-template='ck-nets']   .drama { display: none; }
+.stage[data-template='ck-house'] .sport-environment > *:not(.env-photo):not(.env-photo-grade):not(.env-grain),
+.stage[data-template='ck-house'] .drama { display: none; }
 
 .tpl-ck { width: 100%; height: 100%; display: flex; flex-direction: column;
           align-items: center; justify-content: center;
           font-family: var(--display-font, 'Barlow Condensed', sans-serif); }
-
-/* ══════════════════════════════════════════════════════════════════════
-   1 — CREASE  ·  night pitch under lights
-   ══════════════════════════════════════════════════════════════════════ */
-.stage[data-template='ck-crease'] .env-photo {
-  opacity: 1 !important;
-  background-image: url('img/bg-cricket-night-pitch.jpg');
-  background-size: cover; background-position: center 54%;
-  filter: brightness(.78) contrast(1.08) saturate(1.1) blur(2.4px);
-}
-.stage[data-template='ck-crease'] .env-photo-grade {
-  opacity: 1;
-  background:
-    radial-gradient(ellipse 64% 60% at 32% 52%, rgba(2,12,7,.34) 0 40%, rgba(2,10,6,.6) 80%, rgba(1,7,4,.8) 100%),
-    linear-gradient(180deg, rgba(2,10,6,.62) 0%, rgba(2,10,6,.1) 26%, rgba(2,10,6,.16) 64%, rgba(1,7,4,.72) 100%);
-}
-.stage[data-template='ck-crease'] .env-grain { opacity: .16; }
-
-.stage[data-template='ck-crease'] {
-  --ck-turf: #4ea86a;
-  --ck-turf-lt: #a8e8bd;
-  --ck-chalk: #f4f9f4;
-}
-
-.tpl-ck-crease { position: relative; gap: 0; justify-content: center; }
-
-/* Three stumps standing behind the portrait, bails lit by the floodlights */
-.ckc-stumps {
-  position: absolute; bottom: 224px; left: 50%; transform: translateX(-50%);
-  width: 190px; height: 690px; z-index: 0;
-  display: flex; justify-content: space-between; align-items: flex-end;
-}
-.ckc-stumps i {
-  width: 15px; height: 100%; border-radius: 7px 7px 2px 2px;
-  background: linear-gradient(180deg, #fbfdfb, #cfe0d3 62%, #7f9585);
-  box-shadow: 0 0 26px rgba(255,255,255,.34);
-  opacity: .5;
-}
-.ckc-stumps b {
-  position: absolute; top: -9px; left: 6px; right: 6px; height: 8px;
-  border-radius: 4px; background: linear-gradient(90deg, #f7d9a1, #fff6e2, #f7d9a1);
-  box-shadow: 0 0 18px rgba(245,183,46,.6); opacity: .55;
-}
-
-/* The portrait itself — cut out of its frame, standing on the pitch */
-.ckc-figure { position: relative; z-index: 1; flex: none; }
-.ckc-photo {
-  width: 468px; height: 566px;
-  border-radius: 18px 18px 0 0;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(180deg, #000 0 86%, rgba(0,0,0,.06) 100%);
-          mask-image: linear-gradient(180deg, #000 0 86%, rgba(0,0,0,.06) 100%);
-}
-/* Turf shadow pooling under the figure */
-.ckc-turf {
-  position: absolute; left: 50%; bottom: -16px; transform: translateX(-50%);
-  width: 430px; height: 54px; border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(0,0,0,.55) 0 38%, rgba(0,0,0,0) 72%);
-  filter: blur(5px);
-}
-
-/* Sightscreen plate — white board, turf keyline, ground-signage lettering */
-.ckc-screen {
-  position: relative; z-index: 2; margin-top: 16px; flex: none;
-  width: 552px; padding: 18px 26px 20px; text-align: center;
-  background: linear-gradient(180deg, rgba(244,249,244,.96), rgba(224,236,226,.93));
-  border: 2px solid rgba(78,168,106,.55);
-  border-radius: 8px;
-  box-shadow: 0 22px 54px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.9);
-}
-.ckc-cat {
-  font-weight: 800; letter-spacing: 4px; text-transform: uppercase;
-  color: #2f7546; font-size: 21px;
-}
-.ckc-name {
-  margin-top: 6px; font-weight: 900; font-size: 66px; line-height: .96;
-  letter-spacing: 1px; text-transform: uppercase; color: #10261a;
-}
-.tpl-ck-crease .mh { color: #1d3a27; justify-content: center; text-align: center; }
-.tpl-ck-crease .mh .mh-star { color: #2f7546; }
-
-/* Chrome tuned to the pitch */
-.stage[data-template='ck-crease'] .price-zone { background: none; border: none; box-shadow: none; }
-.stage[data-template='ck-crease'] .status-pill { background: rgba(6,26,15,.62); border: 1px solid rgba(168,232,189,.32); }
-.stage[data-template='ck-crease'] .status-pill span { background: var(--ck-turf-lt); box-shadow: 0 0 12px var(--ck-turf-lt); }
-.stage[data-template='ck-crease'] .status-pill b { color: var(--ck-turf-lt); letter-spacing: 3px; }
-.stage[data-template='ck-crease'] .price-label { color: rgba(224,244,231,.62); letter-spacing: 5px; }
-.stage[data-template='ck-crease'] .current-price { color: var(--ck-chalk); text-shadow: 0 0 44px rgba(168,232,189,.34); }
-.stage[data-template='ck-crease'] .price-meta-card { background: rgba(6,26,15,.6); border-color: rgba(168,232,189,.26); }
-.stage[data-template='ck-crease'] .price-meta-card span { color: rgba(224,244,231,.5); }
-.stage[data-template='ck-crease'] .price-meta-card strong { color: var(--ck-turf-lt); }
-.stage[data-template='ck-crease'] .tournament-header { border-bottom-color: rgba(168,232,189,.24); }
-.stage[data-template='ck-crease'] .tournament-name { color: var(--ck-chalk); }
-.stage[data-template='ck-crease'] .brand-mark { border-color: rgba(168,232,189,.4); color: var(--ck-turf-lt); }
-.stage[data-template='ck-crease'] .progress-box { background: rgba(6,26,15,.62); border-color: rgba(168,232,189,.3); }
-.stage[data-template='ck-crease'] .progress-box strong { color: var(--ck-turf-lt); }
 
 /* ══════════════════════════════════════════════════════════════════════
    2 — FULL HOUSE  ·  packed stand, stadium scoreboard
@@ -2368,98 +2262,6 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 .stage[data-template='ck-house'] .brand-mark { border-color: var(--ck-board-line); color: var(--ck-led-lt); }
 .stage[data-template='ck-house'] .progress-box { background: var(--ck-board); border-color: var(--ck-board-line); }
 .stage[data-template='ck-house'] .progress-box strong { color: var(--ck-led-lt); }
-
-/* ══════════════════════════════════════════════════════════════════════
-   3 — DUSK  ·  the ground at dusk, scouting report
-   ══════════════════════════════════════════════════════════════════════ */
-.stage[data-template='ck-nets'] .env-photo {
-  opacity: 1 !important;
-  background-image: url('img/bg-cricket-dusk.jpg');
-  background-size: cover; background-position: center 62%;
-  filter: brightness(.88) contrast(1.04) saturate(1.18) blur(2.2px);
-}
-.stage[data-template='ck-nets'] .env-photo-grade {
-  opacity: 1;
-  background:
-    radial-gradient(ellipse 64% 62% at 32% 52%, rgba(26,12,6,.1) 0 44%, rgba(20,9,5,.44) 82%, rgba(14,6,4,.72) 100%),
-    linear-gradient(180deg, rgba(18,8,5,.5) 0%, rgba(18,8,5,.06) 26%, rgba(18,8,5,.16) 64%, rgba(12,5,3,.76) 100%);
-}
-.stage[data-template='ck-nets'] .env-grain { opacity: .26; }
-
-.stage[data-template='ck-nets'] {
-  --ck-ball: #a2231d;
-  --ck-ball-lt: #e0736a;
-  --ck-card: #f3ece0;
-  --ck-ink: #17130e;
-}
-
-.tpl-ck-nets { justify-content: center; }
-
-/* Cream report card, squared print, red seam rule */
-.ckn-card {
-  width: 580px; padding: 24px 28px 26px;
-  background: linear-gradient(180deg, #f7f1e7, var(--ck-card));
-  border: 1px solid rgba(23,19,14,.16);
-  border-radius: 4px;
-  box-shadow: 0 30px 70px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.9);
-}
-.ckn-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding-bottom: 12px; margin-bottom: 16px;
-  border-bottom: 2px solid var(--ck-ball);
-}
-.ckn-mark {
-  font-weight: 900; letter-spacing: 6px; font-size: 17px;
-  color: var(--ck-ball); text-transform: uppercase;
-}
-.ckn-cat {
-  font-weight: 800; letter-spacing: 3px; font-size: 19px;
-  color: rgba(23,19,14,.62); text-transform: uppercase;
-}
-.ckn-print { position: relative; }
-.ckn-photo {
-  width: 100%; height: 500px;
-  border-radius: 2px; overflow: hidden;
-  background: #ddd4c6;
-  box-shadow: inset 0 0 0 1px rgba(23,19,14,.14);
-}
-.ckn-name {
-  margin-top: 18px; font-weight: 900; font-size: 62px; line-height: .96;
-  letter-spacing: .5px; text-transform: uppercase; color: var(--ck-ink);
-}
-/* Ball seam: two hairlines with cross-stitches between them */
-.ckn-seam {
-  position: relative; height: 12px; margin: 12px 0 4px;
-  display: flex; align-items: center; justify-content: space-between;
-  border-top: 1px solid rgba(162,35,29,.5);
-  border-bottom: 1px solid rgba(162,35,29,.5);
-}
-.ckn-seam i {
-  display: block; width: 16px; height: 1.5px;
-  background: var(--ck-ball); transform: rotate(-24deg); opacity: .8;
-}
-.tpl-ck-nets .mh { color: #2a2118; }
-.tpl-ck-nets .mh .mh-star { color: var(--ck-ball); }
-
-.stage[data-template='ck-nets'] .price-zone { background: none; border: none; box-shadow: none; }
-.stage[data-template='ck-nets'] .status-pill { background: rgba(20,14,10,.66); border: 1px solid rgba(224,115,106,.34); }
-.stage[data-template='ck-nets'] .status-pill span { background: var(--ck-ball-lt); box-shadow: 0 0 12px var(--ck-ball-lt); }
-.stage[data-template='ck-nets'] .status-pill b { color: #f0ddd3; letter-spacing: 3px; }
-.stage[data-template='ck-nets'] .price-label { color: rgba(243,236,224,.58); letter-spacing: 5px; }
-.stage[data-template='ck-nets'] .current-price { color: var(--ck-card); text-shadow: 0 0 40px rgba(224,115,106,.3); }
-.stage[data-template='ck-nets'] .price-meta-card { background: rgba(20,14,10,.62); border-color: rgba(224,115,106,.26); }
-.stage[data-template='ck-nets'] .price-meta-card span { color: rgba(243,236,224,.5); }
-.stage[data-template='ck-nets'] .price-meta-card strong { color: var(--ck-ball-lt); }
-.stage[data-template='ck-nets'] .tournament-header { border-bottom-color: rgba(224,115,106,.24); }
-.stage[data-template='ck-nets'] .tournament-name { color: var(--ck-card); }
-.stage[data-template='ck-nets'] .brand-mark { border-color: rgba(224,115,106,.4); color: var(--ck-ball-lt); }
-.stage[data-template='ck-nets'] .progress-box { background: rgba(20,14,10,.62); border-color: rgba(224,115,106,.3); }
-.stage[data-template='ck-nets'] .progress-box strong { color: var(--ck-ball-lt); }
-
-/* Hall readability — these names sit on the same enlarged scale as the rest. */
-.ckc-name { font-size: 66px !important; }
-.ckn-name { font-size: 62px !important; }
-.ckc-cat, .ckn-cat { font-size: 21px !important; }
 
 /* ═══════════════════════════════════════════════════════════════════════
    BADMINTON — THREE SELF-CONTAINED TEMPLATES
@@ -3104,7 +2906,7 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
    the price stays on the screen's centre line. Names, categories and the
    detail line are sized to read from the back of a large hall.
    ═══════════════════════════════════════════════════════════════════════ */
-.stage:is([data-template='arena'], [data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .main-grid {
+.stage:is([data-template='arena'], [data-template='ck-house']) .main-grid {
   left: 28px !important; right: 28px !important;
   grid-template-columns: 680px minmax(0, 1fr) 680px !important;
   gap: 28px !important;
@@ -3112,35 +2914,284 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 
 /* The detail line (must-have) — larger, and capped so a long answer cannot
    push the photo out of its column. */
-.stage:is([data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .mh {
+.stage:is([data-template='ck-house']) .mh {
   font-size: 34px !important; line-height: 1.22; margin-top: 16px;
 }
-.stage:is([data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .mh .mh-val {
+.stage:is([data-template='ck-house']) .mh .mh-val {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 
-/* — Crease: wider, shorter portrait; bigger sightscreen lettering — */
-.ckc-photo { width: 640px !important; height: 520px !important; }
-.ckc-turf  { width: 600px !important; }
-.ckc-stumps { bottom: 372px !important; height: 560px !important; }
-.ckc-screen { width: 640px !important; padding: 20px 30px 22px !important; }
-.ckc-cat  { font-size: 28px !important; letter-spacing: 5px !important; }
-.ckc-name { font-size: 84px !important; margin-top: 8px !important; }
 
 
-/* — Nets: wider report card, taller print — */
-.ckn-card  { width: 660px !important; padding: 26px 30px 28px !important; }
-.ckn-photo { height: 470px !important; }
-.ckn-mark  { font-size: 24px !important; }
-.ckn-cat   { font-size: 26px !important; }
-.ckn-name  { font-size: 78px !important; margin-top: 18px !important; }
 
 /* — Team purses: the wider panel gets matching type — */
-.stage:is([data-template='arena'], [data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .panel-title { font-size: 28px !important; }
-.stage:is([data-template='arena'], [data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .team-row {
+.stage:is([data-template='arena'], [data-template='ck-house']) .panel-title { font-size: 28px !important; }
+.stage:is([data-template='arena'], [data-template='ck-house']) .team-row {
   grid-template-columns: 86px 1fr auto !important; gap: 22px !important; max-height: 150px !important;
 }
-.stage:is([data-template='arena'], [data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .team-logo { width: 78px; height: 78px; font-size: 28px; }
-.stage:is([data-template='arena'], [data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .team-copy strong { font-size: 38px; }
-.stage:is([data-template='arena'], [data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .team-copy span { font-size: 16px; }
-.stage:is([data-template='arena'], [data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .team-purse { font-size: 46px; }
+.stage:is([data-template='arena'], [data-template='ck-house']) .team-logo { width: 78px; height: 78px; font-size: 28px; }
+.stage:is([data-template='arena'], [data-template='ck-house']) .team-copy strong { font-size: 38px; }
+.stage:is([data-template='arena'], [data-template='ck-house']) .team-copy span { font-size: 16px; }
+.stage:is([data-template='arena'], [data-template='ck-house']) .team-purse { font-size: 46px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CRICKET — ROYAL SET (ck-gilded, ck-obsidian, ck-editorial)
+   Three black-and-gold looks on the same three columns as every stage:
+   player left, price centred, teams right. Each owns a cricket photograph.
+   The player shows name, category and up to three short facts (age, role,
+   city); a fact with no value in the sheet is hidden, never shown blank.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* — Shared: the photograph is the environment; equal side columns — */
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .sport-environment > *:not(.env-photo):not(.env-photo-grade):not(.env-grain),
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .drama { display: none; }
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .env-photo { opacity: 1 !important; background-size: cover !important; }
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .env-photo-grade { opacity: 1 !important; }
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .main-grid {
+  left: 28px !important; right: 28px !important;
+  grid-template-columns: 680px minmax(0, 1fr) 680px !important; gap: 28px !important;
+}
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .price-zone { background: none; border: none; box-shadow: none; }
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .tournament-header { background: none; border-bottom: none; }
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .team-bar { display: none; }
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .team-row::before { display: none; }
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .team-row {
+  grid-template-columns: 76px 1fr auto !important; grid-template-rows: auto !important;
+  gap: 22px !important; max-height: 150px !important; box-shadow: none !important;
+}
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .team-logo {
+  width: 72px; height: 72px; clip-path: none; box-shadow: none; overflow: hidden;
+}
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .team-logo img { width: 100%; height: 100%; object-fit: cover; }
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .team-purse,
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .tournament-name,
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .price-meta-card strong {
+  background-image: none; -webkit-text-fill-color: currentColor; filter: none;
+}
+
+/* The player card has a fixed design size, so the stage can shrink it to
+   fit on the auctioneer's screen, where the controls take some height. */
+.tpl-ckx { width: 680px; display: flex; flex-direction: column; align-items: center; }
+.ckx-facts { display: flex; justify-content: center; gap: 16px; width: 100%; }
+.ckx-fact { display: flex; flex-direction: column; min-width: 0; }
+.ckx-fact span { font-family: 'Jost', sans-serif; font-weight: 600; letter-spacing: 5px; font-size: 16px; }
+.ckx-fact strong { font-weight: 700; line-height: 1; text-transform: uppercase; overflow-wrap: anywhere; }
+.ckx-split span { display: block; }
+
+/* ══════════════ A — GILDED FRAME ══════════════ */
+.stage[data-template='ck-gilded'] { --cg: #d4af37; --cg-lt: #e8c872; --cg-ivory: #f6eedb; --cg-mute: #a8985f; }
+.stage[data-template='ck-gilded'] .env-photo {
+  background-image: url('img/bg-cricket-night-pitch.jpg') !important; background-position: center 58%;
+  filter: brightness(.62) saturate(.8) sepia(.45) blur(2px) !important;
+}
+.stage[data-template='ck-gilded'] .env-photo-grade {
+  background:
+    radial-gradient(ellipse 46% 34% at 50% 0%, rgba(255,214,130,.28), rgba(255,214,130,0) 70%),
+    radial-gradient(ellipse 62% 56% at 50% 50%, rgba(7,6,5,.12), rgba(7,6,5,.62) 80%, rgba(7,6,5,.86) 100%),
+    linear-gradient(180deg, rgba(7,6,5,.72) 0%, rgba(7,6,5,.12) 24%, rgba(7,6,5,.2) 70%, rgba(7,6,5,.88) 100%) !important;
+}
+.stage[data-template='ck-gilded'] .sport-environment::after {
+  content: ''; position: absolute; inset: 12px; border: 1px solid rgba(212,175,55,.42);
+  box-shadow: inset 0 0 0 7px rgba(0,0,0,0), inset 0 0 0 8px rgba(212,175,55,.16);
+}
+.tpl-ckg { font-family: 'Cinzel', serif; color: var(--cg-ivory); }
+.ckg-arch {
+  width: 540px; height: 520px; padding: 4px; box-sizing: border-box;
+  border-radius: 270px 270px 10px 10px;
+  background: linear-gradient(160deg, #f7e3a0, #b8912b 40%, #7a5a14 60%, #e8c872);
+  box-shadow: 0 30px 70px rgba(0,0,0,.6);
+}
+.ckg-photo { width: 100%; height: 100%; border-radius: 266px 266px 7px 7px; overflow: hidden; }
+.ckg-cat { margin-top: 24px; width: 580px; display: flex; align-items: center; gap: 20px; }
+.ckg-cat i { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--cg)); }
+.ckg-cat i:last-child { background: linear-gradient(90deg, var(--cg), transparent); }
+.ckg-cat span { font-family: 'Jost', sans-serif; font-weight: 600; font-size: 28px; letter-spacing: 9px; text-transform: uppercase; color: var(--cg-lt); text-align: center; }
+.ckg-name { margin-top: 10px; width: 660px; font-weight: 700; font-size: 76px; line-height: 1.04; letter-spacing: 2px; text-align: center; color: #f7f0de; overflow-wrap: normal; }
+.ckg-rule { margin-top: 16px; display: flex; align-items: center; gap: 14px; }
+.ckg-rule i { width: 90px; height: 1px; background: var(--cg); }
+.ckg-rule b { width: 10px; height: 10px; background: var(--cg); transform: rotate(45deg); }
+.tpl-ckg .ckx-facts { margin-top: 18px; }
+.tpl-ckg .ckx-fact { align-items: center; padding: 10px 22px; border: 1px solid rgba(212,175,55,.45); background: rgba(212,175,55,.06); gap: 6px; }
+.tpl-ckg .ckx-fact span { color: #c9a94f; }
+.tpl-ckg .ckx-fact strong { font-family: 'Cinzel', serif; font-size: 38px; color: #f7f0de; text-transform: none; }
+
+.stage[data-template='ck-gilded'] .brand-mark { background: none; border: 2px solid var(--cg); border-radius: 50%; color: var(--cg-lt); box-shadow: none; }
+.stage[data-template='ck-gilded'] .tournament-name { font-family: 'Cinzel', serif; font-weight: 700; font-size: 36px; letter-spacing: 2px; color: var(--cg-ivory); text-transform: none; }
+.stage[data-template='ck-gilded'] .tournament-org,
+.stage[data-template='ck-gilded'] .tournament-subtitle { font-family: 'Jost', sans-serif; color: #c9a94f; letter-spacing: 6px; }
+.stage[data-template='ck-gilded'] .progress-box { border: 1px solid rgba(212,175,55,.45); border-radius: 0; background: none; text-align: center; }
+.stage[data-template='ck-gilded'] .progress-box span { font-family: 'Jost', sans-serif; color: var(--cg-mute); letter-spacing: 5px; }
+.stage[data-template='ck-gilded'] .progress-box strong { font-family: 'Cinzel', serif; color: var(--cg-lt); }
+.stage[data-template='ck-gilded'] .live-dot { border-radius: 0; }
+.stage[data-template='ck-gilded'] .status-pill { background: none; border: 1px solid rgba(212,175,55,.55); border-radius: 0; }
+.stage[data-template='ck-gilded'] .status-pill span { background: var(--cg); box-shadow: none; }
+.stage[data-template='ck-gilded'] .status-pill b { font-family: 'Jost', sans-serif; color: var(--cg-lt); letter-spacing: 6px; }
+.stage[data-template='ck-gilded'] .price-label { font-family: 'Jost', sans-serif; font-weight: 500; letter-spacing: 11px; color: #b9a878; }
+.stage[data-template='ck-gilded'] .current-price {
+  font-family: 'Cinzel', serif; font-weight: 700; font-size: 176px; letter-spacing: 0; line-height: 1;
+  background: linear-gradient(180deg, #fbeab0, #d9b13f 52%, #9c7416); -webkit-background-clip: text; background-clip: text;
+  color: transparent; -webkit-text-fill-color: transparent; text-shadow: none;
+}
+.stage[data-template='ck-gilded'] .price-meta-card { border: 1px solid rgba(212,175,55,.38); border-radius: 0; background: rgba(12,9,5,.7); box-shadow: none; width: 200px; }
+.stage[data-template='ck-gilded'] .price-meta-card::before { display: none; }
+.stage[data-template='ck-gilded'] .price-meta-card span { font-family: 'Jost', sans-serif; color: var(--cg-mute); letter-spacing: 5px; }
+.stage[data-template='ck-gilded'] .price-meta-card strong { font-family: 'Cinzel', serif; font-size: 40px; color: var(--cg-ivory); }
+.stage[data-template='ck-gilded'] .increment-card strong { color: var(--cg-lt); }
+.stage[data-template='ck-gilded'] .bidder-tag { border-radius: 0; background: rgba(12,9,5,.7); }
+.stage[data-template='ck-gilded'] .bidder-name { font-family: 'Cinzel', serif; text-transform: none; }
+.stage[data-template='ck-gilded'] .purse-panel {
+  border: 1px solid rgba(212,175,55,.34) !important; border-radius: 0 !important;
+  background: linear-gradient(180deg, rgba(22,17,9,.86), rgba(9,7,4,.86)) !important;
+}
+.stage[data-template='ck-gilded'] .panel-title { font-family: 'Jost', sans-serif !important; color: var(--cg-lt); letter-spacing: 8px !important; border-bottom-color: rgba(212,175,55,.35); }
+.stage[data-template='ck-gilded'] .team-row {
+  background: none !important; border: none !important; border-bottom: 1px solid rgba(212,175,55,.2) !important;
+  border-radius: 0 !important; padding: 18px 10px 18px 14px !important;
+}
+.stage[data-template='ck-gilded'] .team-row.team-leading { background: rgba(212,175,55,.08) !important; border-left: 4px solid var(--cg) !important; }
+.stage[data-template='ck-gilded'] .team-logo {
+  border-radius: 50%; border: 3px solid var(--team-color); background: #14100a; color: var(--cg-ivory);
+  font-family: 'Cinzel', serif; font-size: 28px;
+}
+.stage[data-template='ck-gilded'] .team-copy strong { font-family: 'Cinzel', serif; font-size: 34px; color: #f7f0de; }
+.stage[data-template='ck-gilded'] .team-copy span { font-family: 'Jost', sans-serif; letter-spacing: 5px; color: #8f8259; }
+.stage[data-template='ck-gilded'] .team-purse { font-family: 'Cinzel', serif; font-size: 44px; color: var(--cg-lt); }
+.stage[data-template='ck-gilded'] .presented-by,
+.stage[data-template='ck-gilded'] .sponsor-credit-label { color: #8f8259; font-family: 'Jost', sans-serif; }
+.stage[data-template='ck-gilded'] .sponsor-credit b { color: var(--cg-lt); font-family: 'Cinzel', serif; }
+
+/* ══════════════ B — OBSIDIAN PLATE ══════════════ */
+.stage[data-template='ck-obsidian'] { --co: #d4af37; --co-lt: #f2d47a; --co-ink: #f5efe2; --co-mute: #8c8678; }
+.stage[data-template='ck-obsidian'] .env-photo {
+  background-image: url('img/bg-cricket-arena.jpg') !important; background-position: center 36%;
+  filter: grayscale(.55) brightness(.5) contrast(1.15) blur(1.5px) !important;
+}
+.stage[data-template='ck-obsidian'] .env-photo-grade {
+  background:
+    linear-gradient(115deg, rgba(8,8,8,.88) 0%, rgba(8,8,8,.42) 40%, rgba(8,8,8,.5) 62%, rgba(8,8,8,.9) 100%),
+    linear-gradient(180deg, rgba(8,8,8,.55) 0%, rgba(8,8,8,0) 30%, rgba(8,8,8,.1) 70%, rgba(8,8,8,.85) 100%) !important;
+}
+.stage[data-template='ck-obsidian'] .sport-environment::before {
+  content: ''; position: absolute; left: -200px; top: -120px; width: 900px; height: 1400px; transform: rotate(18deg);
+  background: linear-gradient(180deg, rgba(212,175,55,.16), rgba(212,175,55,0) 70%);
+}
+.stage[data-template='ck-obsidian'] .sport-environment::after {
+  content: ''; position: absolute; right: -260px; top: -200px; width: 520px; height: 1500px; transform: rotate(18deg);
+  background: linear-gradient(180deg, rgba(212,175,55,.08), rgba(212,175,55,0) 60%);
+}
+.tpl-cko { font-family: 'Barlow Condensed', sans-serif; color: var(--co-ink); align-items: stretch; width: 660px; }
+.cko-shot { position: relative; width: 660px; height: 420px; clip-path: polygon(0 0, 88% 0, 100% 12%, 100% 100%, 0 100%); }
+.cko-photo { width: 100%; height: 100%; }
+.cko-edge { position: absolute; left: 0; top: 0; bottom: 0; width: 10px; background: var(--co); }
+.cko-plate { background: #0d0c0a; border-top: 8px solid var(--co); padding: 20px 34px 26px; }
+.cko-catrow { display: flex; align-items: center; gap: 16px; }
+.cko-cat { background: var(--co); color: #0a0a0a; padding: 6px 18px; font-weight: 800; font-size: 30px; letter-spacing: 4px; text-transform: uppercase; max-width: 100%; }
+.cko-catrow i { flex: 1; height: 2px; background: rgba(212,175,55,.35); }
+.cko-name { margin-top: 12px; font-weight: 800; font-size: 100px; line-height: .9; letter-spacing: .5px; text-transform: uppercase; overflow-wrap: normal; }
+.cko-name .ckx-last { color: #e8c872; }
+.tpl-cko .ckx-facts { margin-top: 20px; justify-content: flex-start; gap: 0; border-top: 2px solid rgba(212,175,55,.45); }
+.tpl-cko .ckx-fact { flex: 1; padding: 12px 0 0 18px; gap: 4px; border-left: 2px solid rgba(212,175,55,.3); }
+.tpl-cko .ckx-fact:first-child { border-left: none; padding-left: 0; }
+.tpl-cko .ckx-fact span { color: var(--co); }
+.tpl-cko .ckx-fact strong { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 50px; color: var(--co-ink); }
+
+.stage[data-template='ck-obsidian'] .tournament-header { border-bottom: 2px solid rgba(212,175,55,.5) !important; }
+.stage[data-template='ck-obsidian'] .brand-mark { background: var(--co); color: #0a0a0a; border: none; border-radius: 0; clip-path: polygon(0 0, 100% 0, 100% 72%, 72% 100%, 0 100%); box-shadow: none; }
+.stage[data-template='ck-obsidian'] .tournament-name { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 46px; color: var(--co-ink); text-transform: uppercase; }
+.stage[data-template='ck-obsidian'] .tournament-org,
+.stage[data-template='ck-obsidian'] .tournament-subtitle { font-family: 'Jost', sans-serif; color: var(--co); letter-spacing: 6px; }
+.stage[data-template='ck-obsidian'] .progress-box { border: none; background: none; }
+.stage[data-template='ck-obsidian'] .progress-box strong { color: var(--co-ink); font-size: 36px; }
+.stage[data-template='ck-obsidian'] .live-dot { border-radius: 0; background: #c0392b; border: none; color: #fff; }
+.stage[data-template='ck-obsidian'] .live-dot span { background: #fff; box-shadow: none; }
+.stage[data-template='ck-obsidian'] .status-pill { background: var(--co); border: none; border-radius: 0; box-shadow: none; }
+.stage[data-template='ck-obsidian'] .status-pill span { display: none; }
+.stage[data-template='ck-obsidian'] .status-pill b { color: #0a0a0a; font-weight: 800; letter-spacing: 6px; }
+.stage[data-template='ck-obsidian'] .price-label { letter-spacing: 10px; color: var(--co-mute); font-size: 26px; }
+.stage[data-template='ck-obsidian'] .current-price {
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 220px; line-height: .86; letter-spacing: -4px;
+  background: none; color: var(--co-lt); -webkit-text-fill-color: var(--co-lt); text-shadow: none;
+}
+.stage[data-template='ck-obsidian'] .price-meta-row { gap: 0; border-top: 2px solid rgba(212,175,55,.5); border-bottom: 2px solid rgba(212,175,55,.5); }
+.stage[data-template='ck-obsidian'] .price-meta-card { background: none; border: none; border-radius: 0; box-shadow: none; width: 210px; }
+.stage[data-template='ck-obsidian'] .price-meta-card + .price-meta-card { border-left: 2px solid rgba(212,175,55,.3); }
+.stage[data-template='ck-obsidian'] .price-meta-card::before { display: none; }
+.stage[data-template='ck-obsidian'] .price-meta-card span { font-family: 'Jost', sans-serif; color: var(--co-mute); letter-spacing: 5px; }
+.stage[data-template='ck-obsidian'] .price-meta-card strong { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 52px; color: var(--co-ink); }
+.stage[data-template='ck-obsidian'] .increment-card strong { color: var(--co); }
+.stage[data-template='ck-obsidian'] .bidder-tag { border-radius: 0; border-width: 2px; background: none; }
+.stage[data-template='ck-obsidian'] .purse-panel { background: none !important; border: none !important; box-shadow: none !important; backdrop-filter: none; }
+.stage[data-template='ck-obsidian'] .panel-title { font-family: 'Barlow Condensed', sans-serif !important; font-weight: 800; font-size: 32px !important; color: var(--co); letter-spacing: 6px !important; border-bottom: 2px solid rgba(212,175,55,.4); }
+.stage[data-template='ck-obsidian'] .team-rows { gap: 14px !important; }
+.stage[data-template='ck-obsidian'] .team-row {
+  background: #121110 !important; border: none !important; border-left: 10px solid var(--team-color) !important;
+  border-radius: 0 !important; padding: 16px 24px !important;
+}
+.stage[data-template='ck-obsidian'] .team-row.team-leading { background: #1a1813 !important; outline: 2px solid var(--co); }
+.stage[data-template='ck-obsidian'] .team-logo { border-radius: 0; background: var(--team-color); color: #fff; font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 30px; }
+.stage[data-template='ck-obsidian'] .team-copy strong { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 44px; text-transform: uppercase; color: var(--co-ink); }
+.stage[data-template='ck-obsidian'] .team-copy span { font-family: 'Jost', sans-serif; letter-spacing: 4px; color: var(--co-mute); }
+.stage[data-template='ck-obsidian'] .team-purse { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 56px; color: var(--co-lt); }
+.stage[data-template='ck-obsidian'] .presented-by { color: var(--co-mute); }
+.stage[data-template='ck-obsidian'] .sponsor-credit b { color: var(--co); }
+
+/* ══════════════ D — EDITORIAL ══════════════ */
+.stage[data-template='ck-editorial'] { --ce: #e2b54a; --ce-lt: #f1c75e; --ce-ink: #fbf6ea; }
+.stage[data-template='ck-editorial'] .env-photo {
+  background-image: url('img/bg-cricket-dusk.jpg') !important; background-position: center 60%;
+  filter: brightness(.6) saturate(1.1) blur(3px) !important;
+}
+.stage[data-template='ck-editorial'] .env-photo-grade {
+  background:
+    linear-gradient(90deg, rgba(10,9,8,.5) 0%, rgba(10,9,8,.15) 40%, rgba(10,9,8,.45) 72%, rgba(10,9,8,.82) 100%),
+    linear-gradient(180deg, rgba(10,9,8,.6) 0%, rgba(10,9,8,0) 28%, rgba(10,9,8,.1) 70%, rgba(10,9,8,.85) 100%) !important;
+}
+.tpl-cke { position: relative; width: 680px; height: 900px; border-radius: 28px; overflow: hidden; box-shadow: 0 40px 90px rgba(0,0,0,.55); font-family: 'Barlow Condensed', sans-serif; color: var(--ce-ink); }
+.cke-photo { position: absolute !important; inset: 0; width: 100%; height: 100%; }
+.cke-shade { position: absolute; left: 0; right: 0; bottom: 0; height: 520px; background: linear-gradient(180deg, rgba(10,9,8,0) 0%, rgba(10,9,8,.72) 42%, rgba(10,9,8,.96) 100%); }
+.cke-cat { position: absolute; left: 28px; top: 28px; padding: 10px 22px; background: var(--ce); color: #120e06; font-weight: 800; font-size: 30px; letter-spacing: 4px; text-transform: uppercase; max-width: calc(100% - 56px); }
+.cke-copy { position: absolute; left: 40px; right: 40px; bottom: 38px; }
+.cke-name { font-weight: 900; font-size: 116px; line-height: .86; letter-spacing: -.5px; text-transform: uppercase; overflow-wrap: normal; }
+.cke-name .ckx-last { color: var(--ce); }
+.tpl-cke .ckx-facts { margin-top: 22px; padding-top: 16px; border-top: 2px solid rgba(226,181,74,.6); justify-content: flex-start; gap: 40px; }
+.tpl-cke .ckx-fact { gap: 4px; }
+.tpl-cke .ckx-fact span { color: var(--ce); }
+.tpl-cke .ckx-fact strong { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 52px; color: var(--ce-ink); }
+
+.stage[data-template='ck-editorial'] .brand-mark { background: none; border: none; border-left: 6px solid var(--ce); border-radius: 0; width: 18px; box-shadow: none; color: transparent; overflow: hidden; }
+.stage[data-template='ck-editorial'] .brand-mark.has-logo { width: 56px; border-left: none; color: inherit; }
+.stage[data-template='ck-editorial'] .tournament-name { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 46px; color: var(--ce-ink); text-transform: uppercase; }
+.stage[data-template='ck-editorial'] .tournament-org,
+.stage[data-template='ck-editorial'] .tournament-subtitle { font-family: 'Sora', sans-serif; color: var(--ce); letter-spacing: 5px; }
+.stage[data-template='ck-editorial'] .progress-box { border: none; background: none; }
+.stage[data-template='ck-editorial'] .progress-box strong { color: var(--ce-ink); font-size: 38px; }
+.stage[data-template='ck-editorial'] .live-dot { border: none; background: none; color: #ff6b5b; font-size: 18px; }
+.stage[data-template='ck-editorial'] .status-pill { background: none; border: none; box-shadow: none; padding: 0; }
+.stage[data-template='ck-editorial'] .status-pill b { color: rgba(251,246,234,.75); letter-spacing: 8px; }
+.stage[data-template='ck-editorial'] .price-label { letter-spacing: 10px; color: rgba(251,246,234,.75); font-size: 26px; }
+.stage[data-template='ck-editorial'] .current-price {
+  font-family: 'Barlow Condensed', sans-serif; font-weight: 900; font-size: 232px; line-height: .84; letter-spacing: -6px;
+  background: none; color: var(--ce-lt); -webkit-text-fill-color: var(--ce-lt); text-shadow: 0 12px 60px rgba(0,0,0,.5);
+}
+.stage[data-template='ck-editorial'] .price-meta-row { gap: 0; border-top: 2px solid rgba(251,246,234,.3); border-bottom: 2px solid rgba(251,246,234,.3); }
+.stage[data-template='ck-editorial'] .price-meta-card { background: none; border: none; border-radius: 0; box-shadow: none; width: 200px; }
+.stage[data-template='ck-editorial'] .price-meta-card::before { display: none; }
+.stage[data-template='ck-editorial'] .price-meta-card span { font-family: 'Sora', sans-serif; color: rgba(251,246,234,.65); letter-spacing: 4px; }
+.stage[data-template='ck-editorial'] .price-meta-card strong { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 54px; color: var(--ce-ink); }
+.stage[data-template='ck-editorial'] .increment-card strong { color: var(--ce-lt); }
+.stage[data-template='ck-editorial'] .bidder-tag { border-radius: 0; background: none; border: none; flex-direction: column; gap: 4px; }
+.stage[data-template='ck-editorial'] .bidder-name { font-size: 52px; }
+.stage[data-template='ck-editorial'] .purse-panel { background: none !important; border: none !important; box-shadow: none !important; backdrop-filter: none; }
+.stage[data-template='ck-editorial'] .panel-title { font-family: 'Barlow Condensed', sans-serif !important; font-weight: 900; font-size: 40px !important; color: var(--ce-ink); letter-spacing: 4px !important; border-bottom: 3px solid var(--ce); }
+.stage[data-template='ck-editorial'] .team-rows { gap: 0 !important; }
+.stage[data-template='ck-editorial'] .team-row {
+  background: none !important; border: none !important; border-bottom: 1px solid rgba(251,246,234,.18) !important;
+  border-radius: 0 !important; padding: 18px 14px !important;
+}
+.stage[data-template='ck-editorial'] .team-row.team-leading { background: rgba(255,122,82,.16) !important; }
+.stage[data-template='ck-editorial'] .team-logo { border-radius: 0; background: var(--team-color); color: #fff; font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 28px; }
+.stage[data-template='ck-editorial'] .team-copy strong { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; font-size: 48px; text-transform: uppercase; color: var(--ce-ink); }
+.stage[data-template='ck-editorial'] .team-copy span { font-family: 'Sora', sans-serif; letter-spacing: 4px; color: rgba(251,246,234,.6); }
+.stage[data-template='ck-editorial'] .team-purse { font-family: 'Barlow Condensed', sans-serif; font-weight: 900; font-size: 58px; color: var(--ce-lt); }
+.stage[data-template='ck-editorial'] .presented-by { color: rgba(251,246,234,.6); }
+.stage[data-template='ck-editorial'] .sponsor-credit b { color: var(--ce); }
