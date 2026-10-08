@@ -3105,3 +3105,56 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 .ttt-name, .ttr-name { font-size: 62px !important; }
 .ttb-name { font-size: 54px !important; }
 .ttt-cat, .ttr-cat, .ttb-cat { font-size: 21px !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CRICKET — HALL SCALE
+   Same three columns, price still centred: the two side columns are now
+   equal and wider, so the player card and the team purses get more room and
+   the price stays on the screen's centre line. Names, categories and the
+   detail line are sized to read from the back of a large hall.
+   ═══════════════════════════════════════════════════════════════════════ */
+.stage:is([data-template='arena'], [data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .main-grid {
+  left: 28px !important; right: 28px !important;
+  grid-template-columns: 680px minmax(0, 1fr) 680px !important;
+  gap: 28px !important;
+}
+
+/* The detail line (must-have) — larger, and capped so a long answer cannot
+   push the photo out of its column. */
+.stage:is([data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .mh {
+  font-size: 34px !important; line-height: 1.22; margin-top: 16px;
+}
+.stage:is([data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .mh .mh-val {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* — Crease: wider, shorter portrait; bigger sightscreen lettering — */
+.ckc-photo { width: 640px !important; height: 520px !important; }
+.ckc-turf  { width: 600px !important; }
+.ckc-stumps { bottom: 372px !important; height: 560px !important; }
+.ckc-screen { width: 640px !important; padding: 20px 30px 22px !important; }
+.ckc-cat  { font-size: 28px !important; letter-spacing: 5px !important; }
+.ckc-name { font-size: 84px !important; margin-top: 8px !important; }
+
+/* — Full House: wider LED medallion and board — */
+.ckh-medal { width: 580px !important; height: 470px !important; }
+.ckh-board { width: 660px !important; padding: 20px 30px 22px !important; }
+.ckh-cat   { font-size: 28px !important; padding: 8px 24px !important; letter-spacing: 5px !important; }
+.ckh-name  { font-size: 82px !important; margin-top: 14px !important; }
+
+/* — Nets: wider report card, taller print — */
+.ckn-card  { width: 660px !important; padding: 26px 30px 28px !important; }
+.ckn-photo { height: 470px !important; }
+.ckn-mark  { font-size: 24px !important; }
+.ckn-cat   { font-size: 26px !important; }
+.ckn-name  { font-size: 78px !important; margin-top: 18px !important; }
+
+/* — Team purses: the wider panel gets matching type — */
+.stage:is([data-template='arena'], [data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .panel-title { font-size: 28px !important; }
+.stage:is([data-template='arena'], [data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .team-row {
+  grid-template-columns: 86px 1fr auto !important; gap: 22px !important; max-height: 150px !important;
+}
+.stage:is([data-template='arena'], [data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .team-logo { width: 78px; height: 78px; font-size: 28px; }
+.stage:is([data-template='arena'], [data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .team-copy strong { font-size: 38px; }
+.stage:is([data-template='arena'], [data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .team-copy span { font-size: 16px; }
+.stage:is([data-template='arena'], [data-template='ck-crease'], [data-template='ck-house'], [data-template='ck-nets']) .team-purse { font-size: 46px; }

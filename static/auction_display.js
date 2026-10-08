@@ -573,15 +573,40 @@
         first.textContent = '';
       }
     }
+    // Cricket cards: a name keeps its large size unless one word is wider than
+    // its plate, in which case only that name shrinks (never mid-word breaks).
+    playerZone.querySelectorAll('.ckc-name, .ckh-name, .ckn-name, .player-name').forEach(el => {
+      el.style.fontSize = '';
+      let fs = parseFloat(getComputedStyle(el).fontSize) || 60;
+      while (el.scrollWidth > el.clientWidth + 1 && fs > 36) {
+        fs -= 3; el.style.setProperty('font-size', fs + 'px', 'important');
+      }
+    });
     paintPhoto();
     // Re-fit: the must-have line length changes the card height per player.
     fitPlayerCard();
+  }
+
+  /* Keep the price on one line inside the centre column. The column is
+     narrower on the cricket layouts, so a four-digit price could otherwise
+     spill into the side panels; it shrinks only as far as it must. */
+  function fitPriceText() {
+    const el = document.querySelector('.current-price');
+    const zone = el && el.parentElement;
+    if (!zone) return;
+    el.style.fontSize = '';
+    let fs = parseFloat(getComputedStyle(el).fontSize) || 162;
+    while (el.offsetWidth > zone.clientWidth - 8 && fs > 70) {
+      fs -= 6;
+      el.style.fontSize = fs + 'px';
+    }
   }
 
   let lastPrice = null;
   function paintAuction() {
     setSlot('auction.status', state.auction.status);
     setSlot('auction.current-price', money(state.auction.currentPrice));
+    fitPriceText();
     setSlot('auction.increment', state.auction.increment ? `+ ${money(state.auction.increment)}` : '+ ₹ --');
     setSlot('auction.progress', state.tournament.progress);
 
@@ -1088,9 +1113,18 @@
     const zh = zone.clientHeight, zw = zone.clientWidth;
     const ah = art.offsetHeight, aw = art.offsetWidth;
     if (!zh || !zw || !ah || !aw) return;
-    const s = Math.min(1, zh / ah, zw / aw);
-    if (s < 0.999) art.style.zoom = s;
+    // Cards with a fixed design size may also be scaled UP to fill the column.
+    // The target comes from the design size, not from the live content, so the
+    // photo is the same size for every player; the live measurement can only
+    // pull it down (a very long name or detail line).
+    const design = FIT_UP[stage.dataset.template];
+    const fitNow = Math.min(zh / ah, zw / aw);
+    const s = design ? Math.min(1.6, zw / design[0], zh / design[1], fitNow)
+                     : Math.min(1, fitNow);
+    if (Math.abs(s - 1) > 0.001) art.style.zoom = s;
   }
+  // [width, height] a template is designed at, for those that scale up.
+  const FIT_UP = { arena: [468, 690] };
   window.__fitPlayerCard = fitPlayerCard;
   // Expose so the admin panel can re-fit after it becomes visible / changes height
   window.__fitStage = fitStage;
