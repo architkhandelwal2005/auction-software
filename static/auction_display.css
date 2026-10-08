@@ -3195,3 +3195,57 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 .stage[data-template='ck-editorial'] .team-purse { font-family: 'Barlow Condensed', sans-serif; font-weight: 900; font-size: 58px; color: var(--ce-lt); }
 .stage[data-template='ck-editorial'] .presented-by { color: rgba(251,246,234,.6); }
 .stage[data-template='ck-editorial'] .sponsor-credit b { color: var(--ce); }
+
+/* — Royal set, round 2: a lighter teams panel and bigger photos — */
+
+/* Teams: a narrower panel, only as tall as its rows, right-aligned in its
+   column so the price stays on the screen's centre line. */
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .purse-panel {
+  width: 560px !important; justify-self: end !important;
+  align-self: center !important; height: auto !important;
+}
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .team-rows { flex: none !important; }
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .team-row {
+  flex: none !important; min-height: 0 !important;
+  grid-template-columns: 56px 1fr auto !important; gap: 16px !important;
+}
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .team-logo { width: 56px; height: 56px; font-size: 22px !important; }
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .team-copy span { font-size: 12px; }
+
+.stage[data-template='ck-gilded'] .panel-title { font-size: 18px !important; }
+.stage[data-template='ck-gilded'] .team-row { padding: 14px 8px 14px 12px !important; }
+.stage[data-template='ck-gilded'] .team-copy strong { font-size: 26px; }
+.stage[data-template='ck-gilded'] .team-purse { font-size: 34px; }
+
+.stage[data-template='ck-obsidian'] .panel-title { font-size: 26px !important; }
+.stage[data-template='ck-obsidian'] .team-rows { gap: 10px !important; }
+.stage[data-template='ck-obsidian'] .team-row { padding: 12px 18px !important; border-left-width: 8px !important; }
+.stage[data-template='ck-obsidian'] .team-copy strong { font-size: 34px; }
+.stage[data-template='ck-obsidian'] .team-purse { font-size: 42px; }
+
+.stage[data-template='ck-editorial'] .panel-title { font-size: 32px !important; }
+.stage[data-template='ck-editorial'] .team-row { padding: 14px 10px !important; }
+.stage[data-template='ck-editorial'] .team-copy strong { font-size: 36px; }
+.stage[data-template='ck-editorial'] .team-purse { font-size: 44px; }
+
+/* Photos: bigger, and framed on the face rather than the middle of the shot. */
+.stage:is([data-template='ck-gilded'],[data-template='ck-obsidian'],[data-template='ck-editorial']) .photo-shell { --focal-y: 28%; }
+
+.ckg-arch { width: 620px; height: 590px; border-radius: 310px 310px 12px 12px; }
+.ckg-photo { border-radius: 306px 306px 9px 9px; }
+.ckg-cat { margin-top: 20px; }
+.ckg-name { font-size: 68px; margin-top: 8px; }
+.ckg-rule { margin-top: 12px; }
+.tpl-ckg .ckx-facts { margin-top: 14px; }
+.tpl-ckg .ckx-fact { padding: 8px 20px; }
+.tpl-ckg .ckx-fact strong { font-size: 34px; }
+
+.cko-shot { height: 510px !important; }
+.cko-plate { padding: 16px 30px 22px; }
+.cko-cat { font-size: 26px; padding: 5px 16px; }
+.cko-name { font-size: 84px !important; margin-top: 10px; }
+.tpl-cko .ckx-facts { margin-top: 14px; }
+.tpl-cko .ckx-fact { padding-top: 10px; }
+.tpl-cko .ckx-fact strong { font-size: 40px; }
+
+.tpl-cke { height: 890px; }
