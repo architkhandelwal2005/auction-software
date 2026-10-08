@@ -513,8 +513,8 @@ const ShareModal = ({ teams, onClose }) => {
                         <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-1">
                             {teams.map(t => (
                                 <div key={t.id} className="flex items-center gap-2.5 p-2.5 bg-slate-950 rounded-xl border border-slate-800">
-                                    <div className="w-6 h-6 rounded-md flex items-center justify-center text-white font-bold text-xs" style={{ background: t.color || '#3b82f6' }}>
-                                        {t.name[0]}
+                                    <div className="w-6 h-6 rounded-md flex items-center justify-center text-white font-bold text-xs overflow-hidden" style={{ background: t.color || '#3b82f6' }}>
+                                        {t.logo_url ? <img src={t.logo_url} className="w-full h-full object-contain" /> : t.name[0]}
                                     </div>
                                     <span className="font-bold text-slate-300 text-xs flex-1 truncate">{t.name}</span>
                                     <button onClick={() => copy(`${origin}/team/${t.id}`, `team-${t.id}`)} className="bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1 rounded-lg text-xs font-bold transition">
@@ -851,7 +851,11 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
         setAnalyzing(false);
     };
 
+    const [launching, setLaunching] = useState(false);
     const finish = async () => {
+        if (launching) return;   // a second click would submit every team again
+        setLaunching(true);
+        try {
         // Squad size (Total Players / Teams) drives the Max-Allowed-Bid reserve on
         // the server. It is set independently in Step 3 — NOT summed from category
         // minimums, which under-count it whenever a category has flex/leftover
@@ -886,6 +890,7 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
             if (!d.success && d.message) alert(d.message);
         } catch (e) { /* the dashboard still opens; the admin can retry */ }
         onComplete();
+        } finally { setLaunching(false); }
     };
 
     const stepMeta = [
@@ -1398,7 +1403,7 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                             className={`bg-gradient-to-r ${stepMeta[step].color} text-white px-7 py-3 rounded-2xl fredoka font-bold text-base transition shadow-lg flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:scale-105 disabled:hover:scale-100`}>
                             Next <i className="fa-solid fa-arrow-right"></i>
                           </button>
-                        : <button onClick={finish} disabled={!canFinish}
+                        : <button onClick={finish} disabled={!canFinish || launching}
                             className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white px-8 py-3 rounded-2xl fredoka font-bold text-base hover:scale-105 transition shadow-lg shadow-green-500/25 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
                             <i className="fa-solid fa-rocket"></i> Launch Auction!
                           </button>}
@@ -1755,8 +1760,44 @@ function App() {
     // CRUD
     const [newTeam,setNewTeam]=useState({name:'',total_budget:''});
     const [newPlayer,setNewPlayer]=useState({name:'',category:'',base_price:''});
-    const addTeam = async e => { e.preventDefault(); await fetch('/api/teams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newTeam.name,total_budget:parseFloat(newTeam.total_budget),color:TEAM_COLORS[teams.length%TEAM_COLORS.length]})}); setNewTeam({name:'',total_budget:''}); loadData(); };
-    const updateTeam = async e => { e.preventDefault(); await fetch('/api/teams/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:editTeam.id,name:editTeam.name,total_budget:parseFloat(editTeam.total_budget),color:editTeam.color})}); setEditTeam(null); loadData(); };
+    const [teamBusy,setTeamBusy]=useState(false);
+    const uploadTeamLogo = async (id, file) => {
+        const fd = new FormData(); fd.append('logo', file);
+        try { await fetch('/api/teams/logo/'+id,{method:'POST',body:fd}); } catch(e) { /* the team exists; the logo can be added again */ }
+    };
+    // Picking a logo stages the file with a local preview; it uploads on submit.
+    const stageLogo = (setter, file) => { if(file) setter(s=>({...s, logoFile:file, logoPreview:URL.createObjectURL(file)})); };
+    const addTeam = async e => {
+        e.preventDefault();
+        if (teamBusy) return;   // a second click while saving would create the team twice
+        setTeamBusy(true);
+        try {
+            const r = await fetch('/api/teams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newTeam.name,total_budget:parseFloat(newTeam.total_budget),color:TEAM_COLORS[teams.length%TEAM_COLORS.length]})}).then(r=>r.json());
+            if (r.error) { alert(r.error); return; }
+            if (r.existing) alert('A team named "'+newTeam.name.trim()+'" already exists.');
+            else if (r.id && newTeam.logoFile) await uploadTeamLogo(r.id, newTeam.logoFile);
+            setNewTeam({name:'',total_budget:''}); setShowAddTeamModal(false); loadData();
+        } finally { setTeamBusy(false); }
+    };
+    const updateTeam = async e => {
+        e.preventDefault();
+        if (teamBusy) return;
+        setTeamBusy(true);
+        try {
+            await fetch('/api/teams/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:editTeam.id,name:editTeam.name,total_budget:parseFloat(editTeam.total_budget),color:editTeam.color})});
+            if (editTeam.logoFile) await uploadTeamLogo(editTeam.id, editTeam.logoFile);
+            setEditTeam(null); loadData();
+        } finally { setTeamBusy(false); }
+    };
+    const TeamLogoPicker = ({ team, setTeam }) => (
+        <label className="flex items-center gap-3 cursor-pointer bg-slate-950 border border-dashed border-slate-700 hover:border-blue-400 rounded-xl p-2.5 transition">
+            <span className="w-12 h-12 rounded-xl bg-slate-800 flex items-center justify-center overflow-hidden shrink-0 text-slate-500">
+                {(team.logoPreview || team.logo_url) ? <img src={team.logoPreview || team.logo_url} className="w-full h-full object-contain" /> : <i className="fa-solid fa-image"></i>}
+            </span>
+            <span className="text-xs font-bold text-slate-300">{(team.logoPreview || team.logo_url) ? 'Change team logo' : 'Upload team logo (optional)'}</span>
+            <input type="file" accept="image/*" className="hidden" onChange={e=>stageLogo(setTeam, e.target.files[0])} />
+        </label>
+    );
     const addPlayer = async e => { e.preventDefault(); await fetch('/api/players',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newPlayer.name,category:newPlayer.category,base_price:parseFloat(newPlayer.base_price||0)})}); setNewPlayer({name:'',category:'',base_price:''}); loadData(); };
     const updatePlayer = async e => { e.preventDefault(); await fetch('/api/players/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:editPlayer.id,name:editPlayer.name,category:editPlayer.category,base_price:parseFloat(editPlayer.base_price||0)})}); setEditPlayer(null); loadData(); };
     const uploadPhoto = async (pid,file) => { const fd=new FormData();fd.append('photo',file); await fetch(`/api/players/photo/${pid}`,{method:'POST',body:fd}); loadData(); };
@@ -2397,7 +2438,8 @@ function App() {
                     <input required type="text" className="w-full bg-slate-950 border border-slate-700 text-white p-3 rounded-xl font-bold text-sm" value={editTeam.name} onChange={e=>setEditTeam({...editTeam,name:e.target.value})} />
                     <input required type="number" className="w-full bg-slate-950 border border-slate-700 text-white p-3 rounded-xl font-bold text-sm" value={editTeam.total_budget} onChange={e=>setEditTeam({...editTeam,total_budget:e.target.value})} />
                     <div className="flex items-center gap-2 flex-wrap"><label className="text-xs font-bold text-slate-400">Color:</label><input type="color" value={editTeam.color||'#3b82f6'} onChange={e=>setEditTeam({...editTeam,color:e.target.value})} className="w-10 h-10 rounded-lg cursor-pointer bg-transparent border-0" /></div>
-                    <div className="flex gap-3"><button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl font-bold text-sm">Save</button><button type="button" onClick={()=>setEditTeam(null)} className="bg-slate-800 text-slate-300 px-5 py-2.5 rounded-xl font-bold text-sm">Cancel</button></div>
+                    {TeamLogoPicker({team:editTeam, setTeam:setEditTeam})}
+                    <div className="flex gap-3"><button type="submit" disabled={teamBusy} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white py-2.5 rounded-xl font-bold text-sm">{teamBusy?'Saving…':'Save'}</button><button type="button" onClick={()=>setEditTeam(null)} className="bg-slate-800 text-slate-300 px-5 py-2.5 rounded-xl font-bold text-sm">Cancel</button></div>
                 </form>
             </div>}
 
@@ -2406,7 +2448,8 @@ function App() {
                     <h3 className="fredoka text-lg font-bold text-white flex items-center gap-2"><i className="fa-solid fa-plus text-blue-400"></i>Add Franchise</h3>
                     <input required type="text" placeholder="Franchise name" className="w-full bg-slate-950 border border-slate-700 text-white p-3 rounded-xl font-bold text-sm focus:border-blue-400 outline-none" value={newTeam.name} onChange={e=>setNewTeam({...newTeam,name:e.target.value})} />
                     <input required type="number" placeholder="Budget (Lakhs)" className="w-full bg-slate-950 border border-slate-700 text-white p-3 rounded-xl font-bold text-sm focus:border-blue-400 outline-none" value={newTeam.total_budget} onChange={e=>setNewTeam({...newTeam,total_budget:e.target.value})} />
-                    <div className="flex gap-3"><button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl font-bold text-sm">Add Team</button><button type="button" onClick={()=>setShowAddTeamModal(false)} className="bg-slate-800 text-slate-300 px-5 py-2.5 rounded-xl font-bold text-sm">Cancel</button></div>
+                    {TeamLogoPicker({team:newTeam, setTeam:setNewTeam})}
+                    <div className="flex gap-3"><button type="submit" disabled={teamBusy} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white py-2.5 rounded-xl font-bold text-sm">{teamBusy?'Adding…':'Add Team'}</button><button type="button" onClick={()=>setShowAddTeamModal(false)} className="bg-slate-800 text-slate-300 px-5 py-2.5 rounded-xl font-bold text-sm">Cancel</button></div>
                 </form>
             </div>}
 

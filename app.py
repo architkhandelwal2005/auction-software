@@ -1617,9 +1617,20 @@ def get_teams():
 
 @app.route('/api/teams', methods=['POST'])
 def add_team():
-    data = request.json
+    data = request.json or {}
+    name = str(data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Team name is required'}), 400
+    data['name'] = name
     conn = get_db()
     c = conn.cursor()
+    # A team name is unique within an auction. Setup can be submitted twice (a
+    # retried or double-clicked Launch, or a reopened wizard); answering with
+    # the team that already exists keeps that from creating duplicates.
+    existing = c.execute('SELECT id FROM teams WHERE LOWER(name) = LOWER(?)', (name,)).fetchone()
+    if existing:
+        conn.close()
+        return jsonify({'id': existing['id'], 'success': True, 'existing': True})
     if USE_PG:
         c.execute('INSERT INTO teams (name, total_budget, remaining_budget, color) VALUES (?, ?, ?, ?) RETURNING id',
                   (data['name'], data['total_budget'], data['total_budget'], data.get('color', '#3b82f6')))
@@ -2507,6 +2518,21 @@ def load_test_data():
     return load_preset()
 
 # ─── Auction Actions ───
+def add_team_logos(conn, state):
+    """Add the leading bidder's and the last buyer's logo to an auction-state
+    dict. Every screen that names one of those teams shows its logo beside the
+    name, so it is resolved here once instead of in each screen."""
+    state['bidder_team_logo'] = ''
+    state['last_sold_team_logo'] = ''
+    if state.get('bidder_team_id'):
+        t = conn.execute('SELECT logo_url FROM teams WHERE id = ?', (state['bidder_team_id'],)).fetchone()
+        state['bidder_team_logo'] = (t['logo_url'] if t else '') or ''
+    if state.get('last_sold_team_name'):
+        t = conn.execute('SELECT logo_url FROM teams WHERE name = ?', (state['last_sold_team_name'],)).fetchone()
+        state['last_sold_team_logo'] = (t['logo_url'] if t else '') or ''
+    return state
+
+
 @app.route('/api/auction/state', methods=['GET'])
 def get_auction_state():
     conn = get_db()
@@ -2519,6 +2545,7 @@ def get_auction_state():
                 state['attributes'] = json.loads(p_row['attributes'])
             except Exception:
                 state['attributes'] = {}
+    add_team_logos(conn, state)
     conn.close()
     return jsonify(state)
 
@@ -2926,7 +2953,7 @@ def get_team_data(team_id):
 
     # Current auction state
     state = {r['key']: r['value'] for r in conn.execute('SELECT * FROM auction_state').fetchall()}
-    td['auction_state'] = state
+    td['auction_state'] = add_team_logos(conn, state)
 
     # All teams summary with metrics
     all_teams = conn.execute('SELECT * FROM teams').fetchall()
@@ -2951,7 +2978,7 @@ def build_live_report(conn):
     same queries to drift out of sync.
     """
     config = {r['key']: r['value'] for r in conn.execute('SELECT * FROM config').fetchall()}
-    state = {r['key']: r['value'] for r in conn.execute('SELECT * FROM auction_state').fetchall()}
+    state = add_team_logos(conn, {r['key']: r['value'] for r in conn.execute('SELECT * FROM auction_state').fetchall()})
 
     # Teams with Max Allowed Bid & Reserved Purse
     teams = conn.execute('SELECT * FROM teams').fetchall()

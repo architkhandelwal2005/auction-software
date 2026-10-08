@@ -5,6 +5,8 @@ particular sheet staying public; the real fetch is verified separately.
 """
 import os, sys
 os.environ['DATABASE_URL'] = ''
+os.environ['SUPABASE_URL'] = ''           # keep test uploads on local disk, never the real bucket
+os.environ['SUPABASE_SERVICE_KEY'] = ''
 sys.path.insert(0, r'D:\auction software')
 os.chdir(r'D:\auction software')
 import app as A

@@ -39,6 +39,7 @@ const TeamApp = () => {
             // Leading bidder, set when the auctioneer raises a bid for a team.
             data.bidder_team_name = name ? (st.bidder_team_name || '') : '';
             data.bidder_team_color = name ? (st.bidder_team_color || '') : '';
+            data.bidder_team_logo = name ? (st.bidder_team_logo || '') : '';
             if (name) {
                 const pool = data.unsold_players || [];
                 const match = pool.find(p => p.name === name);
@@ -153,6 +154,7 @@ const TeamApp = () => {
                                         {liveData.bidder_team_name && <div className="flex items-center gap-2 px-3 py-1 rounded-full border"
                                             style={{borderColor: liveData.bidder_team_color || '#f59e0b', background: `${liveData.bidder_team_color || '#f59e0b'}22`}}>
                                             <span className="text-[0.65rem] font-extrabold uppercase tracking-widest text-zinc-400">Leading</span>
+                                            {liveData.bidder_team_logo && <img src={liveData.bidder_team_logo} alt="" className="w-5 h-5 object-contain rounded" />}
                                             <span className="text-xs font-extrabold uppercase" style={{color: liveData.bidder_team_color || '#f59e0b'}}>{liveData.bidder_team_name}</span>
                                         </div>}
                                         <div className="text-xs font-bold text-zinc-500">Current Bid: <span className="text-amber-400 text-base">₹{liveData.current_bid}L</span></div>

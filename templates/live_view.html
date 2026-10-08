@@ -212,6 +212,7 @@
                             if (!first && status === 'sold') {
                                 setResult({ status, player: st.last_sold_player || '', price: st.last_sold_price || '',
                                     teamName: st.last_sold_team_name || '', teamColor: st.last_sold_team_color || '#10b981',
+                                    teamLogo: st.last_sold_team_logo || '',
                                     photo: st.last_sold_photo || '' });
                                 clearTimeout(resultTimerRef.current);
                                 resultTimerRef.current = setTimeout(() => setResult(null), 5000);
@@ -348,8 +349,9 @@
                                         {result.player}
                                     </div>
                                     {sold && result.teamName && (
-                                        <div className="font-bold uppercase tracking-[0.3em] text-sm sm:text-base" style={{ color: col }}>
-                                            to {result.teamName}
+                                        <div className="flex items-center justify-center gap-3 font-bold uppercase tracking-[0.3em] text-sm sm:text-base" style={{ color: col }}>
+                                            {result.teamLogo && <img src={result.teamLogo} alt="" className="w-12 h-12 sm:w-16 sm:h-16 object-contain" />}
+                                            <span>to {result.teamName}</span>
                                         </div>
                                     )}
                                     {sold && result.price !== '' && result.price != null && (
@@ -469,6 +471,7 @@
                                                 {state.bidder_team_name && <div className="mt-3 inline-flex items-center gap-3 px-5 py-2.5 rounded-full border"
                                                     style={{borderColor: state.bidder_team_color || currentTheme.accent, background: `${state.bidder_team_color || currentTheme.accent}22`}}>
                                                     <span className="fredoka text-xs font-bold uppercase tracking-[0.25em] text-zinc-400">Leading Bid</span>
+                                                    {state.bidder_team_logo && <img src={state.bidder_team_logo} alt="" className="w-8 h-8 object-contain rounded-md" />}
                                                     <span className="fredoka text-2xl font-black uppercase tracking-wide" style={{color: state.bidder_team_color || currentTheme.accent}}>{state.bidder_team_name}</span>
                                                 </div>}
                                             </div>

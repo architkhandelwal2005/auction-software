@@ -603,6 +603,12 @@
       if (name) {
         const nameEl = document.getElementById('bidderName');
         if (nameEl) nameEl.textContent = name;
+        const logoEl = document.getElementById('bidderLogo');
+        if (logoEl) {
+          const src = state.auction.bidderLogo || '';
+          if (src) logoEl.src = src;
+          logoEl.hidden = !src;
+        }
         tag.style.setProperty('--bidder-color', state.auction.bidderColor || 'var(--accent)');
       }
     }
@@ -759,7 +765,14 @@
       resultDetail.textContent = info.teamName ? `TO   ${info.teamName.toUpperCase()}` : '';
       resultPrice.textContent  = info.price ? money(info.price) : '';
       resultOverlay.style.setProperty('--overlay-team-color', info.teamColor || '#10b981');
+      const teamLogo = document.getElementById('resultTeamLogo');
+      if (teamLogo) {
+        if (info.teamLogo) teamLogo.src = info.teamLogo;
+        teamLogo.hidden = !info.teamLogo;
+      }
     } else {
+      const teamLogo = document.getElementById('resultTeamLogo');
+      if (teamLogo) teamLogo.hidden = true;
       resultBadge.textContent  = 'UNSOLD';
       resultPlayer.textContent = info.player || '';
       resultDetail.textContent = '';
@@ -852,6 +865,7 @@
     state.auction.bidderId = rowName ? (st.bidder_team_id || '') : '';
     state.auction.bidderName = rowName ? (st.bidder_team_name || '') : '';
     state.auction.bidderColor = rowName ? (st.bidder_team_color || '') : '';
+    state.auction.bidderLogo = rowName ? (st.bidder_team_logo || '') : '';
 
     state.teams = (data.teams || []).map(t => ({
       id: t.id, name: String(t.name || '').toUpperCase(),
@@ -924,6 +938,7 @@
           price:     parseFloat(st.last_sold_price) || 0,
           teamName:  st.last_sold_team_name  || '',
           teamColor: st.last_sold_team_color || '#10b981',
+          teamLogo:  st.last_sold_team_logo  || '',
           photo:     st.last_sold_photo      || '',
         });
       } else if (auctionStatus === 'passed') {

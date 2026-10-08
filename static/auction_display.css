@@ -2114,6 +2114,9 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
   color:var(--bidder-color, var(--accent));
 }
 @keyframes bidderIn { from{opacity:0; transform:translateY(8px) scale(.96)} to{opacity:1; transform:none} }
+.team-logo-chip { width:44px; height:44px; object-fit:contain; border-radius:10px; background:rgba(255,255,255,.08); }
+.team-logo-chip[hidden], .result-team-logo[hidden] { display:none !important; }
+.result-team-logo { width:120px; height:120px; object-fit:contain; margin:6px auto 0; display:block; filter:drop-shadow(0 6px 18px rgba(0,0,0,.5)); }
 
 /* ---- Purse panel: clickable rows (admin) + leading highlight (everyone) ---- */
 .team-rows-clickable .team-row { cursor:pointer; transition:transform .12s ease, border-color .12s ease; }
