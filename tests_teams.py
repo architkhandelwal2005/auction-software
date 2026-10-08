@@ -54,4 +54,22 @@ r = admin.post('/api/sell_player', json={'player_id': pid, 'team_id': tid, 'sold
 st = admin.get('/api/live_data').get_json()['auction_state']
 check('last buyer logo is in live data', r.status_code == 200 and st.get('last_sold_team_logo') == logo, r.get_data(as_text=True)[:100] + ' / ' + str(st.get('last_sold_team_logo')))
 
+# ── Sponsor is optional: absent by default, stored when given, kept in the
+#    frozen report so it survives the purge, and removable. ──
+cfg = admin.get('/api/live_data').get_json()['config']
+check('no sponsor by default', not cfg.get('sponsor_name') and not cfg.get('sponsor_logo'))
+r = admin.post('/api/config/sponsor_logo', data={'logo': (io.BytesIO(PNG), 'sp.png')}, content_type='multipart/form-data')
+check('sponsor logo uploaded', r.status_code == 200 and r.get_json().get('logo_url'), r.get_data(as_text=True)[:100])
+admin.post('/api/config', json={'config': {'sponsor_name': 'Acme Sports'}})
+cfg = admin.get('/api/live_data').get_json()['config']
+check('sponsor name and logo are in live config', cfg.get('sponsor_name') == 'Acme Sports' and cfg.get('sponsor_logo'), str(cfg.get('sponsor_logo')))
+with A.app.app_context():
+    conn = A.open_auction_conn(aid)
+    frozen = A.build_final_report(conn, dict(A.auction_row(aid)))
+    conn.close()
+check('frozen report keeps sponsor (survives purge)', frozen['config']['sponsor_name'] == 'Acme Sports' and frozen['config']['sponsor_logo'] == cfg['sponsor_logo'], str(frozen['config']))
+admin.post('/api/config', json={'config': {'sponsor_name': '', 'sponsor_logo': ''}})
+cfg = admin.get('/api/live_data').get_json()['config']
+check('sponsor can be removed again', not cfg.get('sponsor_name') and not cfg.get('sponsor_logo'))
+
 print('\nALL CHECKS PASSED' if not check.failed else '\n%d CHECK(S) FAILED' % check.failed)

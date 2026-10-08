@@ -66,12 +66,23 @@
         </div>
       </header>
       <div id="presentedBy" class="presented-by" style="display:none"></div>
+      <!-- Sponsor credit: only shown when the auction has a sponsor name or logo -->
+      <div id="sponsorCredit" class="sponsor-credit" hidden>
+        <span class="sponsor-credit-label">SPONSORED BY</span>
+        <img id="sponsorCreditLogo" alt="" hidden>
+        <b id="sponsorCreditName"></b>
+      </div>
       <div id="introOverlay" class="intro-overlay" style="display:none">
         <div class="intro-inner">
           <div class="intro-logo" id="introLogo"></div>
           <div class="intro-kicker">WELCOME TO</div>
           <div class="intro-event" id="introEvent">EVENT NAME</div>
           <div class="intro-org" id="introOrg"></div>
+          <div class="intro-sponsor" id="introSponsor" hidden>
+            <span class="intro-sponsor-label">OFFICIAL SPONSOR</span>
+            <img id="introSponsorLogo" alt="" hidden>
+            <b id="introSponsorName"></b>
+          </div>
           <div class="intro-bar"><i></i></div>
         </div>
       </div>

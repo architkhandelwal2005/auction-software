@@ -95,6 +95,8 @@
             const bannerUrl = config.event_banner;
             const orgName = config.organisation_name || '';
             const orgLogo = config.org_logo || '';
+            const sponsorName = config.sponsor_name || '';
+            const sponsorLogo = config.sponsor_logo || '';
 
             return (
                 <div className="max-w-5xl mx-auto space-y-8">
@@ -140,6 +142,13 @@
                                     {retained ? 'Archived Report' : 'Final Report'}
                                 </span>
                                 {retained && <p className="text-[0.65rem] text-gray-400 font-bold mt-1.5 max-w-[180px]">Player photos are no longer stored — every name, price and figure below is unchanged.</p>}
+                                {(sponsorName || sponsorLogo) && (
+                                    <div className="mt-3 flex flex-col items-end gap-1">
+                                        <span className="text-[0.6rem] font-extrabold uppercase tracking-widest text-gray-400">Official Sponsor</span>
+                                        {sponsorLogo && <img src={sponsorLogo} alt="" className="h-10 max-w-[150px] object-contain" />}
+                                        {sponsorName && <span className="text-sm font-extrabold text-gray-800">{sponsorName}</span>}
+                                    </div>
+                                )}
                             </div>
                         </div>
 

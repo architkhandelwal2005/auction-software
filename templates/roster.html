@@ -131,6 +131,8 @@
             const eventName = cfg.event_name || 'Player Auction';
             const orgName = cfg.organisation_name || '';
             const orgLogo = cfg.org_logo || '';
+            const sponsorName = cfg.sponsor_name || '';
+            const sponsorLogo = cfg.sponsor_logo || '';
             const players = data.players;
 
             // Which extra columns the organiser chose in the wizard's "Player
@@ -181,6 +183,13 @@
                             <p className="text-zinc-400 print-muted font-bold text-sm mt-2 tracking-wide">
                                 PLAYER ROSTER · {players.length} PLAYERS · {cats.length} CATEGORIES
                             </p>
+                            {(sponsorName || sponsorLogo) && (
+                                <div className="mt-5 inline-flex items-center gap-3 px-5 py-2.5 rounded-2xl border" style={{ borderColor: `${theme.accent}33`, background: `${theme.accent}0d` }}>
+                                    <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-zinc-400 print-muted">Official Sponsor</span>
+                                    {sponsorLogo && <img src={sponsorLogo} alt="" className="h-9 max-w-[140px] object-contain" />}
+                                    {sponsorName && <span className="fredoka font-bold text-base text-white print-ink">{sponsorName}</span>}
+                                </div>
+                            )}
                         </div>
 
                         <div className="grid grid-cols-3 gap-3 mb-6">
@@ -227,7 +236,7 @@
                         ))}
 
                         <div className="text-center text-xs text-zinc-600 print-muted pt-6 pb-2 border-t mt-8" style={{ borderColor: `${theme.accent}22` }}>
-                            {orgName ? `${orgName} · ` : ''}{eventName} · Generated {new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                            {orgName ? `${orgName} · ` : ''}{eventName}{sponsorName ? ` · Sponsored by ${sponsorName}` : ''} · Generated {new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
                         </div>
                     </div>
                 </div>

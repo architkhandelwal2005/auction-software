@@ -1886,6 +1886,23 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
 }
 .presented-by b { font-weight: 800; color: rgba(255,255,255,.72); }
 
+/* Sponsor credit, low right on the stage. Hidden attribute = no sponsor. */
+.sponsor-credit {
+  position: absolute; bottom: 18px; right: 48px; z-index: 40; pointer-events: none;
+  display: flex; align-items: center; gap: 14px;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+.sponsor-credit[hidden] { display: none !important; }
+.sponsor-credit-label {
+  font-size: 13px; font-weight: 600; letter-spacing: 3px; color: rgba(255,255,255,.45);
+}
+.sponsor-credit img { height: 56px; max-width: 200px; object-fit: contain; filter: drop-shadow(0 4px 10px rgba(0,0,0,.5)); }
+.sponsor-credit img[hidden] { display: none; }
+.sponsor-credit b {
+  font-size: 18px; font-weight: 800; letter-spacing: 2px; color: rgba(255,255,255,.8);
+}
+.sponsor-credit b:empty { display: none; }
+
 /* ── Intro / welcome overlay ── */
 .intro-overlay {
   position: absolute; inset: 0; z-index: 300;
@@ -1925,6 +1942,23 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
   color: rgba(255,255,255,.6); margin-top: 22px;
 }
 .intro-org:empty { display: none; }
+.intro-sponsor {
+  margin: 46px auto 0; padding-top: 30px; width: max-content; max-width: 900px;
+  border-top: 1px solid rgba(255,255,255,.16);
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+}
+.intro-sponsor[hidden] { display: none !important; }
+.intro-sponsor-label {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 18px; font-weight: 600; letter-spacing: 8px; color: rgba(255,255,255,.45);
+}
+.intro-sponsor img { max-height: 110px; max-width: 340px; object-fit: contain; filter: drop-shadow(0 8px 24px rgba(0,0,0,.55)); }
+.intro-sponsor img[hidden] { display: none; }
+.intro-sponsor b {
+  font-family: 'Barlow Condensed', sans-serif; font-size: 44px; font-weight: 800;
+  letter-spacing: 3px; color: #fff; text-transform: uppercase;
+}
+.intro-sponsor b:empty { display: none; }
 .intro-bar {
   width: 220px; height: 4px; margin: 44px auto 0;
   background: rgba(255,255,255,.12); border-radius: 3px; overflow: hidden;

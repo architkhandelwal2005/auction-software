@@ -835,7 +835,7 @@ ROUTE_POLICY = {
     'edit_player_sale': 'admin', 'pass_player': 'admin', 'revive_player': 'admin',
     'bargain_bin': 'admin', 'set_common_base_price': 'admin',
     'sheets_sync_all': 'admin', 'fetch_drive_photos': 'admin',
-    'upload_banner': 'admin', 'upload_org_logo': 'admin', 'upload_team_logo': 'admin',
+    'upload_banner': 'admin', 'upload_org_logo': 'admin', 'upload_sponsor_logo': 'admin', 'upload_team_logo': 'admin',
 }
 
 # 'auctioneer' (a per-auction login) ranks equal to 'admin' for anything
@@ -922,7 +922,7 @@ MUTATING_ENDPOINTS = {
     'edit_player', 'upload_photo', 'delete_player', 'analyze_pool', 'import_players', 'clear_player_pool',
     'load_preset', 'load_test_data', 'set_auction_state', 'sell_player',
     'undo_last_sale', 'edit_player_sale', 'reset_auction', 'sheets_sync_all',
-    'upload_banner', 'upload_org_logo', 'upload_team_logo', 'fetch_drive_photos',
+    'upload_banner', 'upload_org_logo', 'upload_sponsor_logo', 'upload_team_logo', 'fetch_drive_photos',
     'set_common_base_price', 'smart_analyze', 'pass_player', 'revive_player',
     'bargain_bin', 'go_live_auction',
     'import_from_sheet', 'resync_sheet', 'apply_sheet_changes',
@@ -1185,6 +1185,8 @@ def build_final_report(conn, auction):
             'event_name': cfg.get('event_name') or auction['name'],
             'organisation_name': cfg.get('organisation_name') or '',
             'org_logo': cfg.get('org_logo') or '',
+            'sponsor_name': cfg.get('sponsor_name') or '',
+            'sponsor_logo': cfg.get('sponsor_logo') or '',
             'event_banner': cfg.get('event_banner') or '',
         },
         'teams': teams,
@@ -2904,6 +2906,23 @@ def upload_banner():
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'banner_url': url})
+
+@app.route('/api/config/sponsor_logo', methods=['POST'])
+def upload_sponsor_logo():
+    """Sponsor logo — optional. Stored under the config key `sponsor_logo`;
+    every screen shows a sponsor only when this or `sponsor_name` is set."""
+    if 'logo' not in request.files:
+        return jsonify({'error': 'No file'}), 400
+    file = request.files['logo']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'png'
+    url = save_media(g.auction_id, 'logos', 'sponsor', file.read(), ext)
+    conn = get_db()
+    conn.execute('INSERT OR REPLACE INTO config (key, value) VALUES ("sponsor_logo", ?)', (url,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'logo_url': url})
 
 @app.route('/api/config/logo', methods=['POST'])
 def upload_org_logo():

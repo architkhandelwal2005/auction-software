@@ -642,6 +642,22 @@
         credit.style.display = '';
       } else { credit.style.display = 'none'; }
     }
+    // Sponsor credit — absent entirely for an auction with no sponsor.
+    paintSponsor('sponsorCredit', 'sponsorCreditLogo', 'sponsorCreditName');
+  }
+
+  // Shows a sponsor block when the auction has a sponsor name and/or logo, and
+  // hides it when it has neither, so the same markup serves both cases.
+  function paintSponsor(boxId, logoId, nameId) {
+    const box = document.getElementById(boxId);
+    if (!box) return;
+    const name = state.tournament.sponsorName || '';
+    const logo = state.tournament.sponsorLogo || '';
+    const logoEl = document.getElementById(logoId);
+    const nameEl = document.getElementById(nameId);
+    if (logoEl) { if (logo) logoEl.src = logo; logoEl.hidden = !logo; }
+    if (nameEl) nameEl.textContent = name;
+    box.hidden = !(name || logo);
   }
 
   /* ── Welcome intro overlay (both screens, dismissed once) ──────────────
@@ -677,6 +693,7 @@
     if (logo) logo.innerHTML = state.tournament.logo
       ? '<img src="' + state.tournament.logo + '" alt="">'
       : '';
+    paintSponsor('introSponsor', 'introSponsorLogo', 'introSponsorName');
     introOverlay.style.display = 'flex';
     void introOverlay.offsetWidth;
     introOverlay.classList.add('is-visible');
@@ -823,6 +840,8 @@
     state.tournament.name = (cfg.event_name || 'LIVE AUCTION').toUpperCase();
     state.tournament.org = (cfg.organisation_name || '').toUpperCase();
     state.tournament.logo = cfg.org_logo || '';
+    state.tournament.sponsorName = (cfg.sponsor_name || '').toUpperCase();
+    state.tournament.sponsorLogo = cfg.sponsor_logo || '';
     state.showIntro = (st.show_intro === '1' || st.show_intro === 1);
     state.tournament.progress = stats && stats.total ? `${stats.sold} / ${stats.total}` : '-- / --';
 

@@ -558,6 +558,11 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
     const [orgName, setOrgName] = useState('');
     const [orgLogo, setOrgLogo] = useState('');
     const [orgLogoUploading, setOrgLogoUploading] = useState(false);
+    // Sponsor is optional: both fields stay empty for an auction without one,
+    // and every screen only shows a sponsor when one of them is set.
+    const [sponsorName, setSponsorName] = useState('');
+    const [sponsorLogo, setSponsorLogo] = useState('');
+    const [sponsorLogoUploading, setSponsorLogoUploading] = useState(false);
     const [importedPreview, setImportedPreview] = useState([]);
     // True when this auction already had players before this wizard instance
     // mounted (e.g. the organiser imported a file/sheet, then reloaded the
@@ -566,6 +571,18 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
     // Run Analysis would stay disabled forever on a resumed setup even
     // though the players are already sitting in the database.
     const [hasStoredPlayers, setHasStoredPlayers] = useState(false);
+
+    // Branding saved earlier (a reloaded setup) is shown again, so finishing
+    // does not overwrite it with blanks.
+    useEffect(() => {
+        fetch('/api/config').then(r => r.json()).then(d => {
+            const c = (d && d.config) || {};
+            if (c.organisation_name) setOrgName(c.organisation_name);
+            if (c.org_logo) setOrgLogo(c.org_logo);
+            if (c.sponsor_name) setSponsorName(c.sponsor_name);
+            if (c.sponsor_logo) setSponsorLogo(c.sponsor_logo);
+        }).catch(() => {});
+    }, []);
 
     useEffect(() => {
         fetch('/api/players').then(r => r.json()).then(players => {
@@ -654,6 +671,23 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
         setNewTeamName('');
     };
     const removeTeam = (i) => setTeams(teams.filter((_, idx) => idx !== i));
+
+    const handleSponsorLogoUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setSponsorLogoUploading(true);
+        const fd = new FormData();
+        fd.append('logo', file);
+        try {
+            const res = await fetch('/api/config/sponsor_logo', { method: 'POST', body: fd });
+            const d = await res.json();
+            if (d.success) setSponsorLogo(d.logo_url);
+            else alert(d.error || 'Logo upload failed');
+        } catch (err) { alert('Logo upload failed: ' + err); }
+        setSponsorLogoUploading(false);
+        e.target.value = null;
+    };
+    const clearSponsor = () => { setSponsorName(''); setSponsorLogo(''); };
 
     const handleOrgLogoUpload = async (e) => {
         const file = e.target.files[0];
@@ -863,7 +897,7 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
         await fetch('/api/config', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                config: { event_name: eventName, organisation_name: orgName, bid_increment: bidIncrement, common_base_price: basePrice, setup_done: 'true', sport_theme: sportTheme, display_fields: JSON.stringify(displayFields), min_players_per_team: String(targetSquadSize || 0) },
+                config: { event_name: eventName, organisation_name: orgName, sponsor_name: sponsorName.trim(), sponsor_logo: sponsorLogo, bid_increment: bidIncrement, common_base_price: basePrice, setup_done: 'true', sport_theme: sportTheme, display_fields: JSON.stringify(displayFields), min_players_per_team: String(targetSquadSize || 0) },
                 category_rules: categories.map(c => ({
                     category: c.category, base_price: basePrice,
                     min_per_team: c.per_team_min, max_per_team: c.per_team_max || 99,
@@ -977,6 +1011,22 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                                     <input type="file" accept="image/*" className="hidden" onChange={handleOrgLogoUpload} />
                                 </label>
                             </div>
+                        </div>
+                        <div className="col-span-2">
+                            <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider block mb-1.5">Sponsor <span className="text-zinc-600 normal-case font-semibold">(optional — leave blank if there is none)</span></label>
+                            <div className="flex gap-3">
+                                <input type="text" className="flex-1 bg-zinc-950 border border-zinc-700 p-3 rounded-2xl text-base font-bold text-white focus:border-amber-500 outline-none transition" value={sponsorName} onChange={e => setSponsorName(e.target.value)} placeholder="e.g. Acme Sports" />
+                                <label className={`flex items-center gap-2 px-4 rounded-2xl border-2 border-dashed cursor-pointer transition shrink-0 ${sponsorLogoUploading ? 'border-amber-500/50 bg-amber-500/5' : 'border-zinc-700 hover:border-amber-500/40 hover:bg-amber-500/5'}`}>
+                                    {sponsorLogoUploading
+                                        ? <i className="fa-solid fa-spinner animate-spin text-amber-400"></i>
+                                        : sponsorLogo
+                                            ? <img src={sponsorLogo} alt="sponsor logo" className="w-8 h-8 object-contain rounded" />
+                                            : <i className="fa-solid fa-image text-zinc-400"></i>}
+                                    <span className="text-xs font-bold text-zinc-400 whitespace-nowrap">{sponsorLogo ? 'Change Logo' : 'Upload Logo'}</span>
+                                    <input type="file" accept="image/*" className="hidden" onChange={handleSponsorLogoUpload} />
+                                </label>
+                            </div>
+                            {(sponsorName || sponsorLogo) && <button type="button" onClick={clearSponsor} className="mt-1.5 text-[0.7rem] font-bold text-zinc-500 hover:text-red-400 underline">Remove sponsor</button>}
                         </div>
                         <div>
                             <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider block mb-1.5">Bid Increment (L)</label>
