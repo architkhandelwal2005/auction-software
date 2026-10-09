@@ -122,7 +122,7 @@ const TeamApp = () => {
                     <div className="flex gap-4 items-center bg-zinc-950 p-2 rounded-2xl border border-zinc-800">
                         <div className="px-4 py-2 text-center">
                             <div className="text-xs font-extrabold text-zinc-500 uppercase tracking-wider mb-1">Purse</div>
-                            <div className="text-2xl fredoka font-bold text-emerald-400">₹{team.remaining_budget}L</div>
+                            <div className="text-2xl fredoka font-bold text-emerald-400">{fmtL(team.remaining_budget)}</div>
                         </div>
                         <div className="w-px h-10 bg-zinc-800"></div>
                         <div className="px-4 py-2 text-center">
@@ -157,7 +157,7 @@ const TeamApp = () => {
                                             {liveData.bidder_team_logo && <img src={liveData.bidder_team_logo} alt="" className="w-5 h-5 object-contain rounded" />}
                                             <span className="text-xs font-extrabold uppercase" style={{color: liveData.bidder_team_color || '#f59e0b'}}>{liveData.bidder_team_name}</span>
                                         </div>}
-                                        <div className="text-xs font-bold text-zinc-500">Current Bid: <span className="text-amber-400 text-base">₹{liveData.current_bid}L</span></div>
+                                        <div className="text-xs font-bold text-zinc-500">Current Bid: <span className="text-amber-400 text-base">{fmtL(liveData.current_bid)}</span></div>
                                     </div>
                                 </div>
                                 
@@ -172,7 +172,7 @@ const TeamApp = () => {
                                         <div className="inline-block px-3 py-1 bg-zinc-800 rounded-lg text-xs font-bold text-zinc-300 mt-2">
                                             {liveData.current_player.category || 'General'}
                                         </div>
-                                        <div className="text-sm font-bold text-zinc-500 mt-2">Base: ₹{liveData.current_player.base_price}L</div>
+                                        <div className="text-sm font-bold text-zinc-500 mt-2">Base: {fmtL(liveData.current_player.base_price)}</div>
                                         
                                         {/* Strategy Warning for this player */}
                                         {(() => {
@@ -196,7 +196,7 @@ const TeamApp = () => {
                                     <div>
                                         <div className="text-xs font-extrabold text-zinc-500 uppercase tracking-widest mb-1">Your Max Allowed Bid</div>
                                         {maxBid >= (liveData.current_bid || liveData.current_player.base_price) ? (
-                                            <div className="text-2xl fredoka font-bold text-emerald-400">₹{maxBid}L</div>
+                                            <div className="text-2xl fredoka font-bold text-emerald-400">{fmtL(maxBid)}</div>
                                         ) : (
                                             <div className="text-xl fredoka font-bold text-red-500 flex items-center gap-2">
                                                 <i className="fa-solid fa-ban"></i> Out of Funds
@@ -205,7 +205,7 @@ const TeamApp = () => {
                                     </div>
                                     <div className="text-right">
                                         <div className="text-[0.65rem] text-zinc-500 max-w-[200px] leading-tight">
-                                            Calculated by reserving ₹{reservedFunds}L for your {remainingSlots} remaining required slots.
+                                            Calculated by reserving {fmtL(reservedFunds)} for your {remainingSlots} remaining required slots.
                                         </div>
                                     </div>
                                 </div>
@@ -231,7 +231,7 @@ const TeamApp = () => {
                                         </div>
                                         <div className="min-w-0">
                                             <div className="font-bold text-sm truncate">{p.name}</div>
-                                            <div className="text-xs text-zinc-500">{p.category} • <span className="text-amber-400 font-bold">₹{p.sold_price}L</span></div>
+                                            <div className="text-xs text-zinc-500">{p.category} • <span className="text-amber-400 font-bold">{fmtL(p.sold_price)}</span></div>
                                         </div>
                                     </div>
                                 ))}
@@ -282,7 +282,7 @@ const TeamApp = () => {
                                         <span className="font-bold text-sm truncate">{t.name}</span>
                                     </div>
                                     <div className="text-right shrink-0 ml-2">
-                                        <div className="text-amber-400 font-bold text-sm">₹{t.remaining_budget}L</div>
+                                        <div className="text-amber-400 font-bold text-sm">{fmtL(t.remaining_budget)}</div>
                                         <div className="text-[0.65rem] text-zinc-500 font-bold">{t.players?.length || 0} players</div>
                                     </div>
                                 </div>

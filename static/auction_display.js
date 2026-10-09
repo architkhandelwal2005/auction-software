@@ -91,11 +91,8 @@
   ));
 
   // Backend amounts are already denominated in Lakhs.
-  function money(v) {
-    if (v == null || v === '' || isNaN(Number(v))) return '₹ --';
-    const n = Math.round(Number(v) * 10) / 10;
-    return `₹${n}L`;
-  }
+  // ₹50K below one lakh, ₹1.5L from one lakh up (static/bidding.js).
+  const money = v => window.fmtL(v);
 
   // Cricket-Attax style role archetype. A free-text role like
   // "TOP-ORDER BATSMAN" or "LEFT-ARM FAST BOWLER" is classified into one of
@@ -929,7 +926,10 @@
 
     state.auction.currentPrice = rowName ? (parseFloat(st.current_bid) || 0) : null;
     state.auction.basePrice = rowName ? (parseFloat(st.base_price) || 0) : null;
-    state.auction.increment = parseFloat(cfg.bid_increment) || null;
+    // The step the next raise adds: set by the player's category and the bid.
+    state.auction.increment = rowName
+      ? BidRules.stepAt(BidRules.ruleFor(BidRules.parse(cfg), st.category), state.auction.currentPrice || 0)
+      : null;
     // Leading bidder — set when the auctioneer clicks a team row to raise the bid.
     state.auction.bidderId = rowName ? (st.bidder_team_id || '') : '';
     state.auction.bidderName = rowName ? (st.bidder_team_name || '') : '';
@@ -1242,7 +1242,7 @@
     if (window.ResizeObserver) new ResizeObserver(() => fitStage()).observe(adminPanel);
 
     let adminBid = 0;
-    let adminIncrement = 2.5;
+    let adminPricing = BidRules.parse({});
     let adminPlayer = null;
     // Team currently holding the top bid. Cleared whenever a new player is
     // staged, sold or passed, so a stale bidder never shows on the screens.
@@ -1339,8 +1339,6 @@
       toastTimer = setTimeout(() => { toastEl.style.opacity = '0'; }, 2800);
     }
 
-    const fmt = v => '₹ ' + (v % 1 === 0 ? v : v.toFixed(1)) + 'L';
-
     function showIdle() {
       adminIdle.style.display = '';
       adminActive.style.display = 'none';
@@ -1358,14 +1356,24 @@
       if (adminPlayerCat)  adminPlayerCat.textContent  = (player.category || '').toUpperCase();
       if (adminPlayerName) adminPlayerName.textContent = (player.name || '').toUpperCase();
       adminBidDisplay.value = adminBid;
+      renderBidButtons();
       adminIdle.style.display = 'none';
       adminActive.style.display = '';
     }
 
+    /* Bid steps follow the player's category and grow with the bid, so each
+       button moves a number of steps and shows the amount that adds now. */
+    const adminRule = () => BidRules.ruleFor(adminPricing, adminPlayer && adminPlayer.category);
+    function stepsFrom(bid, n) {
+      const rule = adminRule();
+      let b = bid;
+      for (let i = 0; i < Math.abs(n); i++) b = n > 0 ? BidRules.up(rule, b) : BidRules.down(rule, b);
+      return b;
+    }
     function renderBidButtons() {
-      const label = adminIncrement % 1 === 0 ? adminIncrement : adminIncrement.toFixed(1);
-      if (adminBidDec) adminBidDec.textContent = '-' + label;
-      if (adminBidInc) adminBidInc.textContent = '+' + label;
+      const label = (n) => (n > 0 ? '+' : '-') + money(Math.abs(stepsFrom(adminBid, n) - adminBid)).replace('₹', '');
+      [[adminBidMinus10, -2], [adminBidDec, -1], [adminBidInc, 1], [adminBidPlus10, 2], [adminBidPlus25, 5]]
+        .forEach(([btn, n]) => { if (btn) btn.textContent = label(n); });
     }
 
     let bidPostTimer = null;
@@ -1373,6 +1381,7 @@
     /* Push the current bid (and who bid it) to the server, then refresh. */
     function pushBid() {
       adminBidDisplay.value = adminBid;
+      renderBidButtons();
       adminBidDisplay.classList.remove('bid-pulse');
       void adminBidDisplay.offsetWidth;
       adminBidDisplay.classList.add('bid-pulse');
@@ -1393,8 +1402,8 @@
         } catch(e) { console.error('bid update failed', e); }
       }, 120);
     }
-    function changeBid(delta) {
-      adminBid = Math.max(0, Math.round((adminBid + delta) * 10) / 10);
+    function changeBid(steps) {
+      adminBid = stepsFrom(adminBid, steps);
       SFX.bid();
       pushBid();
     }
@@ -1405,10 +1414,10 @@
       if (!adminPlayer) return;                       // nothing on the block
       const team = adminTeams.find(t => String(t.id) === String(teamId));
       if (!team) return;
-      const next = Math.max(0, Math.round((adminBid + adminIncrement) * 10) / 10);
+      const next = stepsFrom(adminBid, 1);
       const max = team.max_allowed_bid;
       if (max != null && next > max) {
-        toast(team.name + ' cannot bid ₹' + next + 'L (max ₹' + max + 'L)', 'err');
+        toast(team.name + ' cannot bid ' + money(next) + ' (max ' + money(max) + ')', 'err');
         return;
       }
       adminBid = next;
@@ -1428,7 +1437,7 @@
     function commitTypedBid() {
       const v = parseFloat(adminBidDisplay.value);
       if (isNaN(v) || v < 0) { adminBidDisplay.value = adminBid; return; }
-      adminBid = Math.round(v * 10) / 10;
+      adminBid = BidRules.round(v);
       SFX.bid();
       pushBid();
     }
@@ -1462,7 +1471,7 @@
           if (!affordable) flag = ' [Low Purse]';
           else if (q && q.atMax) flag = ' [Max Limit Reached]';
           const blocked = !affordable || (q && q.atMax);
-          const label = t.name + ' (₹' + purse + 'L)' + flag;
+          const label = t.name + ' (' + money(purse) + ')' + flag;
           // Flagged teams stay selectable — the admin can override with a confirm
           return '<option value="' + t.id + '"' + (blocked ? ' style="color:#ef4444"' : '') + '>' + label + '</option>';
         }).join('');
@@ -1483,7 +1492,7 @@
         const data = await r.json();
 
         const cfg = data.config || {};
-        adminIncrement = parseFloat(cfg.bid_increment) || 2.5;
+        adminPricing = BidRules.parse(cfg);
         renderBidButtons();
 
         adminTeams = data.teams || [];
@@ -1587,7 +1596,7 @@
         const cat = p.category ? '<span class="pick-cat">' + p.category + '</span>' : '';
         return '<div class="pick-row" data-id="' + p.id + '">' +
           photo + '<div class="pick-info"><span class="pick-name">' + p.name + '</span>' + cat +
-          '</div><span class="pick-price">₹' + (p.base_price || 0) + 'L</span></div>';
+          '</div><span class="pick-price">' + money(p.base_price || 0) + '</span></div>';
       }).join('');
       playerPickList.querySelectorAll('.pick-row').forEach(row => {
         row.onclick = () => {
@@ -1697,17 +1706,17 @@
     if (adminTemplateSel) adminTemplateSel.addEventListener('change', applyStageSettings);
 
     // Bid controls
-    if (adminBidMinus10) adminBidMinus10.onclick = () => changeBid(-10);
-    if (adminBidDec)     adminBidDec.onclick     = () => changeBid(-adminIncrement);
-    if (adminBidInc)     adminBidInc.onclick     = () => changeBid(adminIncrement);
-    if (adminBidPlus10)  adminBidPlus10.onclick  = () => changeBid(10);
-    if (adminBidPlus25)  adminBidPlus25.onclick  = () => changeBid(25);
+    if (adminBidMinus10) adminBidMinus10.onclick = () => changeBid(-2);
+    if (adminBidDec)     adminBidDec.onclick     = () => changeBid(-1);
+    if (adminBidInc)     adminBidInc.onclick     = () => changeBid(1);
+    if (adminBidPlus10)  adminBidPlus10.onclick  = () => changeBid(2);
+    if (adminBidPlus25)  adminBidPlus25.onclick  = () => changeBid(5);
 
     // Arrow keys for bid
     document.addEventListener('keydown', e => {
       if (!adminPlayer) return;
-      if (e.key === 'ArrowUp')   { e.preventDefault(); changeBid(adminIncrement); }
-      if (e.key === 'ArrowDown') { e.preventDefault(); changeBid(-adminIncrement); }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); changeBid(1); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); changeBid(-1); }
     });
 
     // Undo
@@ -1746,8 +1755,8 @@
          the hammer has already fallen in the room, so the software should
          not refuse the sale outright. */
       if (team && team.remaining_budget < adminBid) {
-        if (!confirm('WARNING: ' + team.name + ' has only ₹' + team.remaining_budget +
-                     'L remaining, which is less than ₹' + adminBid + 'L.\n\nProceed anyway?')) return;
+        if (!confirm('WARNING: ' + team.name + ' has only ' + money(team.remaining_budget) +
+                     ' remaining, which is less than ' + money(adminBid) + '.\n\nProceed anyway?')) return;
       }
       const q = team ? quotaFor(team) : null;
       if (q && q.atMax) {
@@ -1902,7 +1911,7 @@
         spinConfirm.style.display = '';
         spinConfirm.textContent = spinMode === 'player'
           ? 'Confirm Selection'
-          : 'Award at ₹' + ((adminPlayer && adminPlayer.base_price) || 0) + 'L';
+          : 'Award at ' + money((adminPlayer && adminPlayer.base_price) || 0);
       }, 3550);
     }
 

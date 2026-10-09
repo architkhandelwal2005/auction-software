@@ -363,7 +363,7 @@ const TeamRosterModal = ({ team, onClose }) => {
                     </div>
                     <div>
                         <h2 className="fredoka text-4xl font-bold text-white leading-tight">{team.name}</h2>
-                        <p className="text-base text-slate-400 font-bold mt-1">{team.player_count||0} players acquired &bull; &#8377;{(team.total_budget-team.remaining_budget).toFixed(1)}L spent</p>
+                        <p className="text-base text-slate-400 font-bold mt-1">{team.player_count||0} players acquired &bull; {fmtL((team.total_budget-team.remaining_budget))} spent</p>
                     </div>
                 </div>
                 <button onClick={onClose} className="w-11 h-11 rounded-xl hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition shrink-0"><i className="fa-solid fa-xmark text-2xl"></i></button>
@@ -375,7 +375,7 @@ const TeamRosterModal = ({ team, onClose }) => {
                 <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar border-b lg:border-b-0 lg:border-r border-slate-800">
                     <div className="bg-slate-950 rounded-2xl p-5 text-center border border-slate-800">
                         <p className="text-sm text-slate-400 font-bold uppercase tracking-widest">Remaining Purse</p>
-                        <p className={`fredoka text-5xl font-bold mt-1 ${pct>20?'text-green-400':'text-red-400'}`}>&#8377;{team.remaining_budget}L</p>
+                        <p className={`fredoka text-5xl font-bold mt-1 ${pct>20?'text-green-400':'text-red-400'}`}>{fmtL(team.remaining_budget)}</p>
                         <div className="bg-slate-800 rounded-full h-3 mt-3 overflow-hidden"><div className={`h-full rounded-full transition-all ${pct>50?'bg-green-400':pct>20?'bg-yellow-400':'bg-red-400'}`} style={{width:`${pct}%`}}></div></div>
                     </div>
 
@@ -439,7 +439,7 @@ const TeamRosterModal = ({ team, onClose }) => {
                         {team.players.map(p=><div key={p.id} className="flex items-center gap-4 p-4 bg-slate-950 rounded-2xl border border-slate-800">
                             <PlayerPhoto url={p.photo_url} name={p.name} size={56} />
                             <div className="flex-1 min-w-0"><div className="font-bold text-white text-lg truncate">{p.name}</div><div className="flex items-center gap-1.5 flex-wrap">{p.team_role&&<RoleBadge role={p.team_role}/>}{p.category&&<CatBadge category={p.category}/>}</div></div>
-                            <span className="fredoka font-bold text-green-400 text-xl shrink-0">&#8377;{p.sold_price}L</span>
+                            <span className="fredoka font-bold text-green-400 text-xl shrink-0">{fmtL(p.sold_price)}</span>
                         </div>)}
                     </div>}
                 </div>
@@ -537,6 +537,90 @@ const ShareModal = ({ teams, onClose }) => {
 };
 
 // ═══════════════════════════════════════════════
+// PRICING EDITOR — base price and bid increments
+// ═══════════════════════════════════════════════
+// The same for everyone, or set per category. Amounts are in lakhs (0.5 =
+// ₹50K). Each rule can raise its increment once the bid reaches an amount.
+// Rules are read by static/bidding.js on every bidding screen.
+
+// What still needs filling before these prices can be saved, or ''.
+const pricingProblem = (pricing, categories) => {
+    const bad = r => !(parseFloat(r.base) >= 0) || !(parseFloat(r.increment) > 0)
+        || r.steps.some(st => !(parseFloat(st.from) > 0) || !(parseFloat(st.increment) > 0));
+    if (pricing.mode !== 'category') return bad(pricing.same) ? 'Fill in the base price and a bid increment above zero.' : '';
+    const cat = categories.find(c => bad(pricing.categories[c] || pricing.same));
+    return cat ? `Fill in the base price and a bid increment above zero for ${cat}.` : '';
+};
+
+// Only the categories that still exist are saved.
+const pricingForSave = (pricing, categories) => ({
+    ...pricing,
+    categories: Object.fromEntries(categories.map(c => [c, pricing.categories[c] || pricing.same])),
+});
+
+const PricingEditor = ({ pricing, categories, onChange }) => {
+    const ruleOf = cat => (cat === null ? pricing.same : (pricing.categories[cat] || pricing.same));
+    const saveRule = (cat, rule) => onChange(cat === null
+        ? { ...pricing, same: rule }
+        : { ...pricing, categories: { ...pricing.categories, [cat]: rule } });
+    const setMode = mode => {
+        // Each category starts from the shared values rather than blank.
+        const cats = { ...pricing.categories };
+        if (mode === 'category') categories.forEach(c => { if (!cats[c]) cats[c] = { ...pricing.same, steps: pricing.same.steps.map(st => ({ ...st })) }; });
+        onChange({ ...pricing, mode, categories: cats });
+    };
+    const field = 'w-full min-w-0 bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1.5 text-sm font-bold text-white text-center outline-none focus:border-amber-500';
+    const summary = rule => {
+        const r = BidRules.parse({ pricing: { same: rule } }).same;
+        return [`Base ${fmtL(r.base)}`, `+${fmtL(r.increment)} per bid`, ...r.steps.map(st => `+${fmtL(st.increment)} from ${fmtL(st.from)}`)].join(' · ');
+    };
+    const ruleEditor = cat => {
+        const rule = ruleOf(cat);
+        const put = patch => saveRule(cat, { ...rule, ...patch });
+        const putStep = (i, patch) => put({ steps: rule.steps.map((st, j) => (j === i ? { ...st, ...patch } : st)) });
+        // A new step defaults to double the increment before it, the usual practice.
+        const addStep = () => {
+            const prev = parseFloat(rule.steps.length ? rule.steps[rule.steps.length - 1].increment : rule.increment) || 0;
+            put({ steps: [...rule.steps, { from: '', increment: prev ? String(BidRules.round(prev * 2)) : '' }] });
+        };
+        return <div key={cat === null ? '__same' : cat} className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 space-y-2.5">
+            {cat !== null && <div className="text-sm font-extrabold text-white">{cat}</div>}
+            <div className="grid grid-cols-2 gap-2">
+                <label className="text-[0.6rem] font-extrabold text-zinc-500 uppercase tracking-wider">Base price (L)
+                    <input type="number" min="0" step="any" className={field + ' mt-1'} value={rule.base} onChange={e => put({ base: e.target.value })} /></label>
+                <label className="text-[0.6rem] font-extrabold text-zinc-500 uppercase tracking-wider">Bid increment (L)
+                    <input type="number" min="0" step="any" className={field + ' mt-1'} value={rule.increment} onChange={e => put({ increment: e.target.value })} /></label>
+            </div>
+            {rule.steps.map((st, i) => <div key={i} className="flex flex-wrap items-center gap-2 text-xs font-bold text-zinc-400">
+                <span className="shrink-0">Once bid reaches</span>
+                <input type="number" min="0" step="any" className={field.replace('w-full', 'w-20')} value={st.from} onChange={e => putStep(i, { from: e.target.value })} />
+                <span className="shrink-0">L, raise by</span>
+                <input type="number" min="0" step="any" className={field.replace('w-full', 'w-20')} value={st.increment} onChange={e => putStep(i, { increment: e.target.value })} />
+                <span className="shrink-0">L</span>
+                <button type="button" title="Remove" onClick={() => put({ steps: rule.steps.filter((_, j) => j !== i) })} className="text-zinc-600 hover:text-red-400 shrink-0"><i className="fa-solid fa-xmark"></i></button>
+            </div>)}
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+                <button type="button" onClick={addStep} className="text-xs font-bold text-amber-400 hover:text-amber-300"><i className="fa-solid fa-plus mr-1"></i>Bigger increment after an amount</button>
+                <span className="text-[0.65rem] font-bold text-zinc-500">{summary(rule)}</span>
+            </div>
+        </div>;
+    };
+    return <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-2">
+            {[['same', 'Same for everyone', 'fa-equals'], ['category', 'Different per category', 'fa-layer-group']].map(([m, label, icon]) =>
+                <button type="button" key={m} onClick={() => setMode(m)} disabled={m === 'category' && !categories.length}
+                    className={`p-3 rounded-xl border-2 text-xs font-extrabold transition disabled:opacity-40 ${pricing.mode === m ? 'border-amber-500 bg-amber-500/10 text-amber-300' : 'border-zinc-800 text-zinc-400 hover:border-zinc-600'}`}>
+                    <i className={`fa-solid ${icon} mr-1.5`}></i>{label}
+                </button>)}
+        </div>
+        <p className="text-[0.7rem] text-zinc-500">Amounts are in lakhs: type 0.5 for ₹50K, 1 for ₹1L.</p>
+        <div className="space-y-2 max-h-[420px] overflow-y-auto custom-scrollbar pr-1">
+            {pricing.mode === 'category' ? categories.map(c => ruleEditor(c)) : ruleEditor(null)}
+        </div>
+    </div>;
+};
+
+// ═══════════════════════════════════════════════
 // SETUP WIZARD (Dark Themed)
 // ═══════════════════════════════════════════════
 const SetupWizard = ({ onComplete, auctionInfo }) => {
@@ -547,7 +631,9 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
     // wizard starts from it rather than a generic placeholder.
     const [eventName, setEventName] = useState((auctionInfo && auctionInfo.name) || 'Society Auction 2026');
     const [sportTheme, setSportTheme] = useState('multi_sport');
-    const [bidIncrement, setBidIncrement] = useState(5);
+    // Base price and bid increments, set in the Prices step.
+    const [pricing, setPricing] = useState(() => BidRules.parse({ common_base_price: 10, bid_increment: 5 }));
+    const basePrice = parseFloat(pricing.same.base) || 0;
     const [uploadedFile, setUploadedFile] = useState(null);
     const [uploadedFileName, setUploadedFileName] = useState('');
     const [uploading, setUploading] = useState(false);
@@ -584,6 +670,7 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
             if (c.org_logo) setOrgLogo(c.org_logo);
             if (c.sponsor_name) setSponsorName(c.sponsor_name);
             if (c.sponsor_logo) setSponsorLogo(c.sponsor_logo);
+            if (c.pricing) setPricing(BidRules.parse(c));
         }).catch(() => {});
     }, []);
 
@@ -601,7 +688,6 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
     // Step 2
     const [numTeams, setNumTeams] = useState(4);
     const [numSplits, setNumSplits] = useState(3);
-    const [basePrice, setBasePrice] = useState(10);
     const [splitColumns, setSplitColumns] = useState([]); // which Excel columns to divide players by
     const [columnBins, setColumnBins] = useState({});     // {column: n_bins} for numeric columns
     const [analyzing, setAnalyzing] = useState(false);
@@ -900,12 +986,17 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
         await fetch('/api/config', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                config: { event_name: eventName, organisation_name: orgName, sponsor_name: sponsorName.trim(), sponsor_logo: sponsorLogo, bid_increment: bidIncrement, common_base_price: basePrice, setup_done: 'true', sport_theme: sportTheme, display_fields: JSON.stringify(displayFields), min_players_per_team: String(targetSquadSize || 0) },
+                config: { event_name: eventName, organisation_name: orgName, sponsor_name: sponsorName.trim(), sponsor_logo: sponsorLogo, setup_done: 'true', sport_theme: sportTheme, display_fields: JSON.stringify(displayFields), min_players_per_team: String(targetSquadSize || 0) },
                 category_rules: categories.map(c => ({
                     category: c.category, base_price: basePrice,
                     min_per_team: c.per_team_min, max_per_team: c.per_team_max || 99,
                 })),
             })
+        });
+        // Saved after the categories, so every player gets their category's base price.
+        await fetch('/api/pricing', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pricing: pricingForSave(pricing, categories.map(c => c.category)) }),
         });
         for (const t of teams) {
             const { logoFile, logoPreview, ...teamPayload } = t;
@@ -934,6 +1025,7 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
         { label: 'Event & Players', icon: 'fa-file-excel', color: 'from-purple-500 to-indigo-600' },
         { label: 'Teams & Analysis', icon: 'fa-wand-magic-sparkles', color: 'from-blue-500 to-cyan-600' },
         { label: 'Category Rules', icon: 'fa-list-check', color: 'from-amber-500 to-orange-500' },
+        { label: 'Prices & Bidding', icon: 'fa-indian-rupee-sign', color: 'from-yellow-500 to-amber-600' },
         { label: 'Team Names', icon: 'fa-shield-halved', color: 'from-green-500 to-emerald-600' },
         { label: 'Player Card', icon: 'fa-id-card', color: 'from-pink-500 to-rose-600' },
     ];
@@ -941,6 +1033,8 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
     const canNext1 = eventName.trim().length > 0;
     const canNext2 = analysisResult !== null;
     const canNext3 = categories.length > 0;
+    const pricingIssue = pricingProblem(pricing, categories.map(c => c.category));
+    const canNext4 = !pricingIssue;
     const canFinish = teams.length >= 2;
 
     return <div className="min-h-screen bg-[#09090b] flex items-center justify-center p-4">
@@ -958,7 +1052,7 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                             </p>
                         </div>
                     </div>
-                    <span className="text-xs font-extrabold text-zinc-400 bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800">Step {step} / 5</span>
+                    <span className="text-xs font-extrabold text-zinc-400 bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800">Step {step} / {stepMeta.length}</span>
                 </div>
                 <div className="flex gap-1.5">
                     {stepMeta.map((s, i) => (
@@ -1030,14 +1124,6 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                                 </label>
                             </div>
                             {(sponsorName || sponsorLogo) && <button type="button" onClick={clearSponsor} className="mt-1.5 text-[0.7rem] font-bold text-zinc-500 hover:text-red-400 underline">Remove sponsor</button>}
-                        </div>
-                        <div>
-                            <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider block mb-1.5">Bid Increment (L)</label>
-                            <input type="number" className="w-full bg-zinc-950 border border-zinc-700 p-3 rounded-2xl font-bold text-white focus:border-amber-500 outline-none transition" value={bidIncrement} onChange={e => setBidIncrement(parseFloat(e.target.value) || 0)} />
-                        </div>
-                        <div>
-                            <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider block mb-1.5">Base Price — everyone (L)</label>
-                            <input type="number" className="w-full bg-zinc-950 border border-zinc-700 p-3 rounded-2xl font-bold text-white focus:border-amber-500 outline-none transition" value={basePrice} onChange={e => setBasePrice(parseFloat(e.target.value) || 0)} />
                         </div>
                     </div>
 
@@ -1140,7 +1226,7 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                                             <div className="text-xs font-bold text-white truncate">{pl.name}</div>
                                             <div className="text-[10px] text-zinc-500 truncate">{pl.category || 'General'}</div>
                                         </div>
-                                        <div className="text-xs font-bold text-amber-400 shrink-0">₹{pl.base_price}L</div>
+                                        <div className="text-xs font-bold text-amber-400 shrink-0">{fmtL(pl.base_price)}</div>
                                     </div>
                                 ))}
                             </div>
@@ -1295,7 +1381,7 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                 {step === 3 && <div className="space-y-4 anim-slideUp">
                     <div>
                         <h2 className="fredoka text-xl font-bold text-white mb-1">Review Category Rules</h2>
-                        <p className="text-zinc-400 text-xs">Edit minimum players per team for each category. All base prices are ₹{basePrice}L (uniform).</p>
+                        <p className="text-zinc-400 text-xs">Set how many players of each category every team needs. Prices come next.</p>
                     </div>
 
                     {/* Target Squad Size — SEPARATE from category quotas below. Drives the
@@ -1359,8 +1445,18 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                     </div>
                 </div>}
 
-                {/* ── STEP 4: Team Names ── */}
-                {step === 4 && <div className="space-y-5 anim-slideUp">
+                {/* ── STEP 4: Prices & Bidding ── */}
+                {step === 4 && <div className="space-y-4 anim-slideUp">
+                    <div>
+                        <h2 className="fredoka text-xl font-bold text-white mb-1">Base Price & Bid Increments</h2>
+                        <p className="text-zinc-400 text-xs">Use one price for everyone, or set each category's base price and bid increment. The increment can grow once the bid reaches an amount.</p>
+                    </div>
+                    <PricingEditor pricing={pricing} categories={categories.map(c => c.category)} onChange={setPricing} />
+                    {pricingIssue && <p className="text-xs font-bold text-amber-400"><i className="fa-solid fa-triangle-exclamation mr-1.5"></i>{pricingIssue}</p>}
+                </div>}
+
+                {/* ── STEP 5: Team Names ── */}
+                {step === 5 && <div className="space-y-5 anim-slideUp">
                     <div>
                         <h2 className="fredoka text-xl font-bold text-white mb-1">Name Your Teams</h2>
                         <p className="text-zinc-400 text-xs">Edit team names and set the starting budget for each franchise</p>
@@ -1401,8 +1497,8 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                     </div>
                 </div>}
 
-                {/* ── STEP 5: Player Card Fields ── */}
-                {step === 5 && <div className="space-y-5 anim-slideUp">
+                {/* ── STEP 6: Player Card Fields ── */}
+                {step === 6 && <div className="space-y-5 anim-slideUp">
                     <div>
                         <h2 className="fredoka text-xl font-bold text-white mb-1">Player Roster Display</h2>
                         <p className="text-zinc-400 text-xs">Pick which extra columns from your file show on the player roster (and the player card during bidding). Blank values are automatically hidden.</p>
@@ -1449,9 +1545,9 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                     {step > 1
                         ? <button onClick={() => setStep(s => s - 1)} className="text-zinc-400 hover:text-white font-bold transition flex items-center gap-2 text-sm"><i className="fa-solid fa-arrow-left"></i> Back</button>
                         : <div />}
-                    {step < 5
+                    {step < stepMeta.length
                         ? <button
-                            disabled={(step===1 && !canNext1) || (step===2 && !canNext2) || (step===3 && !canNext3)}
+                            disabled={(step===1 && !canNext1) || (step===2 && !canNext2) || (step===3 && !canNext3) || (step===4 && !canNext4)}
                             onClick={() => { SFX.click(); setStep(s => s + 1); }}
                             className={`bg-gradient-to-r ${stepMeta[step].color} text-white px-7 py-3 rounded-2xl fredoka font-bold text-base transition shadow-lg flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:scale-105 disabled:hover:scale-100`}>
                             Next <i className="fa-solid fa-arrow-right"></i>
@@ -1778,7 +1874,23 @@ function App() {
 
     const switchAuction = () => { setAuctionInfo(null); setView('chooser'); };
 
-    const bidIncrement = parseFloat(config.bid_increment) || 2.5;
+    // Bid steps follow the player's category and grow with the bid
+    // (static/bidding.js). n > 0 raises n steps, n < 0 lowers.
+    const bidRule = BidRules.ruleFor(BidRules.parse(config), currentPlayer && currentPlayer.category);
+    const bidSteps = (bid, n) => {
+        let b = bid;
+        for (let i = 0; i < Math.abs(n); i++) b = n > 0 ? BidRules.up(bidRule, b) : BidRules.down(bidRule, b);
+        return b;
+    };
+    const stepLabel = n => (n > 0 ? '+' : '−') + fmtL(Math.abs(bidSteps(currentBid, n) - currentBid)).replace('₹', '');
+    const [pricingDraft, setPricingDraft] = useState(null);   // Prices & Bidding modal
+    const savePricing = async () => {
+        const r = await fetch('/api/pricing', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pricing: pricingForSave(pricingDraft, categoryList) }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { alert(d.error || 'Could not save prices'); return; }
+        setPricingDraft(null); loadData();
+    };
 
     const saveAuctionState = (player, bid) => {
         if(player) {
@@ -1851,7 +1963,7 @@ function App() {
             <input type="file" accept="image/*" className="hidden" onChange={e=>stageLogo(setTeam, e.target.files[0])} />
         </label>
     );
-    const addPlayer = async e => { e.preventDefault(); await fetch('/api/players',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newPlayer.name,category:newPlayer.category,base_price:parseFloat(newPlayer.base_price||0)})}); setNewPlayer({name:'',category:'',base_price:''}); loadData(); };
+    const addPlayer = async e => { e.preventDefault(); await fetch('/api/players',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newPlayer.name,category:newPlayer.category,base_price:newPlayer.base_price===''?'':parseFloat(newPlayer.base_price)})}); setNewPlayer({name:'',category:'',base_price:''}); loadData(); };
     const updatePlayer = async e => { e.preventDefault(); await fetch('/api/players/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:editPlayer.id,name:editPlayer.name,category:editPlayer.category,base_price:parseFloat(editPlayer.base_price||0)})}); setEditPlayer(null); loadData(); };
     // Allot a retained player to a team at a price the admin sets (zero allowed),
     // or return an allotted player to the pool. Purses rebalance server-side.
@@ -1930,11 +2042,11 @@ function App() {
     useEffect(()=>{
         const h=e=>{
             if(view!=='auction'||!currentPlayer||showWheel) return;
-            if(e.key==='ArrowUp'){e.preventDefault();setCurrentBid(p=>p+bidIncrement);SFX.bid();setBidAnim(true);setTimeout(()=>setBidAnim(false),200);}
-            else if(e.key==='ArrowDown'){e.preventDefault();setCurrentBid(p=>Math.max(0,p-bidIncrement));SFX.bid();}
+            if(e.key==='ArrowUp'){e.preventDefault();setCurrentBid(p=>bidSteps(p,1));SFX.bid();setBidAnim(true);setTimeout(()=>setBidAnim(false),200);}
+            else if(e.key==='ArrowDown'){e.preventDefault();setCurrentBid(p=>bidSteps(p,-1));SFX.bid();}
         };
         window.addEventListener('keydown',h); return()=>window.removeEventListener('keydown',h);
-    },[view,currentPlayer,showWheel,bidIncrement]);
+    },[view,currentPlayer,showWheel,config]);
 
     // Auction actions
     
@@ -2059,10 +2171,9 @@ function App() {
         const maxBid = chosenTeam.max_allowed_bid != null ? chosenTeam.max_allowed_bid : chosenTeam.remaining_budget;
         if(price > maxBid) {
             const reserved = chosenTeam.reserved_purse || 0;
-            const base = chosenTeam.common_base_price || 0;
-            alert(`🚫 CANNOT SELL\n\n₹${price}L is above ${chosenTeam.name}'s max allowed bid of ₹${maxBid}L.` +
+            alert(`🚫 CANNOT SELL\n\n${fmtL(price)} is above ${chosenTeam.name}'s max allowed bid of ${fmtL(maxBid)}.` +
                 (reserved > 0
-                    ? `\n\nThey still need to fill ${chosenTeam.reserved_spots} more required slot(s) and must keep ₹${reserved}L reserved (₹${base}L base each).`
+                    ? `\n\nThey still need to fill ${chosenTeam.reserved_spots} more required slot(s) and must keep ${fmtL(reserved)} reserved for them at base price.`
                     : `\n\nThat is more than their remaining purse.`));
             return;
         }
@@ -2164,7 +2275,7 @@ function App() {
                         <span className="text-slate-700">•</span>
                         <span><span className="text-green-400">{stats?.sold||0}</span> sold</span>
                         <span className="text-slate-700">•</span>
-                        <span><span className="text-amber-400">₹{totalSpent}L</span> spent</span>
+                        <span><span className="text-amber-400">{fmtL(totalSpent)}</span> spent</span>
                         <span className="text-slate-700">•</span>
                         <span><span className="text-blue-400">{unsoldPlayers.length}</span> remaining</span>
                     </div>
@@ -2256,7 +2367,7 @@ function App() {
                             {l:'Total Players', v:stats.total_players, icon:'fa-users', color:'text-blue-400', border:'border-blue-500/20', bg:'bg-blue-500/5'},
                             {l:'Sold', v:stats.sold, icon:'fa-gavel', color:'text-green-400', border:'border-green-500/20', bg:'bg-green-500/5'},
                             {l:'Remaining', v:stats.unsold, icon:'fa-hourglass-half', color:'text-amber-400', border:'border-amber-500/20', bg:'bg-amber-500/5'},
-                            {l:'Total Spent', v:`₹${stats.total_spent}L`, icon:'fa-indian-rupee-sign', color:'text-purple-400', border:'border-purple-500/20', bg:'bg-purple-500/5'},
+                            {l:'Total Spent', v:`${fmtL(stats.total_spent)}`, icon:'fa-indian-rupee-sign', color:'text-purple-400', border:'border-purple-500/20', bg:'bg-purple-500/5'},
                         ].map((s,i)=><div key={i} className={`${s.bg} rounded-2xl p-4 border ${s.border} flex items-center gap-3 shadow-xl anim-slideUp`} style={{animationDelay:`${i*0.06}s`}}>
                             <div className="w-10 h-10 bg-slate-950 rounded-xl flex items-center justify-center border border-slate-800 shrink-0">
                                 <i className={`fa-solid ${s.icon} ${s.color}`}></i>
@@ -2381,11 +2492,11 @@ function App() {
                                         <span className={`font-bold ${t.target_squad_size ? (t.player_count>=t.target_squad_size ? 'text-green-400' : 'text-slate-400') : 'text-slate-400'}`}>
                                             {t.player_count||0}{t.target_squad_size ? `/${t.target_squad_size}` : ''} players
                                         </span>
-                                        <span className={`font-extrabold ${pct>20?'text-green-400':'text-red-400'}`}>₹{t.remaining_budget}L</span>
+                                        <span className={`font-extrabold ${pct>20?'text-green-400':'text-red-400'}`}>{fmtL(t.remaining_budget)}</span>
                                     </div>
                                     {t.max_allowed_bid != null && <div className="flex justify-between text-[0.65rem] mt-1.5 pt-1.5 border-t border-slate-800">
                                         <span className="text-slate-500 font-bold uppercase tracking-wide">Max Bid</span>
-                                        <span className="font-extrabold text-amber-400">₹{t.max_allowed_bid}L{t.reserved_purse>0 && <span className="text-slate-600 font-semibold"> · ₹{t.reserved_purse}L held</span>}</span>
+                                        <span className="font-extrabold text-amber-400">{fmtL(t.max_allowed_bid)}{t.reserved_purse>0 && <span className="text-slate-600 font-semibold"> · {fmtL(t.reserved_purse)} held</span>}</span>
                                     </div>}
                                     {t.fulfillment && t.fulfillment.length>0 && <div className="flex flex-wrap gap-1 mt-2">
                                         {t.target_squad_size > 0 && <span className={`text-[0.5rem] font-bold px-1.5 py-0.5 rounded-full border ${t.player_count>=t.target_squad_size?'bg-green-500/20 text-green-400 border-green-500/30':'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'}`}>Squad:{t.player_count||0}/{t.target_squad_size}</span>}
@@ -2403,7 +2514,7 @@ function App() {
                                 <i className="fa-solid fa-chart-pie text-purple-400"></i> Category Spending Breakdown
                             </span>
                             <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs text-slate-400 font-bold">₹{totalSpent}L total</span>
+                                <span className="text-xs text-slate-400 font-bold">{fmtL(totalSpent)} total</span>
                                 <i className="fa-solid fa-chevron-down text-slate-500 group-open:rotate-180 transition-transform text-xs"></i>
                             </div>
                         </summary>
@@ -2414,11 +2525,11 @@ function App() {
                                         <span className="font-extrabold text-xs text-white truncate">{c.category}</span>
                                         <span className="text-[0.6rem] font-bold text-slate-400">{c.sold_count}/{c.total}</span>
                                     </div>
-                                    <div className="fredoka text-base font-bold text-green-400">₹{c.total_spent}L</div>
+                                    <div className="fredoka text-base font-bold text-green-400">{fmtL(c.total_spent)}</div>
                                     <div className="bg-slate-800 rounded-full h-1 overflow-hidden">
                                         <div className="h-full bg-amber-500 rounded-full" style={{width:`${c.percent_of_total}%`}}></div>
                                     </div>
-                                    <div className="text-[0.55rem] text-slate-400 font-bold">Avg ₹{c.avg_price}L • {c.percent_of_total}%</div>
+                                    <div className="text-[0.55rem] text-slate-400 font-bold">Avg {fmtL(c.avg_price)} • {c.percent_of_total}%</div>
                                 </div>
                             ))}
                         </div>
@@ -2438,6 +2549,10 @@ function App() {
                                 className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded-xl hover:bg-emerald-500/25 font-bold text-xs transition flex items-center gap-1.5"
                                 title="Recompute categories & team quotas from the current pool">
                                 <i className="fa-solid fa-wand-magic-sparkles"></i>Re-run Analysis
+                            </button>
+                            <button onClick={()=>setPricingDraft(BidRules.parse(config))}
+                                className="bg-yellow-500/15 text-yellow-300 border border-yellow-500/30 px-3 py-1.5 rounded-xl hover:bg-yellow-500/25 font-bold text-xs transition flex items-center gap-1.5">
+                                <i className="fa-solid fa-indian-rupee-sign"></i>Prices & Bidding
                             </button>
                             <button onClick={()=>setShowPresetsModal(true)}
                                 className="bg-amber-500/15 text-amber-300 border border-amber-500/30 px-3 py-1.5 rounded-xl hover:bg-amber-500/25 font-bold text-xs transition flex items-center gap-1.5">
@@ -2477,8 +2592,8 @@ function App() {
                                 <div className="flex items-center gap-1 mt-0.5">{p.category&&<CatBadge category={p.category}/>}{p.team_role&&<RoleBadge role={p.team_role}/>}</div>
                             </div>
                             <div className="flex flex-col items-end gap-0.5 shrink-0">
-                                <span className="text-[0.55rem] text-slate-400 font-bold">₹{p.base_price}L</span>
-                                {p.status==='sold'?<span className="text-[0.5rem] text-green-400 font-extrabold">SOLD ₹{p.sold_price}L</span>:p.status==='passed'?<span className="text-[0.5rem] text-red-400 font-bold">PASSED</span>:<span className="text-[0.5rem] text-amber-400 font-bold">POOL</span>}
+                                <span className="text-[0.55rem] text-slate-400 font-bold">{fmtL(p.base_price)}</span>
+                                {p.status==='sold'?<span className="text-[0.5rem] text-green-400 font-extrabold">SOLD {fmtL(p.sold_price)}</span>:p.status==='passed'?<span className="text-[0.5rem] text-red-400 font-bold">PASSED</span>:<span className="text-[0.5rem] text-amber-400 font-bold">POOL</span>}
                                 <div className="flex items-center gap-1.5">
                                     <button onClick={()=>openPlayer(p)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-purple-400 transition text-[0.6rem]"><i className="fa-solid fa-pen"></i></button>
                                     {p.status!=='sold' && <button onClick={()=>deletePlayer(p)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition text-[0.6rem]" title="Remove player"><i className="fa-solid fa-trash"></i></button>}
@@ -2522,6 +2637,18 @@ function App() {
                 </form>
             </div>}
 
+            {pricingDraft && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md anim-scaleIn p-4" onClick={()=>setPricingDraft(null)}>
+                <div onClick={e=>e.stopPropagation()} className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-xl space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+                    <div>
+                        <h3 className="fredoka text-lg font-bold text-white flex items-center gap-2"><i className="fa-solid fa-indian-rupee-sign text-yellow-400"></i>Prices & Bidding</h3>
+                        <p className="text-xs text-zinc-500 mt-1">Saving gives every player not yet sold their new base price. Players already sold keep their price.</p>
+                    </div>
+                    <PricingEditor pricing={pricingDraft} categories={categoryList} onChange={setPricingDraft} />
+                    {pricingProblem(pricingDraft, categoryList) && <p className="text-xs font-bold text-amber-400"><i className="fa-solid fa-triangle-exclamation mr-1.5"></i>{pricingProblem(pricingDraft, categoryList)}</p>}
+                    <div className="flex gap-3"><button type="button" onClick={savePricing} disabled={!!pricingProblem(pricingDraft, categoryList)} className="flex-1 bg-yellow-500 hover:bg-yellow-400 disabled:opacity-40 text-black py-2.5 rounded-xl font-bold text-sm">Save prices</button><button type="button" onClick={()=>setPricingDraft(null)} className="bg-slate-800 text-slate-300 px-5 py-2.5 rounded-xl font-bold text-sm">Cancel</button></div>
+                </div>
+            </div>}
+
             {editPlayer && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md anim-scaleIn" onClick={()=>setEditPlayer(null)}>
                 <form onSubmit={updatePlayer} onClick={e=>e.stopPropagation()} className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-96 space-y-4 shadow-2xl">
                     <h3 className="fredoka text-lg font-bold text-white">Player Profile</h3>
@@ -2531,11 +2658,11 @@ function App() {
                     <div className="space-y-2 bg-slate-950/60 border border-amber-500/25 rounded-xl p-3">
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-extrabold text-amber-300"><i className="fa-solid fa-handshake mr-1.5"></i>Allot to team</span>
-                            {editPlayer.status==='sold' && <span className="text-[0.65rem] font-bold text-green-400">With {editPlayer.team_name||'team'}{editPlayer.team_role?` (${editPlayer.team_role})`:''} · ₹{editPlayer.sold_price}L</span>}
+                            {editPlayer.status==='sold' && <span className="text-[0.65rem] font-bold text-green-400">With {editPlayer.team_name||'team'}{editPlayer.team_role?` (${editPlayer.team_role})`:''} · {fmtL(editPlayer.sold_price)}</span>}
                         </div>
                         <div className="flex gap-2">
                             <select className="flex-1 min-w-0 bg-slate-950 border border-slate-700 text-white p-2.5 rounded-xl font-bold text-xs" value={editPlayer.allotTeam} onChange={e=>setEditPlayer({...editPlayer,allotTeam:e.target.value})}>
-                                <option value="">Choose team</option>{teams.map(t=><option key={t.id} value={String(t.id)}>{t.name} (₹{t.remaining_budget}L left)</option>)}
+                                <option value="">Choose team</option>{teams.map(t=><option key={t.id} value={String(t.id)}>{t.name} ({fmtL(t.remaining_budget)} left)</option>)}
                             </select>
                             <input type="number" min="0" step="any" placeholder="Price (L)" className="w-24 bg-slate-950 border border-slate-700 text-white p-2.5 rounded-xl font-bold text-xs" value={editPlayer.allotPrice} onChange={e=>setEditPlayer({...editPlayer,allotPrice:e.target.value})} />
                         </div>
@@ -2682,15 +2809,15 @@ function App() {
                                         <p className="fredoka text-slate-400 text-sm font-bold mb-2 uppercase tracking-[0.35em]">Current Live Bid</p>
                                         <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-32 blur-3xl opacity-30 pointer-events-none" style={{ background: currentTheme.accent }} />
                                         <div className={`relative fredoka text-[7rem] leading-none font-black transition-transform duration-150 ${bidAnim?'scale-110':'scale-100'}`} style={{color: currentTheme.accent, textShadow: `0 0 50px ${currentTheme.accent}66, 0 0 110px ${currentTheme.accent}33`}}>
-                                            ₹{currentBid}L
+                                            {fmtL(currentBid)}
                                         </div>
-                                        <p className="inline-block mt-3 text-slate-400 font-bold text-xs px-3 py-1 rounded-full bg-white/5 border border-white/10">Base Price: ₹{currentPlayer.base_price}L</p>
+                                        <p className="inline-block mt-3 text-slate-400 font-bold text-xs px-3 py-1 rounded-full bg-white/5 border border-white/10">Base Price: {fmtL(currentPlayer.base_price)}</p>
                                     </div>
 
                                     <div className="flex justify-center items-center gap-3">
-                                        {[-10,-bidIncrement].map(v=><button key={v} onClick={()=>{setCurrentBid(p=>Math.max(0,p+v));SFX.bid();}} className="bg-slate-800/80 hover:bg-slate-700 border border-slate-600 w-14 h-14 rounded-2xl fredoka font-bold text-white transition active:scale-90 text-lg backdrop-blur-md">{v}</button>)}
+                                        {[-2,-1].map(n=><button key={n} onClick={()=>{setCurrentBid(p=>bidSteps(p,n));SFX.bid();}} className="bg-slate-800/80 hover:bg-slate-700 border border-slate-600 w-14 h-14 rounded-2xl fredoka font-bold text-white transition active:scale-90 text-sm backdrop-blur-md">{stepLabel(n)}</button>)}
                                         <input type="number" value={currentBid} onChange={e=>setCurrentBid(parseFloat(e.target.value)||0)} className="bg-slate-900 border-2 text-white text-center fredoka text-4xl font-bold rounded-2xl w-48 py-2 outline-none transition shadow-[0_0_30px_rgba(0,0,0,.4)]" style={{borderColor: currentTheme.accent}} />
-                                        {[bidIncrement,10,25].map(v=><button key={v} onClick={()=>{setCurrentBid(p=>p+v);SFX.bid();setBidAnim(true);setTimeout(()=>setBidAnim(false),150);}} className="bg-slate-800/80 hover:bg-slate-700 border border-slate-600 w-14 h-14 rounded-2xl fredoka font-bold text-white transition active:scale-90 text-lg backdrop-blur-md">+{v}</button>)}
+                                        {[1,2,5].map(n=><button key={n} onClick={()=>{setCurrentBid(p=>bidSteps(p,n));SFX.bid();setBidAnim(true);setTimeout(()=>setBidAnim(false),150);}} className="bg-slate-800/80 hover:bg-slate-700 border border-slate-600 w-14 h-14 rounded-2xl fredoka font-bold text-white transition active:scale-90 text-sm backdrop-blur-md">{stepLabel(n)}</button>)}
                                     </div>
                                 </div>
                             </div>
@@ -2717,7 +2844,7 @@ function App() {
                                         const isUnderMax = !rule || have < rule.max_per_team;
                                         const isValid = isAffordable && isUnderMax;
 
-                                        let label = `${t.name} (₹${t.remaining_budget}L)`;
+                                        let label = `${t.name} (${fmtL(t.remaining_budget)})`;
                                         if (!isAffordable) label += ` [❌ Low Purse]`;
                                         else if (!isUnderMax) label += ` [❌ Max Limit Reached]`;
 
@@ -2765,12 +2892,12 @@ function App() {
                                 </div>
                                 <div><h4 className="font-extrabold text-white text-xs truncate max-w-[130px]">{t.name}</h4><span className="text-[0.6rem] text-slate-500 font-bold">{t.player_count||0}{t.target_squad_size ? `/${t.target_squad_size}` : ''} players</span></div>
                             </div>
-                            <div className="text-right"><div className="text-[0.55rem] text-slate-500 font-bold uppercase">Purse</div><div className={`fredoka font-bold text-base ${pct>20?'text-green-400':'text-red-400'}`}>₹{t.remaining_budget}L</div></div>
+                            <div className="text-right"><div className="text-[0.55rem] text-slate-500 font-bold uppercase">Purse</div><div className={`fredoka font-bold text-base ${pct>20?'text-green-400':'text-red-400'}`}>{fmtL(t.remaining_budget)}</div></div>
                         </div>
                         <div className="bg-slate-800 rounded-full h-1.5 overflow-hidden mb-2"><div className={`h-full rounded-full transition-all ${pct>50?'bg-green-400':pct>20?'bg-yellow-400':'bg-red-400'}`} style={{width:`${pct}%`}}></div></div>
                         {t.max_allowed_bid != null && <div className="flex justify-between items-center text-[0.6rem] mb-2">
                             <span className="text-slate-500 font-bold uppercase">Max Bid</span>
-                            <span className="font-extrabold text-amber-400">₹{t.max_allowed_bid}L{t.reserved_purse>0 && <span className="text-slate-600"> ·₹{t.reserved_purse}L held</span>}</span>
+                            <span className="font-extrabold text-amber-400">{fmtL(t.max_allowed_bid)}{t.reserved_purse>0 && <span className="text-slate-600"> ·{fmtL(t.reserved_purse)} held</span>}</span>
                         </div>}
                         {t.fulfillment && t.fulfillment.length>0 && <div className="flex flex-wrap gap-1">
                             {t.target_squad_size > 0 && <span className={`text-[0.45rem] font-bold px-1.5 py-0.5 rounded-full border ${t.player_count>=t.target_squad_size?'bg-green-500/20 text-green-400 border-green-500/30':'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'}`}>Squad:{t.player_count||0}/{t.target_squad_size}</span>}

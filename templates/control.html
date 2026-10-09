@@ -8,6 +8,7 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="/static/bidding.js?v={{ asset_v }}"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -67,7 +68,8 @@
             const st = data.auction_state || {};
             const teams = data.teams || [];
             const cfg = data.config || {};
-            const inc = parseFloat(cfg.bid_increment) || 5;
+            // This player's category decides the increment, which can rise with the bid.
+            const rule = BidRules.ruleFor(BidRules.parse(cfg), st.category);
             const orgName = cfg.organisation_name || '';
             const eventName = cfg.event_name || 'Auction';
             const onBlock = !!st.current_player;
@@ -79,12 +81,12 @@
             const unsold = players.filter(p => p.status === 'unsold');
 
             const raise = (t) => {
-                const nb = Math.round((bid + inc) * 100) / 100;
+                const nb = BidRules.up(rule, bid);
                 local.current.bid = nb; local.current.leaderId = t.id; rerender();
                 post('/api/auction/state', { current_bid: nb, bidder_team_id: String(t.id), bidder_team_name: t.name, bidder_team_color: t.color || '#3b82f6' });
             };
             const lower = () => {
-                const nb = Math.max(basePrice, Math.round((bid - inc) * 100) / 100);
+                const nb = Math.max(basePrice, BidRules.down(rule, bid));
                 local.current.bid = nb; rerender();
                 post('/api/auction/state', { current_bid: nb, bidder_team_id: leader?String(leader.id):'', bidder_team_name: leader?leader.name:'', bidder_team_color: leader?(leader.color||''):'' });
             };
@@ -138,13 +140,13 @@
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <div className="fredoka text-2xl font-bold text-white truncate leading-tight">{st.current_player}</div>
-                                    <div className="text-[0.7rem] font-bold text-zinc-500 uppercase tracking-wider">{st.category || '—'} · Base ₹{basePrice}L</div>
+                                    <div className="text-[0.7rem] font-bold text-zinc-500 uppercase tracking-wider">{st.category || '—'} · Base {fmtL(basePrice)}</div>
                                 </div>
                             </div>
 
                             <div className="rounded-2xl bg-zinc-900/70 border border-zinc-800 p-4 text-center">
                                 <div className="text-[0.65rem] font-extrabold uppercase tracking-[0.3em] text-zinc-500">Current Bid</div>
-                                <div className="fredoka text-6xl font-black text-amber-400 leading-none my-1">₹{bid}L</div>
+                                <div className="fredoka text-6xl font-black text-amber-400 leading-none my-1">{fmtL(bid)}</div>
                                 {leader
                                     ? <div className="inline-flex items-center gap-2 mt-1 px-3 py-1 rounded-full text-sm font-bold" style={{ background:`${leader.color||'#3b82f6'}22`, color: leader.color||'#93c5fd' }}>Leading: {leader.name}</div>
                                     : <div className="text-xs text-zinc-600 font-bold mt-1">Tap a franchise to bid</div>}
@@ -153,7 +155,7 @@
                             {/* Team buttons — tap to raise */}
                             <div className="grid grid-cols-2 gap-2.5">
                                 {teams.map(t => {
-                                    const nb = bid + inc;
+                                    const nb = BidRules.up(rule, bid);
                                     const maxBid = t.max_allowed_bid != null ? t.max_allowed_bid : t.remaining_budget;
                                     const cant = nb > maxBid;
                                     const isLeader = leader && String(leader.id)===String(t.id);
@@ -167,11 +169,11 @@
                                                 </div>
                                                 <div className="min-w-0 flex-1">
                                                     <div className="font-extrabold text-white text-sm truncate">{t.name}</div>
-                                                    <div className="text-[0.6rem] font-bold text-zinc-500">Purse ₹{t.remaining_budget}L · Max ₹{maxBid}L</div>
+                                                    <div className="text-[0.6rem] font-bold text-zinc-500">Purse {fmtL(t.remaining_budget)} · Max {fmtL(maxBid)}</div>
                                                 </div>
                                             </div>
                                             <div className={`mt-1.5 text-center text-xs font-black rounded-lg py-1 ${cant?'text-zinc-600 bg-zinc-950':'text-black'}`} style={cant?{}:{ background: t.color||'#3b82f6' }}>
-                                                {cant ? 'MAX REACHED' : `BID ₹${nb}L`}
+                                                {cant ? 'MAX REACHED' : `BID ${fmtL(nb)}`}
                                             </div>
                                         </button>
                                     );
@@ -180,7 +182,7 @@
 
                             {/* Bottom actions */}
                             <div className="mt-auto grid grid-cols-4 gap-2 pt-2">
-                                <button onClick={lower} className="rounded-2xl bg-zinc-900 border border-zinc-700 text-zinc-300 font-bold py-4 text-lg active:scale-95">−₹{inc}</button>
+                                <button onClick={lower} className="rounded-2xl bg-zinc-900 border border-zinc-700 text-zinc-300 font-bold py-4 text-lg active:scale-95">−{fmtL(bid - BidRules.down(rule, bid))}</button>
                                 <button onClick={pass} className="rounded-2xl bg-red-500/15 border border-red-500/40 text-red-400 font-extrabold py-4 active:scale-95">PASS</button>
                                 <button onClick={sell} disabled={!leader} className="col-span-2 rounded-2xl bg-green-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-black font-black text-xl py-4 active:scale-95 flex items-center justify-center gap-2"><i className="fa-solid fa-gavel"></i>SOLD</button>
                             </div>
@@ -201,7 +203,7 @@
                                         <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-zinc-800 flex items-center justify-center text-[0.65rem] font-bold text-zinc-400">
                                             {p.photo_url ? <img src={p.photo_url} className="w-full h-full object-cover" /> : initials(p.name)}
                                         </div>
-                                        <div className="min-w-0"><div className="font-bold text-white text-xs truncate">{p.name}</div><div className="text-[0.55rem] text-zinc-500 font-bold truncate">{p.category||'—'} · ₹{p.base_price}L</div></div>
+                                        <div className="min-w-0"><div className="font-bold text-white text-xs truncate">{p.name}</div><div className="text-[0.55rem] text-zinc-500 font-bold truncate">{p.category||'—'} · {fmtL(p.base_price)}</div></div>
                                     </button>
                                 ))}
                             </div>

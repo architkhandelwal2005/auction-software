@@ -8,6 +8,7 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="/static/bidding.js?v={{ asset_v }}"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -87,7 +88,7 @@
                         <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-2">
                                 <h3 className="fredoka font-bold text-white print-ink text-[15px] leading-tight truncate">{p.name}</h3>
-                                <span className="grotesk font-bold text-sm whitespace-nowrap" style={{color: theme.accent}}>₹{p.base_price}L</span>
+                                <span className="grotesk font-bold text-sm whitespace-nowrap" style={{color: theme.accent}}>{fmtL(p.base_price)}</span>
                             </div>
                             <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide"
                                   style={{ background: `${cc}22`, color: cc }}>{p.category || 'General'}</span>
@@ -196,7 +197,7 @@
                             {[
                                 { l: 'Total Players', v: players.length },
                                 { l: 'Categories', v: cats.length },
-                                { l: 'Total Base Value', v: `₹${totalBase.toFixed(0)}L` },
+                                { l: 'Total Base Value', v: `${fmtL(totalBase)}` },
                             ].map((s, i) => (
                                 <div key={i} className="print-card rounded-2xl p-4 text-center border" style={{ background: `${theme.accent}0d`, borderColor: `${theme.accent}33` }}>
                                     <div className="fredoka text-2xl font-bold print-ink" style={{ color: theme.accent }}>{s.v}</div>

@@ -491,7 +491,8 @@ def hydrate_drive_photos_async(auction_id):
 def _asset_version():
     base = os.path.dirname(os.path.abspath(__file__))
     latest = 0.0
-    for rel in ('static/app.jsx', 'static/team_app.jsx', 'static/auction_display.js', 'static/auction_display.css'):
+    for rel in ('static/app.jsx', 'static/team_app.jsx', 'static/auction_display.js', 'static/auction_display.css',
+                'static/bidding.js'):
         try:
             latest = max(latest, os.path.getmtime(os.path.join(base, rel)))
         except OSError:
@@ -876,7 +877,7 @@ ROUTE_POLICY = {
     'import_from_sheet': 'admin', 'resync_sheet': 'admin', 'apply_sheet_changes': 'admin',
     'set_auction_state': 'admin', 'sell_player': 'admin', 'undo_last_sale': 'admin',
     'edit_player_sale': 'admin', 'pass_player': 'admin', 'revive_player': 'admin',
-    'bargain_bin': 'admin', 'set_common_base_price': 'admin',
+    'bargain_bin': 'admin', 'set_common_base_price': 'admin', 'save_pricing': 'admin',
     'sheets_sync_all': 'admin', 'fetch_drive_photos': 'admin',
     'upload_banner': 'admin', 'upload_org_logo': 'admin', 'upload_sponsor_logo': 'admin', 'upload_team_logo': 'admin',
 }
@@ -966,7 +967,7 @@ MUTATING_ENDPOINTS = {
     'load_preset', 'load_test_data', 'set_auction_state', 'sell_player',
     'undo_last_sale', 'edit_player_sale', 'reset_auction', 'sheets_sync_all',
     'upload_banner', 'upload_org_logo', 'upload_sponsor_logo', 'upload_team_logo', 'fetch_drive_photos',
-    'set_common_base_price', 'smart_analyze', 'pass_player', 'revive_player',
+    'set_common_base_price', 'save_pricing', 'smart_analyze', 'pass_player', 'revive_player',
     'bargain_bin', 'go_live_auction',
     'import_from_sheet', 'resync_sheet', 'apply_sheet_changes',
 }
@@ -1575,34 +1576,161 @@ def restart_setup():
     conn.close()
     return jsonify({'success': True})
 
+# ─── Pricing: base price and bid increments, overall or per category ───
+# Stored as JSON in the config key "pricing". Amounts are in lakhs.
+#   {"mode": "same" | "category",
+#    "same":       {"base": 10, "increment": 5, "steps": [{"from": 50, "increment": 10}]},
+#    "categories": {"Platinum": {"base": 1, "increment": 0.5, "steps": [...]}}}
+# A step applies once the bid reaches its "from" amount. static/bidding.js
+# holds the same rules for the screens; keep the two in step.
+
+def fmt_lakhs(v):
+    """₹50K below one lakh, ₹1.5L from one lakh up (as static/bidding.js)."""
+    v = float(v or 0)
+    if v and abs(v) < 1:
+        return '₹%gK' % round(v * 100, 1)
+    return '₹%gL' % round(v, 2)
+
+
+def _num(v, default):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _clean_rule(rule, fallback):
+    rule = rule if isinstance(rule, dict) else {}
+    steps = []
+    for s in rule.get('steps') or []:
+        if isinstance(s, dict):
+            frm, inc = _num(s.get('from'), 0), _num(s.get('increment'), 0)
+            if frm > 0 and inc > 0:
+                steps.append({'from': frm, 'increment': inc})
+    inc = _num(rule.get('increment'), 0)
+    return {'base': max(0.0, _num(rule.get('base'), fallback['base'])),
+            'increment': inc if inc > 0 else fallback['increment'],
+            'steps': sorted(steps, key=lambda s: s['from'])}
+
+
+def pricing_from_config(cfg):
+    """The auction's pricing. Auctions set up before per-category pricing
+    fall back to their single base price and increment."""
+    raw = cfg.get('pricing')
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            raw = None
+    raw = raw if isinstance(raw, dict) else {}
+    legacy = {'base': _num(cfg.get('common_base_price') or cfg.get('default_base_price'), 10.0),
+              'increment': _num(cfg.get('bid_increment'), 2.5) or 2.5}
+    same = _clean_rule(raw.get('same'), legacy)
+    cats = raw.get('categories') if isinstance(raw.get('categories'), dict) else {}
+    return {'mode': 'category' if raw.get('mode') == 'category' else 'same',
+            'same': same,
+            'categories': {str(k): _clean_rule(v, same) for k, v in cats.items()}}
+
+
+def pricing_rule(pricing, category):
+    """The rule a player of this category is auctioned under."""
+    if pricing['mode'] == 'category' and category and category in pricing['categories']:
+        return pricing['categories'][category]
+    return pricing['same']
+
+
+def pricing_floor(pricing):
+    """The lowest base price any player is auctioned at."""
+    if pricing['mode'] == 'category' and pricing['categories']:
+        return min(r['base'] for r in pricing['categories'].values())
+    return pricing['same']['base']
+
+
+def block_category(conn):
+    """The category of the player on the block, or None between players."""
+    state = {r['key']: r['value'] for r in conn.execute(
+        "SELECT key, value FROM auction_state WHERE key IN ('current_player', 'category')").fetchall()}
+    return (state.get('category') or None) if state.get('current_player') else None
+
+
+def apply_pricing(conn, pricing=None):
+    """Give every player not yet sold the base price of their category's rule.
+    Does nothing for an auction that never saved pricing, so a sheet's own
+    base prices stay until the admin sets prices."""
+    if pricing is None:
+        row = conn.execute("SELECT value FROM config WHERE key = 'pricing'").fetchone()
+        if not row or not row['value']:
+            return
+        pricing = pricing_from_config({'pricing': row['value']})
+    cats = pricing['categories'] if pricing['mode'] == 'category' else {}
+    for cat, rule in cats.items():
+        conn.execute("UPDATE players SET base_price = ? WHERE status != 'sold' AND category = ?",
+                     (rule['base'], cat))
+    if cats:
+        conn.execute("UPDATE players SET base_price = ? WHERE status != 'sold' AND "
+                     "(category IS NULL OR category NOT IN (%s))" % ','.join(['?'] * len(cats)),
+                     [pricing['same']['base']] + list(cats))
+    else:
+        conn.execute("UPDATE players SET base_price = ? WHERE status != 'sold'", (pricing['same']['base'],))
+    for r in conn.execute('SELECT id, category FROM category_rules').fetchall():
+        conn.execute('UPDATE category_rules SET base_price = ? WHERE id = ?',
+                     (pricing_rule(pricing, r['category'])['base'], r['id']))
+
+
 # ─── Helper: Max Allowed Bid (reserve enough purse for remaining required slots) ───
-def compute_max_bid(rem_budget, current_count, rules_list, config_dict):
-    """A team must keep enough purse to fill its remaining required squad slots at
-    base price. Max bid on the current player = purse − (remaining slots after this
-    one) × base price. Returns (max_bid, target_squad, needed_players, reserved_spots,
-    reserved_purse, common_bp)."""
+def compute_max_bid(rem_budget, cat_counts, rules_list, config_dict, category=None):
+    """A team must keep enough purse to fill its remaining squad slots at base
+    price. Max bid on the current player = purse − the cost of the slots left
+    after this one.
+
+    Each slot a category minimum still requires is priced at that category's
+    base price; any other slot at the lowest base price. `cat_counts` maps
+    category to players the team holds. `category` is the player being bid
+    on, who fills one of their own category's required slots; when it is not
+    known (no player on the block) the player is assumed to fill the costliest
+    one. With one base price for everyone this reduces to slots × base price.
+
+    Returns (max_bid, target_squad, needed_players, reserved_spots,
+    reserved_purse, base_price), where base_price is the current player's base
+    price, or the lowest base price when no player is given."""
+    pricing = pricing_from_config(config_dict)
+    current_count = sum(cat_counts.values())
     total_min_required = sum(r['min_per_team'] for r in rules_list)
     configured_min = int(config_dict.get('min_players_per_team') or config_dict.get('target_squad_size') or 0)
     target_squad = configured_min if configured_min > 0 else (total_min_required if total_min_required > 0 else 10)
-    common_bp = float(config_dict.get('common_base_price') or config_dict.get('default_base_price') or 10.0)
+    floor_bp = pricing_floor(pricing)
+    player_bp = pricing_rule(pricing, category)['base'] if category else floor_bp
     needed_players = max(0, target_squad - current_count)
     if needed_players <= 1:
-        return round(rem_budget, 1), target_squad, needed_players, 0, 0.0, common_bp
+        return round(rem_budget, 2), target_squad, needed_players, 0, 0.0, player_bp
     reserved_spots = needed_players - 1
-    reserved_purse = round(reserved_spots * common_bp, 1)
-    max_bid = max(0.0, round(rem_budget - reserved_purse, 1))
+
+    # Base prices of the slots category minimums still require.
+    owed = {}
+    for r in rules_list:
+        short = max(0, (r['min_per_team'] or 0) - cat_counts.get(r['category'], 0))
+        if short:
+            owed[r['category']] = short
+    if category in owed:
+        owed[category] -= 1
+    owed_prices = sorted((pricing_rule(pricing, c)['base'] for c, n in owed.items() for _ in range(n)), reverse=True)
+    if not category and owed_prices:
+        owed_prices = owed_prices[1:]
+    owed_prices = owed_prices[:reserved_spots]
+    reserved_purse = round(sum(owed_prices) + (reserved_spots - len(owed_prices)) * floor_bp, 2)
+    max_bid = max(0.0, round(rem_budget - reserved_purse, 2))
     # Feasibility floor: a team must always be able to buy the current player at
     # (at least) base price if it can afford it — otherwise a budget that is too
     # small for the full squad makes every player unsellable. When the reserve
     # would push the cap below base price, allow up to base price instead.
-    if rem_budget >= common_bp and max_bid < common_bp:
-        max_bid = common_bp
-        reserved_purse = round(rem_budget - max_bid, 1)
-    return max_bid, target_squad, needed_players, reserved_spots, reserved_purse, common_bp
+    if rem_budget >= player_bp and max_bid < player_bp:
+        max_bid = player_bp
+        reserved_purse = round(rem_budget - max_bid, 2)
+    return max_bid, target_squad, needed_players, reserved_spots, reserved_purse, player_bp
 
 
 # ─── Helper: Format Team Metrics with Max Allowed Bid & Reserved Purse ───
-def format_team_metrics(team_dict, players_list, rules_list, config_dict):
+def format_team_metrics(team_dict, players_list, rules_list, config_dict, category=None):
     td = dict(team_dict)
     players = [dict(p) for p in players_list]
     td['players'] = players
@@ -1634,7 +1762,7 @@ def format_team_metrics(team_dict, players_list, rules_list, config_dict):
     # Max Allowed Bid — single source of truth (shared with sell enforcement)
     rem_budget = float(td['remaining_budget'])
     max_bid, target_squad, needed_players, reserved_spots, reserved_purse, common_bp = \
-        compute_max_bid(rem_budget, len(players), rules_list, config_dict)
+        compute_max_bid(rem_budget, cat_counts, rules_list, config_dict, category)
 
     td['target_squad_size'] = target_squad
     td['needed_players'] = needed_players
@@ -1642,7 +1770,7 @@ def format_team_metrics(team_dict, players_list, rules_list, config_dict):
     td['max_allowed_bid'] = max_bid
     td['reserved_spots'] = reserved_spots
     td['reserved_purse'] = reserved_purse
-    td['max_bid_explanation'] = f"Purse ₹{rem_budget}L − Reserved (₹{common_bp}L × {reserved_spots} spots = ₹{reserved_purse}L) = Max Bid: ₹{max_bid}L"
+    td['max_bid_explanation'] = f"Purse ₹{rem_budget}L − Reserved for {reserved_spots} more spots (₹{reserved_purse}L) = Max Bid: ₹{max_bid}L"
     return td
 
 # ─── Teams ───
@@ -1663,7 +1791,7 @@ def get_teams():
     config = {r['key']: r['value'] for r in rows}
     result = []
     for t in teams:
-        result.append(format_team_metrics(t, team_squad(conn, t['id']), rules, config))
+        result.append(format_team_metrics(t, team_squad(conn, t['id']), rules, config, block_category(conn)))
     conn.close()
     return jsonify(result)
 
@@ -1753,6 +1881,9 @@ def add_player():
     data = request.json
     conn = get_db()
     c = conn.cursor()
+    if data.get('base_price') in (None, ''):
+        cfg = {r['key']: r['value'] for r in conn.execute('SELECT * FROM config').fetchall()}
+        data['base_price'] = pricing_rule(pricing_from_config(cfg), data.get('category'))['base']
     if USE_PG:
         c.execute('INSERT INTO players (name, category, base_price, photo_url) VALUES (?, ?, ?, ?) RETURNING id',
                   (data['name'], data.get('category', ''), data.get('base_price', 0), data.get('photo_url', '')))
@@ -1889,6 +2020,18 @@ def read_raw_auction_file(file_storage_or_path):
         dict_rows.append(row_dict)
 
     return headers, dict_rows, data_rows
+
+
+def pick_name_column(headers, col_details):
+    """The column holding player names. A header that says "name" wins, so a
+    "Player ID" column ahead of "Name" is never read as the name; an ID or
+    number column is never chosen."""
+    for h in headers:
+        if 'name' in h.lower():
+            return h
+    looks_like_id = re.compile(r'\b(id|no|number|code|serial|sr)\b', re.I)
+    return next((h for h in headers if col_details[h].get('is_name_candidate') and not looks_like_id.search(h)),
+                headers[0])
 
 
 def inspect_file_data(headers, dict_rows):
@@ -2056,7 +2199,7 @@ def parse_auction_file(file_storage, default_base_price=10.0):
         return []
 
     col_details = inspect_file_data(headers, dict_rows)
-    name_col = next((h for h in headers if col_details[h]['is_name_candidate']), headers[0])
+    name_col = pick_name_column(headers, col_details)
     cat_col = next((h for h in headers if col_details[h]['is_role_candidate'] and h != name_col), None)
     bp_col = next((h for h in headers if col_details[h]['is_price_candidate']), None)
     photo_col = next((h for h in headers if col_details[h]['is_photo_candidate']), None)
@@ -2382,6 +2525,7 @@ def apply_sheet_changes():
     for cat in {it['category'] or 'General' for it in items} - existing:
         c.execute('INSERT INTO category_rules (category, base_price, min_per_team, max_per_team) '
                   'VALUES (?, ?, ?, ?)', (cat, _default_base_price(conn), 0, 99))
+    apply_pricing(conn)
     conn.commit()
     conn.close()
 
@@ -2653,19 +2797,20 @@ def sell_player():
     rules = c.execute('SELECT * FROM category_rules').fetchall()
     cfg_rows = c.execute('SELECT * FROM config').fetchall()
     cfg = {r['key']: r['value'] for r in cfg_rows}
-    current_count = c.execute("SELECT COUNT(*) as n FROM players WHERE team_id=? AND status='sold'", (tid,)).fetchone()['n']
+    cat_counts = {r['category'] or 'Unknown': r['n'] for r in c.execute(
+        "SELECT category, COUNT(*) as n FROM players WHERE team_id=? AND status='sold' GROUP BY category", (tid,)).fetchall()}
     rem_budget = float(team['remaining_budget'])
-    max_bid, _tsq, _need, _rspots, reserved_purse, common_bp = \
-        compute_max_bid(rem_budget, current_count, [dict(r) for r in rules], cfg)
+    max_bid, _tsq, _need, reserved_spots, reserved_purse, _bp = \
+        compute_max_bid(rem_budget, cat_counts, [dict(r) for r in rules], cfg, player['category'])
     if price > max_bid + 1e-6:
         conn.close()
         if reserved_purse > 0:
-            msg = ('Bid ₹%gL exceeds %s\'s max allowed bid of ₹%gL. '
-                   'They must keep ₹%gL reserved to fill remaining squad slots at ₹%gL base each.'
-                   % (price, team['name'], max_bid, reserved_purse, common_bp))
+            msg = ("Bid %s exceeds %s's max allowed bid of %s. "
+                   'They must keep %s reserved to fill %d more squad slot(s) at base price.'
+                   % (fmt_lakhs(price), team['name'], fmt_lakhs(max_bid), fmt_lakhs(reserved_purse), reserved_spots))
         else:
-            msg = ('Bid ₹%gL exceeds %s\'s remaining purse of ₹%gL.'
-                   % (price, team['name'], max_bid))
+            msg = ("Bid %s exceeds %s's remaining purse of %s."
+                   % (fmt_lakhs(price), team['name'], fmt_lakhs(max_bid)))
         return jsonify({'error': msg}), 400
 
     # Record in action_history for multi-level undo
@@ -2858,7 +3003,7 @@ def edit_player_sale():
             available += old_sold_price
         if new_sold_price > available + 1e-6:
             conn.close()
-            return jsonify({'error': '%s has only ₹%gL left in the purse.' % (team['name'], available)}), 400
+            return jsonify({'error': '%s has only %s left in the purse.' % (team['name'], fmt_lakhs(available))}), 400
     else:
         new_team_id, new_sold_price, team_role = None, None, None
 
@@ -3052,7 +3197,8 @@ def get_team_data(team_id):
     rows = conn.execute('SELECT * FROM config').fetchall()
     config = {r['key']: r['value'] for r in rows}
     players = conn.execute('SELECT * FROM players WHERE team_id=?', (team_id,)).fetchall()
-    td = format_team_metrics(team, players, rules, config)
+    on_block = block_category(conn)
+    td = format_team_metrics(team, players, rules, config, on_block)
 
     # Current auction state
     state = {r['key']: r['value'] for r in conn.execute('SELECT * FROM auction_state').fetchall()}
@@ -3063,7 +3209,7 @@ def get_team_data(team_id):
     all_teams_result = []
     for t in all_teams:
         t_players = conn.execute('SELECT id, name, category, sold_price, photo_url FROM players WHERE team_id = ?', (t['id'],)).fetchall()
-        all_teams_result.append(format_team_metrics(t, t_players, rules, config))
+        all_teams_result.append(format_team_metrics(t, t_players, rules, config, on_block))
     td['all_teams'] = all_teams_result
     td['config'] = config
     conn.close()
@@ -3088,7 +3234,7 @@ def build_live_report(conn):
     rules = conn.execute('SELECT * FROM category_rules').fetchall()
     teams_result = []
     for t in teams:
-        teams_result.append(format_team_metrics(t, team_squad(conn, t['id']), rules, config))
+        teams_result.append(format_team_metrics(t, team_squad(conn, t['id']), rules, config, block_category(conn)))
 
     if state.get('current_player'):
         p_row = conn.execute('SELECT * FROM players WHERE name = ?', (state['current_player'],)).fetchone()
@@ -3229,6 +3375,28 @@ def fetch_drive_photos_status():
     return jsonify(status)
 
 
+@app.route('/api/pricing', methods=['POST'])
+def save_pricing():
+    """Save base prices and bid increments, the same for everyone or per
+    category, and give every player not yet sold their new base price."""
+    data = request.json or {}
+    if not isinstance(data.get('pricing'), dict):
+        return jsonify({'error': 'pricing is required'}), 400
+    conn = get_db()
+    cfg = {r['key']: r['value'] for r in conn.execute('SELECT * FROM config').fetchall()}
+    pricing = pricing_from_config(dict(cfg, pricing=data['pricing']))
+    for key, val in (('pricing', json.dumps(pricing)),
+                     # Read by screens and code that predate per-category pricing.
+                     ('bid_increment', str(pricing['same']['increment'])),
+                     ('common_base_price', str(pricing['same']['base']))):
+        conn.execute('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', (key, val))
+    apply_pricing(conn, pricing)
+    conn.commit()
+    conn.close()
+    excel_backup_async(g.auction_id)
+    return jsonify({'success': True, 'pricing': pricing})
+
+
 @app.route('/api/players/set_common_base_price', methods=['POST'])
 def set_common_base_price():
     data = request.json or {}
@@ -3316,7 +3484,7 @@ def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val
 
     age_col    = next((h for h in headers if col_details[h].get('is_age_candidate')), None)
     gender_col = next((h for h in headers if col_details[h].get('is_gender_candidate')), None)
-    name_col   = next((h for h in headers if col_details[h].get('is_name_candidate')), headers[0])
+    name_col   = pick_name_column(headers, col_details)
 
     player_data = []
     for row in dict_rows:

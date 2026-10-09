@@ -8,6 +8,7 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="/static/bidding.js?v={{ asset_v }}"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -168,7 +169,7 @@
                             </div>
                             <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100">
                                 <p className="text-xs text-purple-600 font-extrabold uppercase">Total Spend</p>
-                                <p className="fredoka text-2xl font-bold text-purple-900">₹{stats.spent || 0}L</p>
+                                <p className="fredoka text-2xl font-bold text-purple-900">{fmtL(stats.spent || 0)}</p>
                             </div>
                         </div>
                     </div>
@@ -184,7 +185,7 @@
                                         <p className="fredoka text-xl font-bold text-gray-900 truncate">{highestSale.name}</p>
                                         <p className="text-xs text-gray-500 font-bold">{highestSale.team_name} {highestSale.category ? `· ${highestSale.category}` : ''}</p>
                                     </div>
-                                    <p className="fredoka text-2xl font-bold text-amber-600 shrink-0">₹{highestSale.sold_price}L</p>
+                                    <p className="fredoka text-2xl font-bold text-amber-600 shrink-0">{fmtL(highestSale.sold_price)}</p>
                                 </div>
                             )}
                             {biggestSpender && (
@@ -195,7 +196,7 @@
                                         <p className="fredoka text-xl font-bold text-gray-900 truncate">{biggestSpender.name}</p>
                                         <p className="text-xs text-gray-500 font-bold">Committed the most of its budget</p>
                                     </div>
-                                    <p className="fredoka text-2xl font-bold text-cyan-600 shrink-0">₹{biggestSpender.spent}L</p>
+                                    <p className="fredoka text-2xl font-bold text-cyan-600 shrink-0">{fmtL(biggestSpender.spent)}</p>
                                 </div>
                             )}
                         </div>
@@ -229,10 +230,10 @@
                                                         <span className="text-gray-800">{t.name}</span>
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-2 text-right text-gray-600">₹{t.total_budget}L</td>
-                                                <td className="py-3 px-2 text-right text-purple-600">₹{spent.toFixed(1)}L</td>
-                                                <td className="py-3 px-2 text-right text-green-600">₹{t.remaining_budget}L</td>
-                                                <td className="py-3 px-2 text-right text-cyan-600 font-extrabold">₹{t.max_allowed_bid}L</td>
+                                                <td className="py-3 px-2 text-right text-gray-600">{fmtL(t.total_budget)}</td>
+                                                <td className="py-3 px-2 text-right text-purple-600">{fmtL(spent)}</td>
+                                                <td className="py-3 px-2 text-right text-green-600">{fmtL(t.remaining_budget)}</td>
+                                                <td className="py-3 px-2 text-right text-cyan-600 font-extrabold">{fmtL(t.max_allowed_bid)}</td>
                                                 <td className="py-3 px-2 text-center text-gray-800">{t.player_count || 0}/{t.target_squad_size || 10}</td>
                                                 <td className="py-3 px-2">
                                                     <div className="flex items-center gap-2 justify-end">
@@ -261,12 +262,12 @@
                                             <span className="font-extrabold text-gray-700 text-sm">{c.category}</span>
                                             <span className="text-xs font-bold text-gray-400">{c.sold_count}/{c.total} sold</span>
                                         </div>
-                                        <div className="fredoka text-xl font-bold text-gray-900">₹{c.total_spent}L</div>
+                                        <div className="fredoka text-xl font-bold text-gray-900">{fmtL(c.total_spent)}</div>
                                         <div className="flex justify-between text-[0.65rem] text-gray-500 font-bold">
-                                            <span>Avg: ₹{c.avg_price}L</span>
+                                            <span>Avg: {fmtL(c.avg_price)}</span>
                                             <span>{c.percent_of_total}% of spend</span>
                                         </div>
-                                        {c.highest_price > 0 && <div className="text-[0.65rem] text-amber-600 font-extrabold pt-0.5 border-t border-gray-200 mt-1">🏆 Highest Bid: ₹{c.highest_price}L</div>}
+                                        {c.highest_price > 0 && <div className="text-[0.65rem] text-amber-600 font-extrabold pt-0.5 border-t border-gray-200 mt-1">🏆 Highest Bid: {fmtL(c.highest_price)}</div>}
                                     </div>
                                 ))}
                             </div>
@@ -291,10 +292,10 @@
                                             <TeamMark team={t} size={52} />
                                             <div>
                                                 <h3 className="fredoka font-bold text-gray-800 text-2xl leading-tight">{t.name}</h3>
-                                                <p className="text-sm text-gray-500 font-bold">{t.player_count || 0} players &bull; ₹{spent.toFixed(1)}L spent</p>
+                                                <p className="text-sm text-gray-500 font-bold">{t.player_count || 0} players &bull; {fmtL(spent)} spent</p>
                                             </div>
                                         </div>
-                                        <span className="text-xs font-bold text-gray-500 text-right">Purse Left<br/><span className="text-green-600 text-lg">₹{t.remaining_budget}L</span></span>
+                                        <span className="text-xs font-bold text-gray-500 text-right">Purse Left<br/><span className="text-green-600 text-lg">{fmtL(t.remaining_budget)}</span></span>
                                     </div>
                                     <div className="w-full h-2.5 rounded-full bg-gray-200 overflow-hidden">
                                         <div className="h-full rounded-full bg-purple-400" style={{width:`${Math.min(100,pct)}%`}}></div>
@@ -313,7 +314,7 @@
                                                         {p.team_role && <span className="text-xs font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">{p.team_role}</span>}
                                                         <CatBadge category={p.category} />
                                                     </div>
-                                                    <span className="text-green-600 font-extrabold text-base shrink-0">₹{p.sold_price}L</span>
+                                                    <span className="text-green-600 font-extrabold text-base shrink-0">{fmtL(p.sold_price)}</span>
                                                 </div>
                                             ))}
                                         </div>
