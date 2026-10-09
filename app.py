@@ -60,6 +60,12 @@ class _PGCur:
             self._c.execute(converted)
         return self
 
+    # Rows the last statement changed. SELL relies on it to refuse a sale
+    # another device already made; without it every sale on PostgreSQL
+    # failed with a 500 while SQLite (and the tests) worked.
+    @property
+    def rowcount(self): return self._c.rowcount
+
     def fetchone(self):  return self._c.fetchone()
     def fetchall(self):  return self._c.fetchall()
     def __iter__(self):  return iter(self.fetchall())
