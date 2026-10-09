@@ -98,6 +98,13 @@ check('and its URL answers 404', fetch(url)[0] == 404)
 
 check('paths cannot leave the media folder', fetch('/media/../app.py')[0] == 404)
 
+# A player's photo uploaded as a PDF: the picture inside is used.
+from PIL import Image as _Img
+_buf = io.BytesIO(); _Img.new('RGB', (40, 50), (200, 30, 30)).save(_buf, 'PDF')
+found = A.pdf_first_image(_buf.getvalue())
+check('picture taken out of a PDF', bool(found) and _Img.open(io.BytesIO(found[0])).size == (40, 50), str(found and found[1]))
+check('data that is not a PDF is not treated as one', A.pdf_first_image(b'<html>sign in</html>') is None)
+
 # Each server process tests an upload itself, so the dashboard reports the
 # real reason whichever process answers.
 DOWN['on'] = True

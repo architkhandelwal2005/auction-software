@@ -5,3 +5,5 @@ Werkzeug==3.1.8
 Jinja2==3.1.6
 psycopg2-binary==2.9.13
 python-dotenv==1.0.1
+pypdf==6.16.2
+Pillow==12.3.0

@@ -622,6 +622,29 @@ def drive_direct_url(url):
     return 'https://lh3.googleusercontent.com/d/%s=w1400' % file_id
 
 
+def pdf_first_image(data):
+    """The largest picture on the first page of a PDF, as (bytes, ext), or
+    None when the data is not a PDF or holds no picture. A photo stored as
+    JPEG is used as it is; any other encoding is saved as PNG."""
+    if not data or not data[:5] == b'%PDF-':
+        return None
+    try:
+        from pypdf import PdfReader
+        page = PdfReader(io.BytesIO(data)).pages[0]
+        best = max(page.images, key=lambda im: len(im.data), default=None)
+        if best is None:
+            return None
+        ext = best.name.rsplit('.', 1)[-1].lower() if '.' in best.name else ''
+        if ext in ('jpg', 'jpeg', 'png'):
+            return best.data, 'jpg' if ext == 'jpeg' else ext
+        out = io.BytesIO()
+        best.image.save(out, 'PNG')
+        return out.getvalue(), 'png'
+    except Exception as exc:
+        print('[drive-photos] could not read a picture from a PDF: %s' % exc, flush=True)
+        return None
+
+
 def download_drive_photo(url, auction_id, player_id):
     """Save a Drive-hosted photo into uploads/ and return its local /uploads
     path. Returns None when the link is not a Drive link, the file is not
@@ -647,13 +670,23 @@ def download_drive_photo(url, auction_id, player_id):
                 if 'accounts.google.com' in (resp.geturl() or ''):
                     return None
                 ctype = (resp.headers.get('Content-Type') or '').split(';')[0].strip().lower()
-                if ctype not in _DRIVE_IMG_EXT:
+                # Drive serves a PDF as application/pdf or as a plain download.
+                maybe_pdf = ctype in ('application/pdf', 'application/octet-stream')
+                if ctype not in _DRIVE_IMG_EXT and not maybe_pdf:
                     continue
                 data = resp.read(_DRIVE_MAX_BYTES)
             if not data:
                 continue
-            return save_media(auction_id, 'players', 'p%s_%s' % (player_id, file_id[:12]),
-                              data, _DRIVE_IMG_EXT[ctype])
+            if ctype in _DRIVE_IMG_EXT:
+                ext = _DRIVE_IMG_EXT[ctype]
+            else:
+                # Some players upload their photo saved as a PDF: use the
+                # picture inside it.
+                found = pdf_first_image(data)
+                if not found:
+                    continue
+                data, ext = found
+            return save_media(auction_id, 'players', 'p%s_%s' % (player_id, file_id[:12]), data, ext)
         except Exception:
             continue
     return None
