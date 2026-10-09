@@ -1743,6 +1743,7 @@ function App() {
     const [showConfetti, setShowConfetti] = useState(false);
     const [bidAnim, setBidAnim] = useState(false);
     const [playerFilter, setPlayerFilter] = useState('all');
+    const [playerSearch, setPlayerSearch] = useState('');   // Player Pool search box
     const [voiceEnabled, setVoiceEnabled] = useState(true);
     const [dashTab, setDashTab] = useState('overview');
     const [showAddTeamModal, setShowAddTeamModal] = useState(false);
@@ -2265,7 +2266,15 @@ function App() {
     // DASHBOARD (Dark Themed)
     // ═══════════════════════════════════════════════
     if(view==='dashboard'){
-        const filteredPlayers = playerFilter==='all'?players:playerFilter==='sold'?soldPlayers:playerFilter==='unsold'?unsoldPlayers:playerFilter==='passed'?players.filter(p=>p.status==='passed'):players.filter(p=>p.category===playerFilter);
+        const tabPlayers = playerFilter==='all'?players:playerFilter==='sold'?soldPlayers:playerFilter==='unsold'?unsoldPlayers:playerFilter==='passed'?players.filter(p=>p.status==='passed'):players.filter(p=>p.category===playerFilter);
+        // Search matches name, category, team, team role and any sheet detail
+        // (phone, company, role...). Every word typed must match somewhere.
+        const searchWords = playerSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        const filteredPlayers = !searchWords.length ? tabPlayers : tabPlayers.filter(p => {
+            const text = [p.name, p.category, p.team_name, p.team_role, ...Object.values(p.attributes || {})]
+                .filter(v => v != null).join(' ').toLowerCase();
+            return searchWords.every(w => text.includes(w));
+        });
         const categoriesStats = stats?.categories || [];
         const totalSpent = stats?.total_spent || 0;
 
@@ -2618,6 +2627,20 @@ function App() {
                             <i className="fa-solid fa-user-plus"></i>
                         </button>
                     </form>
+
+                    {/* Search */}
+                    <div className="flex items-center gap-3">
+                        <div className="relative flex-1">
+                            <i className="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+                            <input type="search" value={playerSearch} onChange={e=>setPlayerSearch(e.target.value)}
+                                placeholder="Search players by name, category, team, phone, company…"
+                                className="w-full bg-slate-950 border border-slate-700 text-white pl-10 pr-9 py-2.5 rounded-xl text-sm font-bold focus:border-amber-500 outline-none" />
+                            {playerSearch && <button type="button" onClick={()=>setPlayerSearch('')} title="Clear search"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><i className="fa-solid fa-xmark"></i></button>}
+                        </div>
+                        <span className="text-xs font-bold text-slate-500 shrink-0">{filteredPlayers.length} of {tabPlayers.length}</span>
+                    </div>
+                    {searchWords.length > 0 && filteredPlayers.length === 0 && <div className="text-center py-8 text-slate-500 text-sm font-bold">No player matches “{playerSearch}”.</div>}
 
                     {/* Player grid */}
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2.5 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
