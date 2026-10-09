@@ -1569,6 +1569,7 @@ def restart_setup():
         c.execute('DELETE FROM players')
         c.execute('DELETE FROM teams')
         c.execute('DELETE FROM category_rules')
+        forget_category_recipe(c)
     else:
         c.execute('UPDATE players SET status="unsold", team_id=NULL, sold_price=NULL, sold_at=NULL')
         c.execute('UPDATE teams SET remaining_budget=total_budget')
@@ -2423,6 +2424,7 @@ def import_from_sheet():
 
     conn.execute('DELETE FROM players')
     conn.execute('DELETE FROM category_rules')
+    forget_category_recipe(conn)
     _insert_items(conn, items)
     conn.close()
 
@@ -2462,6 +2464,9 @@ def resync_sheet():
     # Once prices are set per category, a sheet's base price column no longer
     # decides anything, so a difference there is not a change to review.
     priced = conn.execute("SELECT value FROM config WHERE key = 'pricing'").fetchone()
+    # Categories made by Smart Analysis are kept, so the sheet's own category
+    # column is not a change either.
+    analysed = load_category_recipe(conn) is not None
     conn.close()
 
     incoming = dict(zip(occurrence_keys([it['name'] for it in items]), items))
@@ -2471,7 +2476,7 @@ def resync_sheet():
     for key in incoming.keys() & current.keys():
         new, old = incoming[key], current[key]
         diffs = []
-        if (new['category'] or '') != (old.get('category') or ''):
+        if not analysed and (new['category'] or '') != (old.get('category') or ''):
             diffs.append({'field': 'category', 'old': old.get('category') or '', 'new': new['category'] or ''})
         if not priced and abs(float(new['base_price'] or 0) - float(old.get('base_price') or 0)) > 0.001:
             diffs.append({'field': 'base price', 'old': old.get('base_price'), 'new': new['base_price']})
@@ -2512,6 +2517,13 @@ def apply_sheet_changes():
 
     current = stored_players_by_key(conn)
     incoming = dict(zip(occurrence_keys([it['name'] for it in items]), items))
+    # After Smart Analysis, players keep their analysed category and a new
+    # player gets the one the same split gives them.
+    recipe = load_category_recipe(conn)
+    if recipe:
+        for key, it in incoming.items():
+            it['category'] = (current[key].get('category') if key in current
+                              else category_from_recipe(recipe, it.get('attributes') or {}))
     c = conn.cursor()
     added = updated = removed = 0
 
@@ -2624,6 +2636,7 @@ def clear_player_pool():
     c = conn.cursor()
     c.execute('DELETE FROM players')
     c.execute('DELETE FROM category_rules')
+    forget_category_recipe(c)
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -2666,6 +2679,7 @@ def load_preset():
     # Clear old pool and categories for a clean preset load
     c.execute('DELETE FROM players')
     c.execute('DELETE FROM category_rules')
+    forget_category_recipe(c)
     c.execute('UPDATE config SET value=? WHERE key="event_name"', (event_name,))
 
     cfg_bp_row = c.execute('SELECT value FROM config WHERE key="common_base_price"').fetchone()
@@ -3497,15 +3511,91 @@ def smart_analyze():
     return jsonify(_run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val, _sb, _bins))
 
 
+# ─── Category labels ─────────────────────────────────────────────────────────
+# Smart Analysis splits players by column values and age ranges. The split is
+# saved as a "recipe" (config key category_recipe), so a sheet re-sync keeps
+# every analysed category and gives a newly added player the category the
+# same split would have given them.
+
+def _bucket_label(raw, thresholds):
+    """One column's part of a split label. `thresholds` is a list for a
+    numeric column cut into ranges, None for a column used as-is."""
+    if raw is None or str(raw).strip() == '':
+        return 'N/A'
+    if thresholds is not None:
+        try:
+            a = int(float(raw))
+        except Exception:
+            return 'N/A'
+        boundaries = [None] + list(thresholds) + [None]
+        for i in range(len(boundaries) - 1):
+            lo, hi = boundaries[i], boundaries[i + 1]
+            if (lo is None or a >= lo) and (hi is None or a < hi):
+                if lo is None:   return 'Under ' + str(hi)
+                if hi is None:   return str(lo) + '+'
+                return str(lo) + u'–' + str(hi - 1)
+        return str(a)
+    return str(raw).strip().title()
+
+
+def _age_label(age, thresholds, prefix):
+    """A gender (or "Open"/"Players") group, with an age range when split."""
+    if not thresholds or age is None:
+        return prefix
+    boundaries = [None] + list(thresholds) + [None]
+    for i in range(len(boundaries) - 1):
+        lo, hi = boundaries[i], boundaries[i + 1]
+        if (lo is None or age >= lo) and (hi is None or age < hi):
+            if lo is None:  return prefix + ' (Under ' + str(hi) + ')'
+            if hi is None:  return prefix + ' (' + str(lo) + '+)'
+            return prefix + ' (' + str(lo) + u'–' + str(hi - 1) + ')'
+    return prefix
+
+
+def _row_age(row, age_col):
+    try:
+        return int(float(row.get(age_col))) if age_col and row.get(age_col) is not None else None
+    except Exception:
+        return None
+
+
+def category_from_recipe(recipe, row):
+    """The category a sheet row gets under a saved analysis split."""
+    if recipe.get('mode') == 'split':
+        return u' · '.join(_bucket_label(row.get(c['col']), c.get('thresholds')) for c in recipe['columns'])
+    age = _row_age(row, recipe.get('age_col'))
+    if recipe.get('mode') == 'gender_age':
+        gender = str(row.get(recipe.get('gender_col')) or '').strip().title() if recipe.get('gender_col') else ''
+        if gender:
+            return _age_label(age, (recipe.get('genders') or {}).get(gender) or [], gender)
+        return _age_label(age, recipe.get('open') or [], 'Open')
+    return _age_label(age, recipe.get('thresholds') or [], 'Players')
+
+
+def load_category_recipe(conn):
+    """The saved analysis split, or None when categories came from the sheet."""
+    row = conn.execute("SELECT value FROM config WHERE key = 'category_recipe'").fetchone()
+    try:
+        return json.loads(row['value']) if row and row['value'] else None
+    except ValueError:
+        return None
+
+
+def forget_category_recipe(conn):
+    """A new player pool brings its own categories; the old split no longer applies."""
+    conn.execute("DELETE FROM config WHERE key = 'category_recipe'")
+
+
 def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val, split_by, bins_map, row_ids=None):
-    """Suggest categories and quotas, and store each player's category.
-    `row_ids` gives the player id of each row when the rows come from the
-    database; rows read from a file are matched to stored players by name and
-    occurrence, so two players with one name keep their own categories."""
     """Shared category/quota analysis. Used by the wizard (file/sheet) and the
     live Player Pool re-analysis (rows rebuilt from the database). Computes the
     category suggestions + per-team quotas, persists each player's assigned
-    category label, and returns the review payload."""
+    category label and the split that produced it, and returns the review
+    payload.
+
+    `row_ids` gives the player id of each row when the rows come from the
+    database; rows read from a file are matched to stored players by name and
+    occurrence, so two players with one name keep their own categories."""
     total = len(dict_rows)
     col_details = inspect_file_data(headers, dict_rows)
 
@@ -3667,27 +3757,13 @@ def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val
                 col_thresholds[col] = None
                 col_is_numeric[col] = False
 
-        def bucket_label(col, raw):
-            if raw is None or str(raw).strip() == '':
-                return 'N/A'
-            if col_is_numeric[col]:
-                try:
-                    a = int(float(raw))
-                except Exception:
-                    return 'N/A'
-                boundaries = [None] + list(col_thresholds[col] or []) + [None]
-                for i in range(len(boundaries) - 1):
-                    lo, hi = boundaries[i], boundaries[i + 1]
-                    if (lo is None or a >= lo) and (hi is None or a < hi):
-                        if lo is None:   return 'Under ' + str(hi)
-                        if hi is None:   return str(lo) + '+'
-                        return str(lo) + u'–' + str(hi - 1)
-                return str(a)
-            return str(raw).strip().title()
+        recipe = {'mode': 'split', 'columns': [
+            {'col': col, 'thresholds': list(col_thresholds[col] or []) if col_is_numeric[col] else None}
+            for col in split_by]}
 
         groups = OrderedDict()
         for i, row in enumerate(dict_rows):
-            key = u' · '.join(bucket_label(col, row.get(col)) for col in split_by)
+            key = category_from_recipe(recipe, row)
             groups[key] = groups.get(key, 0) + 1
             nm = str(row.get(name_col) or '').strip()
             if nm:
@@ -3735,23 +3811,15 @@ def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val
     else:
         gender_counts = Counter(p['gender'] for p in player_data if p['gender'])
 
-    def age_label(age, thresholds, prefix):
-        if not thresholds or age is None:
-            return prefix
-        boundaries = [None] + list(thresholds) + [None]
-        for i in range(len(boundaries) - 1):
-            lo, hi = boundaries[i], boundaries[i + 1]
-            if (lo is None or age >= lo) and (hi is None or age < hi):
-                if lo is None:  return prefix + ' (Under ' + str(hi) + ')'
-                if hi is None:  return prefix + ' (' + str(lo) + '+)'
-                return prefix + ' (' + str(lo) + u'–' + str(hi - 1) + ')'
-        return prefix
+    age_label = _age_label
 
     if gender_counts:
+        recipe = {'mode': 'gender_age', 'gender_col': gender_col, 'age_col': age_col, 'genders': {}, 'open': []}
         for gender, g_count in sorted(gender_counts.items(), key=lambda x: -x[1]):
             ages_g = [p['age'] for p in player_data if p['gender'] == gender and p['age'] is not None]
             colors = GENDER_COLORS.get(gender, DEFAULT_COLORS)
             thresholds = find_best_splits(ages_g, num_splits, num_teams) if len(ages_g) >= num_splits * num_teams else []
+            recipe['genders'][gender] = list(thresholds) if ages_g else []
             for p in player_data:
                 if p['gender'] == gender and p['name']:
                     player_labels[p['i']] = age_label(p['age'], thresholds, gender) if ages_g else gender
@@ -3774,6 +3842,7 @@ def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val
         if no_gender:
             ng_ages = [p['age'] for p in no_gender if p['age'] is not None]
             thresholds = find_best_splits(ng_ages, num_splits, num_teams) if len(ng_ages) >= num_splits * num_teams else []
+            recipe['open'] = list(thresholds)
             for p in no_gender:
                 if p['name']:
                     player_labels[p['i']] = age_label(p['age'], thresholds, 'Open')
@@ -3781,6 +3850,7 @@ def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val
     elif not split_by:
         all_ages = [p['age'] for p in player_data if p['age'] is not None]
         thresholds = find_best_splits(all_ages, num_splits, num_teams) if len(all_ages) >= num_splits * num_teams else []
+        recipe = {'mode': 'age', 'age_col': age_col, 'thresholds': list(thresholds)}
         for p in player_data:
             if p['name']:
                 player_labels[p['i']] = age_label(p['age'], thresholds, 'Players')
@@ -3821,6 +3891,7 @@ def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val
         for lbl, ids in by_label.items():
             placeholders = ','.join(['?'] * len(ids))
             cc.execute('UPDATE players SET category=? WHERE id IN (%s)' % placeholders, [lbl] + ids)
+        cc.execute('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ('category_recipe', json.dumps(recipe)))
         conn.commit()
         conn.close()
 

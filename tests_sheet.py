@@ -143,5 +143,52 @@ client.post('/api/auction/state', json={'current_player': 'Isha Jain', 'current_
 st = client.get('/api/live_data').get_json()['auction_state']
 check('next player without an id does not inherit the last id', not st.get('current_player_id'), str(st))
 
+# ── Re-sync after Smart Analysis keeps the analysed categories, and a new
+#    player gets the category the same split gives them. ──
+before = {p['id']: p['category'] for p in client.get('/api/players').get_json()}
+CURRENT['data'] = (b'Name,Mobile,Age,Gender,Category\n'
+                   b'Rahul Sharma,9000000001,22,Male,Batsman\n'
+                   b'Rahul Sharma,9000000002,41,Male,Bowler\n'
+                   b'Isha Jain,9000000003,30,Female,Batsman\n'
+                   b'Kiran Rao,9000000004,50,Male,Bowler\n')
+d = client.post('/api/auction/source/resync', json={}).get_json()
+check('sheet category column is not shown as a change after analysis', not d['changed'], str(d['changed']))
+check('new player detected', d['added'] == ['Kiran Rao'], str(d['added']))
+client.post('/api/auction/source/apply', json={})
+after = {p['id']: p for p in client.get('/api/players').get_json()}
+check('analysed categories kept on apply', all(after[i]['category'] == c for i, c in before.items()),
+      str([(after[i]['name'], c, after[i]['category']) for i, c in before.items()]))
+kiran = next(p for p in after.values() if p['name'] == 'Kiran Rao')
+older_rahul = max((p for p in after.values() if p['name'] == 'Rahul Sharma'), key=lambda p: int(p['attributes']['Age']))
+check('new player gets the category of the same split', kiran['category'] == older_rahul['category'],
+      '%s vs %s' % (kiran['category'], older_rahul['category']))
+check('new category rule not taken from the sheet column',
+      'Bowler' not in [r['category'] for r in client.get('/api/config').get_json()['category_rules']])
+
+# The saved split reproduces every category the automatic gender + age
+# analysis gave, so a re-synced newcomer is labelled exactly as they would
+# have been in the original analysis.
+rows = b'Name,Age,Gender\n' + b''.join(
+    ('P%d,%d,%s\n' % (i, 18 + i * 3 % 40, 'Male' if i % 3 else 'Female')).encode() for i in range(24)) + b'Q0,33,\n'
+CURRENT['data'] = rows
+client.post('/api/auction/source/import', json={'sheet_url': SHEET_URL})
+client.post('/api/players/analyze', json={'num_teams': 2, 'num_splits': 3})
+with A.app.app_context():
+    conn = A.open_auction_conn(aid2)
+    recipe = A.load_category_recipe(conn)
+    conn.close()
+pool = client.get('/api/players').get_json()
+mismatch = [(p['name'], p['category'], A.category_from_recipe(recipe, p['attributes'])) for p in pool
+            if A.category_from_recipe(recipe, p['attributes']) != p['category']]
+check('saved split reproduces gender + age categories', recipe and recipe['mode'] == 'gender_age' and not mismatch,
+      str(mismatch[:4]) + ' ' + str(recipe))
+
+# A fresh import brings its own categories: the old split is dropped.
+CURRENT['data'] = b'Name,Category\nNew One,Gold\n'
+client.post('/api/auction/source/import', json={'sheet_url': SHEET_URL})
+CURRENT['data'] = b'Name,Category\nNew One,Platinum\n'
+d = client.post('/api/auction/source/resync', json={}).get_json()
+check('after a fresh import the sheet category counts again', len(d['changed']) == 1, str(d))
+
 print('\n%s' % ('ALL CHECKS PASSED' if check.failed == 0 else '%d CHECK(S) FAILED' % check.failed))
 sys.exit(1 if check.failed else 0)
