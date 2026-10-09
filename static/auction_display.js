@@ -1509,7 +1509,9 @@
         buildTemplateOptions(st.auction_template);
 
         if (st.current_player && !adminPlayer) {
-          const full = adminUnsoldPlayers.find(p => p.name === st.current_player);
+          // By id: two players may share a name.
+          const full = (st.current_player_id && adminUnsoldPlayers.find(p => String(p.id) === String(st.current_player_id)))
+            || adminUnsoldPlayers.find(p => p.name === st.current_player);
           const fallback = {
             id: null, name: st.current_player, category: st.category || '',
             base_price: parseFloat(st.base_price) || 0, photo_url: st.photo_url || ''
@@ -1530,6 +1532,7 @@
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({
             current_player: player.name,
+            current_player_id: player.id != null ? String(player.id) : '',
             current_bid:    player.base_price || 0,
             category:       player.category || '',
             base_price:     player.base_price || 0,
@@ -1788,7 +1791,7 @@
       showIdle();
       await fetch('/api/auction/state', {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ current_player: '', current_bid: 0, category: '', base_price: 0, photo_url: '' })
+        body: JSON.stringify({ current_player: '', current_player_id: '', current_bid: 0, category: '', base_price: 0, photo_url: '' })
       });
       poll();
       openSpin('player');

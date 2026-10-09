@@ -42,7 +42,9 @@ const TeamApp = () => {
             data.bidder_team_logo = name ? (st.bidder_team_logo || '') : '';
             if (name) {
                 const pool = data.unsold_players || [];
-                const match = pool.find(p => p.name === name);
+                // By id: two players may share a name.
+                const match = (st.current_player_id && pool.find(p => String(p.id) === String(st.current_player_id)))
+                    || pool.find(p => p.name === name);
                 data.current_player = {
                     id: match ? match.id : null,
                     name: name,

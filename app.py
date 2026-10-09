@@ -1646,6 +1646,20 @@ def pricing_floor(pricing):
     return pricing['same']['base']
 
 
+def block_player(conn, state):
+    """The stored row of the player on the block. Found by id: two players
+    may share a name. States saved before the id was recorded fall back to
+    the name."""
+    pid = str(state.get('current_player_id') or '')
+    if pid.isdigit():
+        row = conn.execute('SELECT * FROM players WHERE id = ?', (int(pid),)).fetchone()
+        if row:
+            return row
+    if state.get('current_player'):
+        return conn.execute('SELECT * FROM players WHERE name = ?', (state['current_player'],)).fetchone()
+    return None
+
+
 def block_category(conn):
     """The category of the player on the block, or None between players."""
     state = {r['key']: r['value'] for r in conn.execute(
@@ -2335,24 +2349,28 @@ def _norm_name(name):
 
 
 def parse_sheet_items(data, default_base_price):
-    """Sheet rows as player dicts, refusing duplicates.
+    """Sheet rows as player dicts. Two players may share a name."""
+    return parse_auction_file(_SheetUpload(data), default_base_price=default_base_price)
 
-    Every match in this pipeline is by player name, so two rows sharing one
-    name would make a re-sync diff meaningless — better to say so at import
-    than to apply the wrong change later.
+
+def occurrence_keys(names):
+    """A key per row that tells same-name players apart: the name plus how
+    many times it has appeared before. The second "Rahul Sharma" in a sheet
+    matches the second one stored (players are stored in sheet order), so
+    duplicate names line up between the sheet, the analysis and the database.
     """
-    items = parse_auction_file(_SheetUpload(data), default_base_price=default_base_price)
-    seen, dupes = set(), []
-    for it in items:
-        key = _norm_name(it['name'])
-        if key in seen:
-            dupes.append(it['name'])
-        seen.add(key)
-    if dupes:
-        raise ValueError('These names appear more than once in the sheet: %s. '
-                         'Make each player name unique, then import again.'
-                         % ', '.join(sorted(set(dupes))[:6]))
-    return items
+    seen, keys = {}, []
+    for n in names:
+        base = _norm_name(n)
+        keys.append('%s#%d' % (base, seen.get(base, 0)))
+        seen[base] = seen.get(base, 0) + 1
+    return keys
+
+
+def stored_players_by_key(conn):
+    """Every stored player keyed as occurrence_keys() keys sheet rows."""
+    rows = [dict(r) for r in conn.execute('SELECT * FROM players ORDER BY id').fetchall()]
+    return dict(zip(occurrence_keys([r['name'] for r in rows]), rows))
 
 
 def _default_base_price(conn):
@@ -2440,20 +2458,22 @@ def resync_sheet():
         conn.close()
         return jsonify({'error': str(exc)}), 400
 
-    current = {_norm_name(dict(r)['name']): dict(r)
-               for r in conn.execute('SELECT * FROM players').fetchall()}
+    current = stored_players_by_key(conn)
+    # Once prices are set per category, a sheet's base price column no longer
+    # decides anything, so a difference there is not a change to review.
+    priced = conn.execute("SELECT value FROM config WHERE key = 'pricing'").fetchone()
     conn.close()
 
-    incoming = {_norm_name(it['name']): it for it in items}
+    incoming = dict(zip(occurrence_keys([it['name'] for it in items]), items))
     added   = [incoming[k]['name'] for k in incoming.keys() - current.keys()]
-    removed = [current[k]['name']  for k in current.keys() - incoming.keys()]
+    removed_keys = current.keys() - incoming.keys()
     changed, blocked = [], []
     for key in incoming.keys() & current.keys():
         new, old = incoming[key], current[key]
         diffs = []
         if (new['category'] or '') != (old.get('category') or ''):
             diffs.append({'field': 'category', 'old': old.get('category') or '', 'new': new['category'] or ''})
-        if abs(float(new['base_price'] or 0) - float(old.get('base_price') or 0)) > 0.001:
+        if not priced and abs(float(new['base_price'] or 0) - float(old.get('base_price') or 0)) > 0.001:
             diffs.append({'field': 'base price', 'old': old.get('base_price'), 'new': new['base_price']})
         if (new['photo_url'] or '') and not (old.get('photo_url') or ''):
             diffs.append({'field': 'photo', 'old': '', 'new': 'added'})
@@ -2464,9 +2484,8 @@ def resync_sheet():
         # rewrite them behind the organiser's back.
         (blocked if old.get('status') == 'sold' else changed).append(entry)
 
-    removed_blocked = [n for n in removed
-                       if current[_norm_name(n)].get('status') == 'sold']
-    removed = [n for n in removed if n not in removed_blocked]
+    removed = [current[k]['name'] for k in removed_keys if current[k].get('status') != 'sold']
+    removed_blocked = [current[k]['name'] for k in removed_keys if current[k].get('status') == 'sold']
     for name in removed_blocked:
         blocked.append({'name': name, 'changes': [{'field': 'removed from sheet',
                                                    'old': 'in auction', 'new': 'sold, so kept'}]})
@@ -2491,9 +2510,8 @@ def apply_sheet_changes():
         conn.close()
         return jsonify({'error': str(exc)}), 400
 
-    current = {_norm_name(dict(r)['name']): dict(r)
-               for r in conn.execute('SELECT * FROM players').fetchall()}
-    incoming = {_norm_name(it['name']): it for it in items}
+    current = stored_players_by_key(conn)
+    incoming = dict(zip(occurrence_keys([it['name'] for it in items]), items))
     c = conn.cursor()
     added = updated = removed = 0
 
@@ -2735,7 +2753,7 @@ def get_auction_state():
     rows = conn.execute('SELECT * FROM auction_state').fetchall()
     state = {r['key']: r['value'] for r in rows}
     if state.get('current_player'):
-        p_row = conn.execute('SELECT * FROM players WHERE name = ?', (state['current_player'],)).fetchone()
+        p_row = block_player(conn, state)
         if p_row and p_row['attributes']:
             try:
                 state['attributes'] = json.loads(p_row['attributes'])
@@ -2760,6 +2778,9 @@ def set_auction_state():
         if 'bidder_team_id' not in data:
             keys += ['bidder_team_id', 'bidder_team_name', 'bidder_team_color']
         c.execute("DELETE FROM auction_state WHERE key IN (%s)" % ','.join(['?'] * len(keys)), keys)
+    # A new player (or none) without an id must not inherit the last one's.
+    if 'current_player' in data and 'current_player_id' not in data:
+        c.execute("DELETE FROM auction_state WHERE key = 'current_player_id'")
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -2894,6 +2915,7 @@ def undo_last_sale():
         # Restore player to live auction_state so they immediately appear under the hammer!
         c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
         c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES ("current_player", ?)', (act['player_name'] or '',))
+        c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES ("current_player_id", ?)', (str(pid),))
         restored_bid = act['new_sold_price'] if act['new_sold_price'] is not None else act['base_price'] or 0
         c.execute('INSERT INTO auction_state (key, value) VALUES ("current_bid", ?)', (str(restored_bid),))
         c.execute('INSERT INTO auction_state (key, value) VALUES ("category", ?)', (act['category'] or '',))
@@ -2927,6 +2949,7 @@ def undo_last_sale():
         # Restore to auction state
         c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
         c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES ("current_player", ?)', (last['name'],))
+        c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES ("current_player_id", ?)', (str(last['id']),))
         restored_bid = last['sold_price'] or last['base_price'] or 0
         c.execute('INSERT INTO auction_state (key, value) VALUES ("current_bid", ?)', (str(restored_bid),))
         c.execute('INSERT INTO auction_state (key, value) VALUES ("category", ?)', (last['category'] or '',))
@@ -3237,7 +3260,7 @@ def build_live_report(conn):
         teams_result.append(format_team_metrics(t, team_squad(conn, t['id']), rules, config, block_category(conn)))
 
     if state.get('current_player'):
-        p_row = conn.execute('SELECT * FROM players WHERE name = ?', (state['current_player'],)).fetchone()
+        p_row = block_player(conn, state)
         if p_row and p_row['attributes']:
             # Parsed to an object, not left as the raw JSON string from the DB —
             # the spectator screen's PlayerAttributesBadges checks
@@ -3474,7 +3497,11 @@ def smart_analyze():
     return jsonify(_run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val, _sb, _bins))
 
 
-def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val, split_by, bins_map):
+def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val, split_by, bins_map, row_ids=None):
+    """Suggest categories and quotas, and store each player's category.
+    `row_ids` gives the player id of each row when the rows come from the
+    database; rows read from a file are matched to stored players by name and
+    occurrence, so two players with one name keep their own categories."""
     """Shared category/quota analysis. Used by the wizard (file/sheet) and the
     live Player Pool re-analysis (rows rebuilt from the database). Computes the
     category suggestions + per-team quotas, persists each player's assigned
@@ -3496,10 +3523,11 @@ def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val
             except Exception:
                 pass
         pname = str(row.get(name_col) or '').strip()
-        player_data.append({'gender': gender or None, 'age': age, 'name': pname})
+        player_data.append({'gender': gender or None, 'age': age, 'name': pname, 'i': len(player_data)})
 
-    # name -> assigned category label, persisted to the DB so player records match
-    # the quota rules (this is what makes squad/quota counting work during the auction)
+    # row index -> assigned category label, persisted to the DB so player records
+    # match the quota rules (this is what makes squad/quota counting work during
+    # the auction). Keyed by row, not name: two players may share a name.
     player_labels = {}
 
     def find_best_splits(ages, n_splits, n_teams):
@@ -3658,12 +3686,12 @@ def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val
             return str(raw).strip().title()
 
         groups = OrderedDict()
-        for row in dict_rows:
+        for i, row in enumerate(dict_rows):
             key = u' · '.join(bucket_label(col, row.get(col)) for col in split_by)
             groups[key] = groups.get(key, 0) + 1
             nm = str(row.get(name_col) or '').strip()
             if nm:
-                player_labels[nm] = key
+                player_labels[i] = key
 
         # Order groups sensibly: known skill/level words in logical order, age
         # ranges low→high, else alphabetical — so the stage never shows a jumbled
@@ -3726,7 +3754,7 @@ def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val
             thresholds = find_best_splits(ages_g, num_splits, num_teams) if len(ages_g) >= num_splits * num_teams else []
             for p in player_data:
                 if p['gender'] == gender and p['name']:
-                    player_labels[p['name']] = age_label(p['age'], thresholds, gender) if ages_g else gender
+                    player_labels[p['i']] = age_label(p['age'], thresholds, gender) if ages_g else gender
             if ages_g:
                 suggestions.extend(make_suggestions(ages_g, gender, colors, thresholds))
             else:
@@ -3748,14 +3776,14 @@ def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val
             thresholds = find_best_splits(ng_ages, num_splits, num_teams) if len(ng_ages) >= num_splits * num_teams else []
             for p in no_gender:
                 if p['name']:
-                    player_labels[p['name']] = age_label(p['age'], thresholds, 'Open')
+                    player_labels[p['i']] = age_label(p['age'], thresholds, 'Open')
             suggestions.extend(make_suggestions(ng_ages, 'Open', DEFAULT_COLORS, thresholds))
     elif not split_by:
         all_ages = [p['age'] for p in player_data if p['age'] is not None]
         thresholds = find_best_splits(all_ages, num_splits, num_teams) if len(all_ages) >= num_splits * num_teams else []
         for p in player_data:
             if p['name']:
-                player_labels[p['name']] = age_label(p['age'], thresholds, 'Players')
+                player_labels[p['i']] = age_label(p['age'], thresholds, 'Players')
         suggestions.extend(make_suggestions(all_ages, 'Players', DEFAULT_COLORS, thresholds))
 
     # Unequal division detection & prompts
@@ -3780,14 +3808,19 @@ def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val
     # time out the request ("Failed to fetch").
     if player_labels:
         from collections import defaultdict
-        by_label = defaultdict(list)
-        for nm, lbl in player_labels.items():
-            by_label[lbl].append(nm)
         conn = get_db()
+        if row_ids is None:
+            stored = stored_players_by_key(conn)
+            row_ids = [(stored.get(k) or {}).get('id')
+                       for k in occurrence_keys([p['name'] for p in player_data])]
+        by_label = defaultdict(list)
+        for i, lbl in player_labels.items():
+            if row_ids[i] is not None:
+                by_label[lbl].append(row_ids[i])
         cc = conn.cursor()
-        for lbl, names in by_label.items():
-            placeholders = ','.join(['?'] * len(names))
-            cc.execute('UPDATE players SET category=? WHERE name IN (%s)' % placeholders, [lbl] + names)
+        for lbl, ids in by_label.items():
+            placeholders = ','.join(['?'] * len(ids))
+            cc.execute('UPDATE players SET category=? WHERE id IN (%s)' % placeholders, [lbl] + ids)
         conn.commit()
         conn.close()
 
@@ -3829,7 +3862,7 @@ def analyze_pool():
     # re-acquires get_db() to persist the labels and closing here would leave it
     # pointing at a closed handle.
     conn = get_db()
-    players = conn.execute('SELECT name, base_price, attributes FROM players').fetchall()
+    players = conn.execute('SELECT id, name, base_price, attributes FROM players ORDER BY id').fetchall()
     if not players:
         return jsonify({'error': 'No players in the pool to analyze.'}), 400
 
@@ -3849,7 +3882,8 @@ def analyze_pool():
             if k not in headers:
                 headers.append(k)
 
-    return jsonify(_run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val, split_by, bins_map))
+    return jsonify(_run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val, split_by, bins_map,
+                                      row_ids=[p['id'] for p in players]))
 
 
 
@@ -3896,7 +3930,9 @@ def revive_player():
     conn = get_db()
     c = conn.cursor()
     if half_price:
-        c.execute('UPDATE players SET status="unsold", base_price = ROUND(base_price / 2.0, 1) WHERE id=?', (player_id,))
+        row = c.execute('SELECT base_price FROM players WHERE id=?', (player_id,)).fetchone()
+        half = round(float((row['base_price'] if row else 0) or 0) / 2.0, 2)
+        c.execute('UPDATE players SET status="unsold", base_price = ? WHERE id=?', (half, player_id))
     else:
         c.execute('UPDATE players SET status="unsold" WHERE id=?', (player_id,))
     conn.commit()
@@ -3912,7 +3948,7 @@ def bargain_bin():
         unsold = c.execute("SELECT id, base_price FROM players WHERE status='unsold'").fetchall()
         count = 0
         for p in unsold:
-            new_price = max(1, round(p['base_price'] / 2.0, 1))
+            new_price = round((p['base_price'] or 0) / 2.0, 2)
             c.execute("UPDATE players SET base_price=? WHERE id=?", (new_price, p['id']))
             count += 1
         conn.commit()

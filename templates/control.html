@@ -48,7 +48,8 @@
                     ]);
                     setData(ld); setPlayers(Array.isArray(pl)?pl:[]);
                     const st = ld.auction_state || {};
-                    const name = st.current_player || null;
+                    // The id tells two players with the same name apart.
+                    const name = st.current_player ? (st.current_player_id || st.current_player) : null;
                     // Reset optimistic state when the player on the block changes.
                     if (local.current.player !== name) {
                         local.current = { player: name, bid: name ? (parseFloat(st.current_bid)||0) : null, leaderId: st.bidder_team_id || null };
@@ -73,7 +74,8 @@
             const orgName = cfg.organisation_name || '';
             const eventName = cfg.event_name || 'Auction';
             const onBlock = !!st.current_player;
-            const cur = players.find(p => p.name === st.current_player) || null;   // for id/base/photo
+            const cur = (st.current_player_id && players.find(p => String(p.id) === String(st.current_player_id)))
+                || players.find(p => p.name === st.current_player) || null;   // for id/base/photo
             const bid = local.current.bid != null ? local.current.bid : (parseFloat(st.current_bid)||0);
             const basePrice = cur ? cur.base_price : (parseFloat(st.base_price)||0);
             const leaderId = local.current.leaderId;
@@ -109,8 +111,8 @@
             const draw = async (pick) => {
                 const p = pick || (unsold.length ? unsold[Math.floor(Math.random()*unsold.length)] : null);
                 if (!p) { alert('No players left in the pool.'); return; }
-                local.current = { player: p.name, bid: p.base_price||0, leaderId: null };
-                await post('/api/auction/state', { current_player: p.name, current_bid: p.base_price||0, category: p.category||'', base_price: p.base_price||0, photo_url: p.photo_url||'', bidder_team_id:'', bidder_team_name:'', bidder_team_color:'' });
+                local.current = { player: String(p.id), bid: p.base_price||0, leaderId: null };
+                await post('/api/auction/state', { current_player: p.name, current_player_id: String(p.id), current_bid: p.base_price||0, category: p.category||'', base_price: p.base_price||0, photo_url: p.photo_url||'', bidder_team_id:'', bidder_team_name:'', bidder_team_color:'' });
                 await load();
             };
             const undo = async () => { if(!confirm('Undo the last sale?')) return; await post('/api/undo'); local.current={player:null,bid:null,leaderId:null}; await load(); };

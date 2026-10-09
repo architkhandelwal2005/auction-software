@@ -86,11 +86,62 @@ asha2 = [p for p in client.get('/api/players').get_json() if p['name'] == 'Asha 
 check('sold player untouched after apply', asha2['category'] == 'Advanced', asha2['category'])
 check('sold player not deleted by apply', asha2['status'] == 'sold')
 
-# Duplicate names are refused rather than producing a wrong diff.
-CURRENT['data'] = b'Name,Category\nSame Name,A\nSame Name,B\n'
-r = client.post('/api/auction/source/resync', json={})
-check('duplicate names refused', r.status_code == 400 and 'more than once' in r.get_data(as_text=True),
-      r.get_data(as_text=True)[:100])
+# Two different people may share a name: both are imported, and each keeps
+# their own details through re-sync, analysis and the stage.
+aid2 = client.post('/api/auctions', json={'name': 'Same Names'}).get_json()['auction']['id']
+client.post('/api/auctions/%d/open' % aid2)
+CURRENT['data'] = (b'Name,Mobile,Age,Gender\n'
+                   b'Rahul Sharma,9000000001,22,Male\n'
+                   b'Rahul Sharma,9000000002,41,Male\n'
+                   b'Isha Jain,9000000003,30,Female\n')
+r = client.post('/api/auction/source/import', json={'sheet_url': SHEET_URL})
+check('same-name players both imported', r.status_code == 200 and r.get_json().get('count') == 3,
+      r.get_data(as_text=True)[:120])
+rahuls = sorted((p for p in client.get('/api/players').get_json() if p['name'] == 'Rahul Sharma'), key=lambda p: p['id'])
+check('each keeps their own details', [p['attributes'].get('Mobile') for p in rahuls] == [9000000001, 9000000002]
+      or [str(p['attributes'].get('Mobile')) for p in rahuls] == ['9000000001', '9000000002'],
+      str([p['attributes'] for p in rahuls]))
+
+# Unchanged sheet: re-sync sees no difference (rows pair up by name + order).
+d = client.post('/api/auction/source/resync', json={}).get_json()
+check('re-sync pairs same-name rows', not d['added'] and not d['removed'] and not d['changed'], str(d))
+# The second Rahul leaves the sheet: exactly one Rahul is removed.
+CURRENT['data'] = (b'Name,Mobile,Age,Gender\n'
+                   b'Rahul Sharma,9000000001,22,Male\n'
+                   b'Isha Jain,9000000003,30,Female\n')
+d = client.post('/api/auction/source/resync', json={}).get_json()
+check('one of two same-name players removed', d['removed'] == ['Rahul Sharma'] and not d['added'], str(d))
+
+# Analysis gives each Rahul the category of their own age.
+r = client.post('/api/players/analyze', json={'num_teams': 1, 'num_splits': 2, 'split_by': ['Age'], 'bins': {'Age': 2}})
+rahuls = sorted((p for p in client.get('/api/players').get_json() if p['name'] == 'Rahul Sharma'), key=lambda p: p['id'])
+check('same-name players get their own categories', r.status_code == 200 and rahuls[0]['category'] != rahuls[1]['category'],
+      str([(p['attributes'].get('Age'), p['category']) for p in rahuls]))
+
+# The setup wizard analyses the uploaded file itself; its rows are matched
+# to stored players by name and order, so the result is the same.
+import io
+client.post('/api/players/edit', json={'id': rahuls[0]['id'], 'category': 'X'})
+client.post('/api/players/edit', json={'id': rahuls[1]['id'], 'category': 'X'})
+two_rahuls = (b'Name,Mobile,Age,Gender\nRahul Sharma,9000000001,22,Male\n'
+              b'Rahul Sharma,9000000002,41,Male\nIsha Jain,9000000003,30,Female\n')
+r = client.post('/api/file/smart_analyze', content_type='multipart/form-data', data={
+    'file': (io.BytesIO(two_rahuls), 'players.csv'), 'num_teams': '1', 'num_splits': '2',
+    'split_by': '["Age"]', 'bins': '{"Age": 2}'})
+rahuls = sorted((p for p in client.get('/api/players').get_json() if p['name'] == 'Rahul Sharma'), key=lambda p: p['id'])
+check('file analysis also keeps same-name players apart', r.status_code == 200 and rahuls[0]['category'] != rahuls[1]['category']
+      and 'X' not in (rahuls[0]['category'], rahuls[1]['category']),
+      str([(p['attributes'].get('Age'), p['category']) for p in rahuls]))
+
+# On the stage, the second Rahul is shown with his own details.
+client.post('/api/auction/state', json={'current_player': 'Rahul Sharma', 'current_player_id': str(rahuls[1]['id']),
+                                        'current_bid': 10})
+st = client.get('/api/live_data').get_json()['auction_state']
+check('stage shows the right one of two same-name players', str(st['attributes'].get('Mobile')) == '9000000002',
+      str(st.get('attributes')))
+client.post('/api/auction/state', json={'current_player': 'Isha Jain', 'current_bid': 10})
+st = client.get('/api/live_data').get_json()['auction_state']
+check('next player without an id does not inherit the last id', not st.get('current_player_id'), str(st))
 
 print('\n%s' % ('ALL CHECKS PASSED' if check.failed == 0 else '%d CHECK(S) FAILED' % check.failed))
 sys.exit(1 if check.failed else 0)

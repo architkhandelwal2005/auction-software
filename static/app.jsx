@@ -1899,6 +1899,8 @@ function App() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     current_player: player.name,
+                    // The id tells two players with the same name apart.
+                    current_player_id: player.id != null ? String(player.id) : '',
                     current_bid: bid || 0,
                     category: player.category || '',
                     base_price: player.base_price || 0,
@@ -1909,7 +1911,7 @@ function App() {
             fetch('/api/auction/state', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ current_player: '', current_bid: 0, category: '', base_price: 0, photo_url: '' })
+                body: JSON.stringify({ current_player: '', current_player_id: '', current_bid: 0, category: '', base_price: 0, photo_url: '' })
             });
         }
     };
@@ -2051,7 +2053,7 @@ function App() {
     // Auction actions
     
     const startBargainBin = async () => {
-        if(!confirm('🚨 WARNING: This will take ALL unsold players, slash their base price by 50% (minimum 1L), and restock them into the auction pool! Proceed?')) return;
+        if(!confirm('🚨 WARNING: This will take ALL unsold players, slash their base price by 50%, and restock them into the auction pool! Proceed?')) return;
         try {
             const r = await fetch('/api/action/bargain_bin', { method: 'POST' });
             const d = await r.json();
@@ -2067,7 +2069,8 @@ function App() {
     
     const resumeLiveAuction = () => {
         if (!savedAuctionState || !savedAuctionState.current_player) return;
-        const p = players.find(x => x.name === savedAuctionState.current_player);
+        const p = players.find(x => String(x.id) === String(savedAuctionState.current_player_id))
+            || players.find(x => x.name === savedAuctionState.current_player);
         if (p) {
             setCurrentPlayer({...p, ...savedAuctionState});
             setCurrentBid(parseFloat(savedAuctionState.current_bid) || p.base_price || 0);
@@ -2145,7 +2148,7 @@ function App() {
         }
         await loadData();
         // Automatically put them on the block
-        const updatedPlayer = { ...player, base_price: halfPrice ? Math.round(player.base_price / 2) : player.base_price, status: 'unsold' };
+        const updatedPlayer = { ...player, base_price: halfPrice ? BidRules.round(player.base_price / 2) : player.base_price, status: 'unsold' };
         setCurrentPlayer(updatedPlayer);
         setCurrentBid(updatedPlayer.base_price || 0);
         setView('auction');

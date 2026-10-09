@@ -228,8 +228,10 @@
 
                         // Check if a new player has appeared on stage for animation
                         if (d.auction_state?.current_player) {
-                            if (d.auction_state.current_player !== lastPlayerId) {
-                                setLastPlayerId(d.auction_state.current_player);
+                            // The id tells two players with the same name apart.
+                            const onBlock = d.auction_state.current_player_id || d.auction_state.current_player;
+                            if (onBlock !== lastPlayerId) {
+                                setLastPlayerId(onBlock);
                                 setRevealPhase(0);
                                 setTimeout(() => setRevealPhase(1), 500);
                                 setTimeout(() => setRevealPhase(2), 1200);
