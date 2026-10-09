@@ -337,8 +337,30 @@ const SpinWheel = ({ items, title, onSelect, onClose }) => {
 // A player's role in their team (Captain, Owner...), typed by the admin when allotting.
 const RoleBadge = ({ role }) => <span className="text-[0.6rem] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 whitespace-nowrap">{role}</span>;
 
-const TeamRosterModal = ({ team, onClose }) => {
+// A team's squad. With `onChanged` given (the admin dashboard), "Edit squad"
+// lets the auctioneer correct a sale mid-auction: move a player to another
+// team, change the price or team role, or return the player to the pool.
+// Purses are rebalanced on the server, and Undo reverses each change.
+const TeamRosterModal = ({ team, onClose, teams = [], onChanged }) => {
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState(null);   // { id, team_id, price, role } of the player being edited
+    const [busy, setBusy] = useState(false);
     if(!team) return null;
+    const openDraft = p => setDraft({ id: p.id, team_id: String(team.id), price: String(p.sold_price ?? 0), role: p.team_role || '' });
+    const saveDraft = async (p, toPool) => {
+        if (!toPool && !(parseFloat(draft.price) >= 0)) { alert('Enter a price of 0 or more.'); return; }
+        if (toPool && !confirm(`Return ${p.name} to the auction pool?\n\n${team.name} gets ${fmtL(p.sold_price)} back, and ${p.name} can be auctioned again.`)) return;
+        setBusy(true);
+        const body = toPool
+            ? { player_id: p.id, status: 'unsold' }
+            : { player_id: p.id, status: 'sold', team_id: draft.team_id, sold_price: parseFloat(draft.price), team_role: draft.role.trim() };
+        const r = await fetch('/api/players/edit_sale', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await r.json().catch(() => ({}));
+        setBusy(false);
+        if (!r.ok) { alert(d.message || d.error || 'Could not save the change.'); return; }
+        setDraft(null);
+        onChanged && onChanged();
+    };
     const pct=Math.max(0,Math.min(100,(team.remaining_budget/team.total_budget)*100));
     return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md anim-scaleIn p-4" onClick={onClose}>
         <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-7xl h-[90vh] shadow-2xl flex flex-col overflow-hidden" onClick={e=>e.stopPropagation()}>
@@ -420,15 +442,51 @@ const TeamRosterModal = ({ team, onClose }) => {
 
                 {/* RIGHT: Squad Roster — big cards, hall-readable */}
                 <div className="p-6 overflow-y-auto custom-scrollbar">
-                    <p className="text-sm font-extrabold text-slate-400 uppercase tracking-widest mb-3">Squad Roster</p>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                        <p className="text-sm font-extrabold text-slate-400 uppercase tracking-widest">Squad Roster</p>
+                        {onChanged && team.players && team.players.length > 0 && <button onClick={() => { setEditing(!editing); setDraft(null); }}
+                            className={`px-4 py-2 rounded-xl text-sm font-extrabold transition ${editing ? 'bg-amber-500 text-black' : 'bg-slate-800 text-slate-200 hover:bg-slate-700'}`}>
+                            <i className={`fa-solid ${editing ? 'fa-check' : 'fa-pen'} mr-2`}></i>{editing ? 'Done' : 'Edit squad'}
+                        </button>}
+                    </div>
+                    {editing && <p className="text-sm text-amber-300 font-bold mb-3">Click a player to change their team, sold price or role, or to return them to the auction pool.</p>}
                     {(!team.players||team.players.length===0)?<div className="text-center py-16 text-slate-500"><p className="text-5xl mb-2">🏏</p><p className="font-bold text-lg">No players acquired yet</p></div>
                     :<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {team.players.map(p=><div key={p.id} className="flex items-center gap-4 p-4 bg-slate-950 rounded-2xl border border-slate-800">
-                            <PlayerPhoto url={p.photo_url} name={p.name} size={56} />
-                            <div className="flex-1 min-w-0"><div className="font-bold text-white text-lg truncate">{p.name}</div><div className="flex items-center gap-1.5 flex-wrap">{p.team_role&&<RoleBadge role={p.team_role}/>}{p.category&&<CatBadge category={p.category}/>}</div></div>
-                            <span className="fredoka font-bold text-green-400 text-xl shrink-0">{fmtL(p.sold_price)}</span>
-                        </div>)}
+                        {team.players.map(p=>{
+                            const open = editing && draft && draft.id === p.id;
+                            return <div key={p.id} className={`p-4 bg-slate-950 rounded-2xl border transition ${open ? 'border-amber-500 md:col-span-2' : editing ? 'border-slate-700 hover:border-amber-500/60 cursor-pointer' : 'border-slate-800'}`}
+                                onClick={() => editing && !open && openDraft(p)}>
+                                <div className="flex items-center gap-4">
+                                    <PlayerPhoto url={p.photo_url} name={p.name} size={56} />
+                                    <div className="flex-1 min-w-0"><div className="font-bold text-white text-lg truncate">{p.name}</div><div className="flex items-center gap-1.5 flex-wrap">{p.team_role&&<RoleBadge role={p.team_role}/>}{p.category&&<CatBadge category={p.category}/>}</div></div>
+                                    <span className="fredoka font-bold text-green-400 text-xl shrink-0">{fmtL(p.sold_price)}</span>
+                                    {editing && !open && <i className="fa-solid fa-pen text-slate-500 shrink-0"></i>}
+                                </div>
+                                {open && <div className="mt-4 pt-4 border-t border-slate-800 space-y-3" onClick={e => e.stopPropagation()}>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <label className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Team
+                                            <select value={draft.team_id} onChange={e => setDraft({ ...draft, team_id: e.target.value })}
+                                                className="mt-1 w-full bg-slate-900 border border-slate-700 text-white p-2.5 rounded-xl font-bold text-sm">
+                                                {teams.map(t => <option key={t.id} value={String(t.id)}>{t.name} ({fmtL(t.remaining_budget)} left)</option>)}
+                                            </select></label>
+                                        <label className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Sold price (L)
+                                            <input type="number" min="0" step="any" value={draft.price} onChange={e => setDraft({ ...draft, price: e.target.value })}
+                                                className="mt-1 w-full bg-slate-900 border border-slate-700 text-white p-2.5 rounded-xl font-bold text-sm" />
+                                            <span className="text-[0.7rem] text-slate-500 normal-case tracking-normal">{fmtL(parseFloat(draft.price) || 0)}</span></label>
+                                        <label className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Role in team
+                                            <input type="text" list="team-role-options" maxLength={40} placeholder="Optional — Captain, Owner…" value={draft.role} onChange={e => setDraft({ ...draft, role: e.target.value })}
+                                                className="mt-1 w-full bg-slate-900 border border-slate-700 text-white p-2.5 rounded-xl font-bold text-sm" /></label>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <button disabled={busy} onClick={() => saveDraft(p, false)} className="bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black px-5 py-2.5 rounded-xl font-extrabold text-sm"><i className="fa-solid fa-floppy-disk mr-2"></i>Save change</button>
+                                        <button disabled={busy} onClick={() => saveDraft(p, true)} className="bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 text-red-300 px-5 py-2.5 rounded-xl font-extrabold text-sm"><i className="fa-solid fa-rotate-left mr-2"></i>Return to auction pool</button>
+                                        <button disabled={busy} onClick={() => setDraft(null)} className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-5 py-2.5 rounded-xl font-bold text-sm">Cancel</button>
+                                    </div>
+                                </div>}
+                            </div>;
+                        })}
                     </div>}
+                    <datalist id="team-role-options">{['Owner','Captain','Vice-Captain','Mentor','Icon Player','Coach'].map(r=><option key={r} value={r} />)}</datalist>
                 </div>
             </div>
         </div>
@@ -2290,7 +2348,7 @@ function App() {
                 onClose={()=>setShowPresetsModal(false)}
             />}
             {showWheel && <SpinWheel items={wheelMode==='player'?unsoldPlayers:teams} title={wheelMode==='player'?'🎯 Draw Player':'🎰 Pick Team'} onSelect={handleSpinSelect} onClose={()=>setShowWheel(false)} />}
-            {showTeamRoster && <TeamRosterModal team={showTeamRoster} onClose={()=>setShowTeamRoster(null)} />}
+            {showTeamRoster && <TeamRosterModal team={teams.find(t=>t.id===showTeamRoster.id)||showTeamRoster} teams={teams} onChanged={loadData} onClose={()=>setShowTeamRoster(null)} />}
             {showShareModal && <ShareModal teams={teams} onClose={()=>setShowShareModal(false)} />}
 
             {storage && (storage.problem || storage.missing_files > 0 || storage.server_only_files > 0) && (
@@ -2799,7 +2857,7 @@ function App() {
         <ArenaAtmosphere theme={currentTheme} />
         <Confetti show={showConfetti} />
         {showWheel && <SpinWheel items={wheelMode==='player'?unsoldPlayers:teams} title={wheelMode==='player'?'🎯 Draw Player':'🎰 Pick Team'} onSelect={handleSpinSelect} onClose={()=>setShowWheel(false)} />}
-        {showTeamRoster && <TeamRosterModal team={showTeamRoster} onClose={()=>setShowTeamRoster(null)} />}
+        {showTeamRoster && <TeamRosterModal team={teams.find(t=>t.id===showTeamRoster.id)||showTeamRoster} teams={teams} onChanged={loadData} onClose={()=>setShowTeamRoster(null)} />}
         {showShareModal && <ShareModal teams={teams} onClose={()=>setShowShareModal(false)} />}
 
         {/* Main Stage */}

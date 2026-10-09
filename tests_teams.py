@@ -101,6 +101,29 @@ admin.post('/api/players/edit_sale', json={'player_id': rid, 'status': 'sold', '
 admin.post('/api/undo')
 check('undo reverses an allotment', player('Ravi')['status'] == 'unsold' and team(blues)['remaining_budget'] == 100)
 
+# ── Edit squad mid-auction: a sold player moves team, changes price, or goes
+#    back to the pool; purses follow; Undo reverts without touching the stage. ──
+greens = admin.post('/api/teams', json={'name': 'Greens', 'total_budget': 100}).get_json()['id']
+admin.post('/api/players', json={'name': 'Vik', 'category': 'A', 'base_price': 5})
+admin.post('/api/players', json={'name': 'On Stage', 'category': 'A', 'base_price': 5})
+vik, onstage = player('Vik')['id'], player('On Stage')['id']
+r = admin.post('/api/sell_player', json={'player_id': vik, 'team_id': blues, 'sold_price': 5})
+check('sold in the auction', r.status_code == 200, r.get_data(as_text=True)[:120])
+admin.post('/api/auction/state', json={'current_player': 'On Stage', 'current_player_id': str(onstage), 'current_bid': 7})
+r = admin.post('/api/players/edit_sale', json={'player_id': vik, 'status': 'sold', 'team_id': greens, 'sold_price': 4, 'team_role': 'Captain'})
+check('sold player moved to another team at a new price', r.status_code == 200 and player('Vik')['team_name'] == 'Greens'
+      and player('Vik')['sold_price'] == 4, r.get_data(as_text=True)[:100])
+check('old team refunded, new team charged', team(blues)['remaining_budget'] == 100 and team(greens)['remaining_budget'] == 96,
+      '%s %s' % (team(blues)['remaining_budget'], team(greens)['remaining_budget']))
+admin.post('/api/undo')
+st = admin.get('/api/live_data').get_json()['auction_state']
+check('undo of a squad edit puts the sale back', player('Vik')['team_name'] == 'Blues' and player('Vik')['sold_price'] == 5
+      and team(blues)['remaining_budget'] == 95 and team(greens)['remaining_budget'] == 100,
+      str((player('Vik')['team_name'], player('Vik')['sold_price'], team(blues)['remaining_budget'], team(greens)['remaining_budget'])))
+check('undo of a squad edit leaves the player on stage alone', st.get('current_player') == 'On Stage', str(st.get('current_player')))
+r = admin.post('/api/players/edit_sale', json={'player_id': vik, 'status': 'unsold'})
+check('sold player returned to the auction pool with a refund', player('Vik')['status'] == 'unsold' and team(blues)['remaining_budget'] == 100)
+
 # ── A team role typed at allotment (Captain, Owner...) shows in the report,
 #    and is dropped when the player goes back to the pool. ──
 admin.post('/api/players', json={'name': 'Meera', 'category': 'A', 'base_price': 10})

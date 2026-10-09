@@ -3271,15 +3271,18 @@ def undo_last_sale():
         # Remove this action from history stack
         c.execute('DELETE FROM action_history WHERE id=?', (act['id'],))
 
-        # Restore player to live auction_state so they immediately appear under the hammer!
-        c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
-        c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES ("current_player", ?)', (act['player_name'] or '',))
-        c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES ("current_player_id", ?)', (str(pid),))
         restored_bid = act['new_sold_price'] if act['new_sold_price'] is not None else act['base_price'] or 0
-        c.execute('INSERT INTO auction_state (key, value) VALUES ("current_bid", ?)', (str(restored_bid),))
-        c.execute('INSERT INTO auction_state (key, value) VALUES ("category", ?)', (act['category'] or '',))
-        c.execute('INSERT INTO auction_state (key, value) VALUES ("base_price", ?)', (str(act['base_price'] or 0),))
-        c.execute('INSERT INTO auction_state (key, value) VALUES ("photo_url", ?)', (act['photo_url'] or '',))
+        # Undoing a SOLD or PASS puts the player back under the hammer. Undoing
+        # a squad correction or allotment only reverts it: the player being
+        # auctioned right now stays on the stage.
+        if act['action_type'] != 'edit_sale':
+            c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
+            c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES ("current_player", ?)', (act['player_name'] or '',))
+            c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES ("current_player_id", ?)', (str(pid),))
+            c.execute('INSERT INTO auction_state (key, value) VALUES ("current_bid", ?)', (str(restored_bid),))
+            c.execute('INSERT INTO auction_state (key, value) VALUES ("category", ?)', (act['category'] or '',))
+            c.execute('INSERT INTO auction_state (key, value) VALUES ("base_price", ?)', (str(act['base_price'] or 0),))
+            c.execute('INSERT INTO auction_state (key, value) VALUES ("photo_url", ?)', (act['photo_url'] or '',))
 
         player_row = c.execute('SELECT * FROM players WHERE id=?', (pid,)).fetchone()
         player_dict = dict(player_row) if player_row else {'id': pid, 'name': act['player_name'], 'category': act['category'], 'base_price': act['base_price'], 'photo_url': act['photo_url']}
