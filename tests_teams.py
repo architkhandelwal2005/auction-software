@@ -101,4 +101,33 @@ admin.post('/api/players/edit_sale', json={'player_id': rid, 'status': 'sold', '
 admin.post('/api/undo')
 check('undo reverses an allotment', player('Ravi')['status'] == 'unsold' and team(blues)['remaining_budget'] == 100)
 
+# ── A team role typed at allotment (Captain, Owner...) shows in the report,
+#    and is dropped when the player goes back to the pool. ──
+admin.post('/api/players', json={'name': 'Meera', 'category': 'A', 'base_price': 10})
+mid = player('Meera')['id']
+admin.post('/api/players/edit_sale', json={'player_id': mid, 'status': 'sold', 'team_id': blues, 'sold_price': 5})
+r = admin.post('/api/players/edit_sale', json={'player_id': rid, 'status': 'sold', 'team_id': blues, 'sold_price': 0, 'team_role': '  Captain '})
+check('allotted with a role', r.status_code == 200 and player('Ravi')['team_role'] == 'Captain', str(player('Ravi').get('team_role')))
+squad = next(t for t in admin.get('/api/live_data').get_json()['teams'] if t['id'] == blues)['players']
+check('report squad lists role holders first', squad[0]['name'] == 'Ravi' and squad[0]['team_role'] == 'Captain', str([(p['name'], p.get('team_role')) for p in squad]))
+with A.app.app_context():
+    conn = A.open_auction_conn(aid)
+    frozen = A.build_final_report(conn, dict(A.auction_row(aid)))
+    conn.close()
+fsquad = next(t for t in frozen['teams'] if t['id'] == blues)['players']
+check('frozen report keeps the role', any(p['name'] == 'Ravi' and p['team_role'] == 'Captain' for p in fsquad))
+check('CSV export has the role', 'Captain' in admin.get('/api/export/csv').get_data(as_text=True))
+admin.post('/api/players/edit_sale', json={'player_id': rid, 'status': 'unsold'})
+check('return to pool clears the role', not player('Ravi')['team_role'])
+
+# ── Auctions created before the role column existed gain it on first use. ──
+import sqlite3, tempfile
+old_db = os.path.join(tempfile.mkdtemp(), 'old.db')
+oc = sqlite3.connect(old_db); oc.row_factory = sqlite3.Row
+oc.execute('CREATE TABLE players (id INTEGER PRIMARY KEY, name TEXT, team_id INTEGER, sold_price REAL, status TEXT)')
+A.upgrade_auction_schema(oc, 'old-schema-test')
+cols = [r['name'] for r in oc.execute('PRAGMA table_info(players)').fetchall()]
+oc.close()
+check('old auction gains team_role column', 'team_role' in cols, str(cols))
+
 print('\nALL CHECKS PASSED' if not check.failed else '\n%d CHECK(S) FAILED' % check.failed)

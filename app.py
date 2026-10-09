@@ -145,12 +145,12 @@ def _write_excel_backup(auction_id):
 
         ws1 = wb.active
         ws1.title = 'Sold Players'
-        ws1.append(['Name', 'Category', 'Base Price', 'Sold Price', 'Team', 'Sold At'])
+        ws1.append(['Name', 'Category', 'Base Price', 'Sold Price', 'Team', 'Team Role', 'Sold At'])
         sold = [p for p in players if p.get('status') == 'sold']
         for p in sorted(sold, key=lambda x: str(x.get('sold_at') or '')):
             ws1.append([p.get('name'), p.get('category') or '', p.get('base_price') or 0,
                         p.get('sold_price') or 0, team_by_id.get(p.get('team_id'), {}).get('name', ''),
-                        str(p.get('sold_at') or '')])
+                        p.get('team_role') or '', str(p.get('sold_at') or '')])
 
         ws2 = wb.create_sheet('All Players')
         ws2.append(['Name', 'Category', 'Base Price', 'Status', 'Team', 'Sold Price'])
@@ -551,10 +551,12 @@ def open_auction_conn(auction_id):
         import psycopg2
         raw = psycopg2.connect(DATABASE_URL)
         _pg_scope(raw, auction_id)
-        return _PGOwnedConn(raw)
-    conn = sqlite3.connect(auction_db_path(auction_id), timeout=20, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA foreign_keys = ON')
+        conn = _PGOwnedConn(raw)
+    else:
+        conn = sqlite3.connect(auction_db_path(auction_id), timeout=20, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute('PRAGMA foreign_keys = ON')
+    upgrade_auction_schema(conn, auction_id)
     return conn
 
 
@@ -607,6 +609,7 @@ def get_db():
             g.db = sqlite3.connect(auction_db_path(auction_id), timeout=20, check_same_thread=False)
             g.db.row_factory = sqlite3.Row
             g.db.execute("PRAGMA foreign_keys = ON")
+        upgrade_auction_schema(g.db, auction_id)
     return g.db
 
 @app.teardown_appcontext
@@ -705,6 +708,7 @@ def _create_auction_tables_sqlite(conn):
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, category TEXT,
         base_price REAL DEFAULT 0, status TEXT DEFAULT 'unsold', team_id INTEGER,
         sold_price REAL, photo_url TEXT, sold_at TIMESTAMP, attributes TEXT,
+        team_role TEXT,
         FOREIGN KEY (team_id) REFERENCES teams (id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS auction_state (key TEXT PRIMARY KEY, value TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS action_history (
@@ -732,7 +736,7 @@ def _create_auction_tables_pg(cur, schema):
         id SERIAL PRIMARY KEY, name TEXT NOT NULL, category TEXT,
         base_price DOUBLE PRECISION DEFAULT 0, status TEXT DEFAULT 'unsold',
         team_id INTEGER REFERENCES teams(id), sold_price DOUBLE PRECISION,
-        photo_url TEXT, sold_at TIMESTAMP, attributes TEXT)""")
+        photo_url TEXT, sold_at TIMESTAMP, attributes TEXT, team_role TEXT)""")
     cur.execute("CREATE TABLE IF NOT EXISTS auction_state (key TEXT PRIMARY KEY, value TEXT)")
     cur.execute("""CREATE TABLE IF NOT EXISTS action_history (
         id SERIAL PRIMARY KEY, action_type TEXT NOT NULL, player_id INTEGER NOT NULL,
@@ -743,6 +747,45 @@ def _create_auction_tables_pg(cur, schema):
     for k, v in DEFAULT_CONFIG.items():
         cur.execute("INSERT INTO config (key, value) VALUES (%s, %s) "
                     "ON CONFLICT (key) DO NOTHING", (k, v))
+
+
+# Auctions whose tables this process has already brought up to date.
+_SCHEMA_CURRENT = set()
+
+def upgrade_auction_schema(conn, auction_id):
+    """Add columns introduced after an auction's tables were created.
+
+    Tables are built once, when the auction is created, so an auction made
+    before a column existed lacks it. Each step is idempotent; the check runs
+    once per auction per process. A failure is logged and retried on the next
+    connection rather than failing the request.
+    """
+    key = str(auction_id)
+    if key in _SCHEMA_CURRENT:
+        return
+    try:
+        if USE_PG:
+            # A savepoint keeps the connection's search_path (set earlier in
+            # this transaction) if the ALTER fails; the lock timeout stops a
+            # busy table from stalling the request.
+            conn.execute('SAVEPOINT schema_upgrade')
+            try:
+                conn.execute("SET LOCAL lock_timeout = '3s'")
+                conn.execute('ALTER TABLE players ADD COLUMN IF NOT EXISTS team_role TEXT')
+                conn.execute('RELEASE SAVEPOINT schema_upgrade')
+            except Exception:
+                conn.execute('ROLLBACK TO SAVEPOINT schema_upgrade')
+                raise
+        else:
+            cols = [r['name'] for r in conn.execute('PRAGMA table_info(players)').fetchall()]
+            if not cols:
+                return  # tables not built yet
+            if 'team_role' not in cols:
+                conn.execute('ALTER TABLE players ADD COLUMN team_role TEXT')
+        conn.commit()
+        _SCHEMA_CURRENT.add(key)
+    except Exception as exc:
+        print('[schema] auction %s upgrade failed: %s' % (auction_id, exc), flush=True)
 
 
 def create_auction_storage(auction_id):
@@ -1603,6 +1646,14 @@ def format_team_metrics(team_dict, players_list, rules_list, config_dict):
     return td
 
 # ─── Teams ───
+def team_squad(conn, team_id):
+    """A team's players: those with a team role (Captain, Owner...) first,
+    then the most recent buys."""
+    return conn.execute(
+        "SELECT id, name, category, sold_price, photo_url, sold_at, team_role FROM players "
+        "WHERE team_id = ? ORDER BY CASE WHEN COALESCE(team_role, '') = '' THEN 1 ELSE 0 END, sold_at DESC",
+        (team_id,)).fetchall()
+
 @app.route('/api/teams', methods=['GET'])
 def get_teams():
     conn = get_db()
@@ -1612,8 +1663,7 @@ def get_teams():
     config = {r['key']: r['value'] for r in rows}
     result = []
     for t in teams:
-        players = conn.execute('SELECT id, name, category, sold_price, photo_url FROM players WHERE team_id = ?', (t['id'],)).fetchall()
-        result.append(format_team_metrics(t, players, rules, config))
+        result.append(format_team_metrics(t, team_squad(conn, t['id']), rules, config))
     conn.close()
     return jsonify(result)
 
@@ -2688,9 +2738,10 @@ def undo_last_sale():
                 c.execute('UPDATE teams SET remaining_budget=remaining_budget+? WHERE id=?', (act['new_sold_price'], act['new_team_id']))
             if act['old_team_id'] and act['old_sold_price']:
                 c.execute('UPDATE teams SET remaining_budget=remaining_budget-? WHERE id=?', (act['old_sold_price'], act['old_team_id']))
-            # Restore player
-            c.execute('UPDATE players SET status=?, team_id=?, sold_price=? WHERE id=?',
-                      (act['old_status'], act['old_team_id'], act['old_sold_price'], pid))
+            # Restore player. A player who was not with a team has no role.
+            c.execute('UPDATE players SET status=?, team_id=?, sold_price=?, '
+                      "team_role = CASE WHEN ? = 'sold' THEN team_role ELSE NULL END WHERE id=?",
+                      (act['old_status'], act['old_team_id'], act['old_sold_price'], act['old_status'], pid))
 
         # Remove this action from history stack
         c.execute('DELETE FROM action_history WHERE id=?', (act['id'],))
@@ -2764,6 +2815,9 @@ def edit_player_sale():
     category = data.get('category')
     photo_url = data.get('photo_url')
     new_status = data.get('status', 'unsold')  # 'sold' or 'unsold'
+    # Free text the admin types: Captain, Owner, Mentor... Kept only while
+    # the player is with a team.
+    team_role = str(data.get('team_role') or '').strip()[:40] or None
     if new_status not in ('sold', 'unsold'):
         return jsonify({'error': "status must be 'sold' or 'unsold'"}), 400
     try:
@@ -2806,7 +2860,7 @@ def edit_player_sale():
             conn.close()
             return jsonify({'error': '%s has only ₹%gL left in the purse.' % (team['name'], available)}), 400
     else:
-        new_team_id, new_sold_price = None, None
+        new_team_id, new_sold_price, team_role = None, None, None
 
     # Record in history for undo
     c.execute('''INSERT INTO action_history 
@@ -2828,10 +2882,11 @@ def edit_player_sale():
         status = ?, 
         team_id = ?, 
         sold_price = ?,
+        team_role = ?,
         sold_at = CASE WHEN ? = 'sold' THEN COALESCE(sold_at, CURRENT_TIMESTAMP) ELSE NULL END
         WHERE id = ?''',
         (name or old_p['name'], category if category is not None else old_p['category'], base_price, photo_url,
-         new_status, new_team_id, new_sold_price, new_status, pid))
+         new_status, new_team_id, new_sold_price, team_role, new_status, pid))
 
     conn.commit()
     conn.close()
@@ -2845,7 +2900,7 @@ def reset_auction():
     archive_excel_backup(g.auction_id, 'reset')
     conn = get_db()
     c = conn.cursor()
-    c.execute('UPDATE players SET status="unsold", team_id=NULL, sold_price=NULL, sold_at=NULL')
+    c.execute('UPDATE players SET status="unsold", team_id=NULL, sold_price=NULL, sold_at=NULL, team_role=NULL')
     c.execute('UPDATE teams SET remaining_budget=total_budget')
     c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
     c.execute('DELETE FROM action_history')
@@ -3033,8 +3088,7 @@ def build_live_report(conn):
     rules = conn.execute('SELECT * FROM category_rules').fetchall()
     teams_result = []
     for t in teams:
-        players = conn.execute('SELECT id, name, category, sold_price, photo_url, sold_at FROM players WHERE team_id = ? ORDER BY sold_at DESC', (t['id'],)).fetchall()
-        teams_result.append(format_team_metrics(t, players, rules, config))
+        teams_result.append(format_team_metrics(t, team_squad(conn, t['id']), rules, config))
 
     if state.get('current_player'):
         p_row = conn.execute('SELECT * FROM players WHERE name = ?', (state['current_player'],)).fetchone()
@@ -3050,7 +3104,7 @@ def build_live_report(conn):
 
     # Sold players
     sold = conn.execute('''
-        SELECT p.id, p.name, p.category, p.sold_price, p.base_price, p.photo_url, p.attributes, p.sold_at, t.name as team_name, t.color as team_color, t.logo_url as team_logo
+        SELECT p.id, p.name, p.category, p.sold_price, p.base_price, p.photo_url, p.attributes, p.sold_at, p.team_role, t.name as team_name, t.color as team_color, t.logo_url as team_logo
         FROM players p JOIN teams t ON p.team_id = t.id
         WHERE p.status = 'sold'
         ORDER BY p.sold_at DESC
@@ -3192,7 +3246,7 @@ def set_common_base_price():
 def export_csv():
     conn = get_db()
     players = conn.execute('''
-        SELECT p.name, p.category, p.status, p.base_price, p.sold_price, COALESCE(t.name, 'Unsold') as team_name, p.sold_at
+        SELECT p.name, p.category, p.status, p.base_price, p.sold_price, COALESCE(t.name, 'Unsold') as team_name, p.team_role, p.sold_at
         FROM players p LEFT JOIN teams t ON p.team_id = t.id
         ORDER BY p.status DESC, p.sold_price DESC
     ''').fetchall()
@@ -3200,9 +3254,9 @@ def export_csv():
     
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['Player Name', 'Category', 'Status', 'Base Price (Lakhs)', 'Sold Price (Lakhs)', 'Team', 'Sold At'])
+    writer.writerow(['Player Name', 'Category', 'Status', 'Base Price (Lakhs)', 'Sold Price (Lakhs)', 'Team', 'Team Role', 'Sold At'])
     for p in players:
-        writer.writerow([p['name'], p['category'], p['status'], p['base_price'], p['sold_price'] or '', p['team_name'], p['sold_at'] or ''])
+        writer.writerow([p['name'], p['category'], p['status'], p['base_price'], p['sold_price'] or '', p['team_name'], p['team_role'] or '', p['sold_at'] or ''])
     
     output.seek(0)
     return app.response_class(

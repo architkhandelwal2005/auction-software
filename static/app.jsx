@@ -347,6 +347,9 @@ const SpinWheel = ({ items, title, onSelect, onClose }) => {
 // ═══════════════════════════════════════════════
 // TEAM ROSTER MODAL (Dark Themed)
 // ═══════════════════════════════════════════════
+// A player's role in their team (Captain, Owner...), typed by the admin when allotting.
+const RoleBadge = ({ role }) => <span className="text-[0.6rem] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 whitespace-nowrap">{role}</span>;
+
 const TeamRosterModal = ({ team, onClose }) => {
     if(!team) return null;
     const pct=Math.max(0,Math.min(100,(team.remaining_budget/team.total_budget)*100));
@@ -435,7 +438,7 @@ const TeamRosterModal = ({ team, onClose }) => {
                     :<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {team.players.map(p=><div key={p.id} className="flex items-center gap-4 p-4 bg-slate-950 rounded-2xl border border-slate-800">
                             <PlayerPhoto url={p.photo_url} name={p.name} size={56} />
-                            <div className="flex-1 min-w-0"><div className="font-bold text-white text-lg truncate">{p.name}</div>{p.category&&<CatBadge category={p.category}/>}</div>
+                            <div className="flex-1 min-w-0"><div className="font-bold text-white text-lg truncate">{p.name}</div><div className="flex items-center gap-1.5 flex-wrap">{p.team_role&&<RoleBadge role={p.team_role}/>}{p.category&&<CatBadge category={p.category}/>}</div></div>
                             <span className="fredoka font-bold text-green-400 text-xl shrink-0">&#8377;{p.sold_price}L</span>
                         </div>)}
                     </div>}
@@ -1852,7 +1855,7 @@ function App() {
     const updatePlayer = async e => { e.preventDefault(); await fetch('/api/players/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:editPlayer.id,name:editPlayer.name,category:editPlayer.category,base_price:parseFloat(editPlayer.base_price||0)})}); setEditPlayer(null); loadData(); };
     // Allot a retained player to a team at a price the admin sets (zero allowed),
     // or return an allotted player to the pool. Purses rebalance server-side.
-    const openPlayer = p => setEditPlayer({...p, allotTeam: p.status==='sold' ? String(p.team_id||'') : '', allotPrice: p.status==='sold' ? String(p.sold_price ?? 0) : String(p.base_price ?? 0)});
+    const openPlayer = p => setEditPlayer({...p, allotTeam: p.status==='sold' ? String(p.team_id||'') : '', allotPrice: p.status==='sold' ? String(p.sold_price ?? 0) : String(p.base_price ?? 0), allotRole: p.team_role || ''});
     const allotPlayer = async release => {
         const p = editPlayer;
         if (!release && !p.allotTeam) { alert('Choose a team'); return; }
@@ -1860,7 +1863,8 @@ function App() {
         if (!release && (isNaN(price) || price < 0)) { alert('Enter a price of 0 or more'); return; }
         const r = await fetch('/api/players/edit_sale',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
             player_id:p.id, name:p.name, category:p.category, base_price:parseFloat(p.base_price||0),
-            status: release ? 'unsold' : 'sold', team_id: release ? null : p.allotTeam, sold_price: release ? null : price })});
+            status: release ? 'unsold' : 'sold', team_id: release ? null : p.allotTeam, sold_price: release ? null : price,
+            team_role: release ? '' : (p.allotRole||'').trim() })});
         const d = await r.json().catch(()=>({}));
         if (!r.ok) { alert(d.error||'Could not allot player'); return; }
         setEditPlayer(null); loadData();
@@ -2470,7 +2474,7 @@ function App() {
                             </div>
                             <div className="flex-1 min-w-0 cursor-pointer" onClick={()=>openPlayer(p)} title="Open player profile">
                                 <div className="font-extrabold text-white text-xs truncate">{p.name}</div>
-                                <div className="flex items-center gap-1 mt-0.5">{p.category&&<CatBadge category={p.category}/>}</div>
+                                <div className="flex items-center gap-1 mt-0.5">{p.category&&<CatBadge category={p.category}/>}{p.team_role&&<RoleBadge role={p.team_role}/>}</div>
                             </div>
                             <div className="flex flex-col items-end gap-0.5 shrink-0">
                                 <span className="text-[0.55rem] text-slate-400 font-bold">₹{p.base_price}L</span>
@@ -2527,7 +2531,7 @@ function App() {
                     <div className="space-y-2 bg-slate-950/60 border border-amber-500/25 rounded-xl p-3">
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-extrabold text-amber-300"><i className="fa-solid fa-handshake mr-1.5"></i>Allot to team</span>
-                            {editPlayer.status==='sold' && <span className="text-[0.65rem] font-bold text-green-400">With {editPlayer.team_name||'team'} · ₹{editPlayer.sold_price}L</span>}
+                            {editPlayer.status==='sold' && <span className="text-[0.65rem] font-bold text-green-400">With {editPlayer.team_name||'team'}{editPlayer.team_role?` (${editPlayer.team_role})`:''} · ₹{editPlayer.sold_price}L</span>}
                         </div>
                         <div className="flex gap-2">
                             <select className="flex-1 min-w-0 bg-slate-950 border border-slate-700 text-white p-2.5 rounded-xl font-bold text-xs" value={editPlayer.allotTeam} onChange={e=>setEditPlayer({...editPlayer,allotTeam:e.target.value})}>
@@ -2535,6 +2539,8 @@ function App() {
                             </select>
                             <input type="number" min="0" step="any" placeholder="Price (L)" className="w-24 bg-slate-950 border border-slate-700 text-white p-2.5 rounded-xl font-bold text-xs" value={editPlayer.allotPrice} onChange={e=>setEditPlayer({...editPlayer,allotPrice:e.target.value})} />
                         </div>
+                        <input type="text" list="team-role-options" maxLength={40} placeholder="Role in team (optional) — e.g. Captain, Owner, Mentor" className="w-full bg-slate-950 border border-slate-700 text-white p-2.5 rounded-xl font-bold text-xs" value={editPlayer.allotRole} onChange={e=>setEditPlayer({...editPlayer,allotRole:e.target.value})} />
+                        <datalist id="team-role-options">{['Owner','Captain','Vice-Captain','Mentor','Icon Player','Coach'].map(r=><option key={r} value={r} />)}</datalist>
                         <div className="flex gap-2">
                             <button type="button" onClick={()=>allotPlayer(false)} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white py-2 rounded-xl font-bold text-xs">{editPlayer.status==='sold'?'Update allotment':'Allot player'}</button>
                             {editPlayer.status==='sold' && <button type="button" onClick={()=>allotPlayer(true)} className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-xl font-bold text-xs">Return to pool</button>}
