@@ -11,6 +11,15 @@ try:
 except ImportError:
     pass
 
+# Values pasted into a hosting dashboard often carry a stray space or line
+# break. On Render, SUPABASE_URL ended in "\n": every upload to Supabase failed
+# ("URL can't contain control characters") and photos lived only on a disk
+# Render wipes. Settings are trimmed before anything reads them.
+for _key in ('DATABASE_URL', 'SUPABASE_URL', 'SUPABASE_SERVICE_KEY', 'SUPABASE_BUCKET',
+             'SECRET_KEY', 'ADMIN_PASSWORD', 'WIPE_PASSWORD'):
+    if _key in os.environ:
+        os.environ[_key] = os.environ[_key].strip()
+
 def _normalize_database_url(url):
     """Supabase's connection pooler logs in as postgres.<project-ref>, not plain
     postgres. The direct-connection string copied from a .env carries the plain
@@ -253,6 +262,8 @@ if EPHEMERAL_DISK and not USE_SUPABASE_STORAGE:
 # on the dashboard so a misconfigured key is found before the event, not by
 # photos vanishing after a redeploy.
 _STORAGE_LAST_ERROR = {'message': '', 'at': None}
+# The last upload self-test in this process (see storage_selftest).
+_SELFTEST = {'at': 0, 'error': ''}
 
 _MEDIA_CONTENT_TYPES = {
     'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
@@ -344,13 +355,18 @@ def media_backup(path, data, ext):
     reason is kept for the dashboard."""
     if not USE_SUPABASE_STORAGE:
         return False
+    import time
     try:
         storage_put(path, data, ext)
         _media_mark_backed(path)
+        # A real upload is the best self-test: record its outcome both ways.
+        _SELFTEST.update(at=time.time(), error='')
+        _STORAGE_LAST_ERROR.update(message='', at=None)
         return True
     except Exception as exc:
         print('[storage] Supabase copy failed, kept on this server only: %s' % exc, flush=True)
         _STORAGE_LAST_ERROR.update(message=str(exc)[:240], at=str(datetime.datetime.now()))
+        _SELFTEST.update(at=time.time(), error=str(exc)[:240])
         return False
 
 
@@ -458,8 +474,33 @@ def sync_media_async(auction_id, min_gap=60):
     threading.Thread(target=sync_media, args=(auction_id,), daemon=True).start()
 
 
+def storage_selftest(max_age=600):
+    """Upload a tiny file to Supabase and report the failure, or ''. Each
+    server process runs it for itself (at most every `max_age` seconds), so
+    the dashboard shows the real reason whichever process answers, rather
+    than an error only the process that hit it remembers."""
+    import time
+    if not USE_SUPABASE_STORAGE:
+        return ''
+    if time.time() - _SELFTEST['at'] < max_age:
+        return _SELFTEST['error']
+    try:
+        storage_put('_healthcheck/process-%s.txt' % os.getpid(), b'ok', 'txt')
+        error = ''
+    except Exception as exc:
+        error = str(exc)[:240]
+    _SELFTEST.update(at=time.time(), error=error)
+    return error
+
+
 def storage_problem(conn=None):
     """What the organiser must fix so photos and logos are kept, or ''."""
+    failure = storage_selftest()
+    if failure:
+        return ('Supabase refuses uploads (%s), so photos and logos are kept only on the server, '
+                'and Render wipes it at every deploy or restart. In Render > Environment, check '
+                'SUPABASE_URL, SUPABASE_SERVICE_KEY (the service_role key) and SUPABASE_BUCKET ("%s"), '
+                'then redeploy.' % (failure, SUPABASE_BUCKET))
     if EPHEMERAL_DISK and not USE_SUPABASE_STORAGE:
         return ('Photos and logos are saved only on the server\'s disk, which Render wipes on every '
                 'deploy. In Render > Environment, set SUPABASE_URL and SUPABASE_SERVICE_KEY so a second '

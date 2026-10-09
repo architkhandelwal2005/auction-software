@@ -98,5 +98,25 @@ check('and its URL answers 404', fetch(url)[0] == 404)
 
 check('paths cannot leave the media folder', fetch('/media/../app.py')[0] == 404)
 
+# Each server process tests an upload itself, so the dashboard reports the
+# real reason whichever process answers.
+DOWN['on'] = True
+A._SELFTEST.update(at=0, error='')
+A._STORAGE_LAST_ERROR.update(message='')
+st = admin.get('/api/storage/status').get_json()
+check('upload self-test reports Supabase refusing', '503' in st['problem'], st['problem'][:120])
+DOWN['on'] = False
+A._SELFTEST.update(at=0, error='')
+check('self-test clears once Supabase accepts', not admin.get('/api/storage/status').get_json()['problem'])
+
+# A setting pasted with a trailing line break (as SUPABASE_URL was on Render)
+# is trimmed before use.
+import subprocess
+code = ("import os,sys; sys.path.insert(0, r'D:\\auction software'); "
+        "os.environ.update(DATABASE_URL='', SUPABASE_URL='https://abc.supabase.co\\n', SUPABASE_SERVICE_KEY=' key \\n'); "
+        "import app; print(repr(app.SUPABASE_URL), repr(app.SUPABASE_SERVICE_KEY))")
+out = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, cwd=r'D:\auction software').stdout.strip()
+check('settings with stray line breaks are trimmed', out == "'https://abc.supabase.co' 'key'", out)
+
 print('\nALL CHECKS PASSED' if not check.failed else '\n%d CHECK(S) FAILED' % check.failed)
 sys.exit(1 if check.failed else 0)
