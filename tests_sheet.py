@@ -218,5 +218,32 @@ check('divide by Category: Platinum, Gold, Silver', r.status_code == 200 and
       [s['category'] for s in r.get_json()['suggestions']] == ['Platinum', 'Gold', 'Silver'],
       str([s['category'] for s in (r.get_json() or {}).get('suggestions', [])]))
 
+# ── A photo saved to the server disk and lost in a redeploy comes back from
+#    the sheet on re-sync; a photo still on disk is kept. ──
+ravi = pool['Ravi Patel']
+client.post('/api/players/edit', json={'id': ravi['id'], 'photo_url': '/uploads/players_gone_in_redeploy.jpg'})
+abhay = pool['Abhay Soni']
+kept_file = 'players_still_here_test.jpg'
+open(os.path.join(A.UPLOAD_FOLDER, kept_file), 'wb').write(b'x')
+client.post('/api/players/edit', json={'id': abhay['id'], 'photo_url': '/uploads/' + kept_file})
+st = client.get('/api/storage/status').get_json()
+check('dashboard counts the lost photo', st['missing_files'] == 1, str(st))
+d = client.post('/api/auction/source/resync', json={}).get_json()
+check('re-sync offers to restore the lost photo',
+      [c['name'] for c in d['changed']] == ['Ravi Patel'] and d['changed'][0]['changes'][0]['field'] == 'photo', str(d['changed']))
+client.post('/api/auction/source/apply', json={})
+pool = {p['name']: p for p in client.get('/api/players').get_json()}
+check('lost photo restored to the Drive link', 'drive.google.com' in pool['Ravi Patel']['photo_url'], pool['Ravi Patel']['photo_url'])
+check('photo still on disk is kept', pool['Abhay Soni']['photo_url'] == '/uploads/' + kept_file, pool['Abhay Soni']['photo_url'])
+os.remove(os.path.join(A.UPLOAD_FOLDER, kept_file))
+
+# On a host that wipes its disk, missing storage settings are reported.
+A.EPHEMERAL_DISK, saved = True, A.EPHEMERAL_DISK
+check('missing Supabase settings reported on Render', 'SUPABASE_SERVICE_KEY' in client.get('/api/storage/status').get_json()['problem'])
+A.EPHEMERAL_DISK = saved
+A._STORAGE_LAST_ERROR.update(message='HTTP 403 new row violates row-level security policy')
+check('a failed upload is reported with its reason', 'row-level security' in client.get('/api/storage/status').get_json()['problem'])
+A._STORAGE_LAST_ERROR.update(message='')
+
 print('\n%s' % ('ALL CHECKS PASSED' if check.failed == 0 else '%d CHECK(S) FAILED' % check.failed))
 sys.exit(1 if check.failed else 0)

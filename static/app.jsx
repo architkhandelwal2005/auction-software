@@ -1799,6 +1799,14 @@ function App() {
         else setView('wizard');
     };
 
+    // Where photos and logos are stored. On a host that wipes its disk at
+    // every deploy, a storage misconfiguration must be seen before the event.
+    const [storage, setStorage] = useState(null);
+    useEffect(() => {
+        if (view !== 'dashboard') return;
+        fetch('/api/storage/status').then(r => r.ok ? r.json() : null).then(setStorage).catch(() => {});
+    }, [view]);
+
     const refreshAuctionInfo = async () => {
         try {
             const d = await fetch('/api/auction/status').then(r => r.json());
@@ -2269,6 +2277,16 @@ function App() {
             {showWheel && <SpinWheel items={wheelMode==='player'?unsoldPlayers:teams} title={wheelMode==='player'?'🎯 Draw Player':'🎰 Pick Team'} onSelect={handleSpinSelect} onClose={()=>setShowWheel(false)} />}
             {showTeamRoster && <TeamRosterModal team={showTeamRoster} onClose={()=>setShowTeamRoster(null)} />}
             {showShareModal && <ShareModal teams={teams} onClose={()=>setShowShareModal(false)} />}
+
+            {storage && (storage.problem || storage.missing_files > 0) && (
+                <div className="bg-red-600/90 text-white px-6 py-3 text-sm font-bold flex items-start gap-3">
+                    <i className="fa-solid fa-triangle-exclamation mt-0.5"></i>
+                    <div className="space-y-1">
+                        {storage.problem && <p>{storage.problem}</p>}
+                        {storage.missing_files > 0 && <p>{storage.missing_files} photo(s) or logo(s) were lost from the server disk. Drive photos come back with More → Re-sync from Sheet (after the storage is fixed); logos must be uploaded again.</p>}
+                    </div>
+                </div>
+            )}
 
             {/* ── Header ── */}
             <div className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-30 shadow-lg">

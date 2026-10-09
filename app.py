@@ -236,6 +236,17 @@ SUPABASE_URL = (os.environ.get('SUPABASE_URL') or '').rstrip('/')
 SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY') or ''
 SUPABASE_BUCKET = os.environ.get('SUPABASE_BUCKET') or 'auction-media'
 USE_SUPABASE_STORAGE = bool(SUPABASE_URL and SUPABASE_SERVICE_KEY)
+# Render sets RENDER=true. There, uploads/ is wiped by every deploy and
+# restart, so a file saved to local disk is a file about to be lost.
+EPHEMERAL_DISK = bool(os.environ.get('RENDER'))
+if EPHEMERAL_DISK and not USE_SUPABASE_STORAGE:
+    print('[storage] WARNING: SUPABASE_URL / SUPABASE_SERVICE_KEY are not set. Photos and logos '
+          'are saved to the server disk and will be lost at the next deploy.', flush=True)
+
+# The last Supabase upload failure in this process, shown to the organiser
+# on the dashboard so a misconfigured key is found before the event, not by
+# photos vanishing after a redeploy.
+_STORAGE_LAST_ERROR = {'message': '', 'at': None}
 
 _MEDIA_CONTENT_TYPES = {
     'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
@@ -264,13 +275,43 @@ def storage_put(path, data, ext):
         try:
             with _ureq.urlopen(req, timeout=20):
                 pass
+            _STORAGE_LAST_ERROR.update(message='', at=None)
             # Cache-bust: a stable path plus CDN caching would otherwise keep
             # serving the old image after a re-upload.
             return '%s/storage/v1/object/public/%s/%s?v=%s' % (
                 SUPABASE_URL, SUPABASE_BUCKET, path, uuid.uuid4().hex[:8])
+        except _uerr.HTTPError as exc:
+            # Supabase explains itself in the body ("Bucket not found",
+            # "Invalid Compact JWS", a row-level security refusal...).
+            try:
+                detail = exc.read().decode('utf-8', 'replace')[:200]
+            except Exception:
+                detail = ''
+            last_exc = RuntimeError('HTTP %s %s' % (exc.code, detail or exc.reason))
         except Exception as exc:
             last_exc = exc
     raise last_exc
+
+
+def local_media_missing(url):
+    """True for a file saved to local disk that is no longer there — on a
+    host like Render, every one saved before the last deploy."""
+    if not url or not url.startswith('/uploads/'):
+        return False
+    return not os.path.exists(os.path.join(UPLOAD_FOLDER, os.path.basename(url)))
+
+
+def storage_problem(conn=None):
+    """What the organiser must fix so photos and logos are kept, or ''."""
+    if EPHEMERAL_DISK and not USE_SUPABASE_STORAGE:
+        return ('Photos and logos are saved on the server\'s temporary disk, which Render wipes on every '
+                'deploy. In Render > Environment, set SUPABASE_URL and SUPABASE_SERVICE_KEY, then redeploy.')
+    if _STORAGE_LAST_ERROR['message']:
+        return ('Saving to Supabase Storage failed (%s), so files went to the temporary disk and will be '
+                'lost at the next deploy. In Render > Environment, check SUPABASE_SERVICE_KEY is the '
+                'service_role key and SUPABASE_BUCKET is "%s", then redeploy.'
+                % (_STORAGE_LAST_ERROR['message'], SUPABASE_BUCKET))
+    return ''
 
 
 def storage_object_path(url):
@@ -319,6 +360,7 @@ def save_media(auction_id, kind, key, data, ext):
             return storage_put('%s/%s/%s.%s' % (auction_id, kind, key, ext), data, ext)
         except Exception as exc:
             print('[storage] upload failed, falling back to local disk: %s' % exc, flush=True)
+            _STORAGE_LAST_ERROR.update(message=str(exc)[:240], at=str(datetime.datetime.now()))
     fname = '%s_a%s_%s_%s.%s' % (kind, auction_id, key, uuid.uuid4().hex[:8], ext)
     with open(os.path.join(UPLOAD_FOLDER, fname), 'wb') as fh:
         fh.write(data)
@@ -867,7 +909,7 @@ ROUTE_POLICY = {
 
     # Read-only for anyone signed in.
     'get_players': 'viewer', 'get_stats': 'viewer', 'get_auction_state': 'viewer',
-    'auction_status': 'viewer', 'list_presets': 'viewer',
+    'auction_status': 'viewer', 'list_presets': 'viewer', 'storage_status': 'admin',
     'report_view': 'viewer', 'final_report': 'viewer', 'export_csv': 'viewer',
     'fetch_drive_photos_status': 'viewer',
 
@@ -1302,6 +1344,21 @@ def reopen_auction():
 @app.route('/api/auction/status', methods=['GET'])
 def auction_status():
     return jsonify(_auction_summary(g.auction))
+
+
+@app.route('/api/storage/status', methods=['GET'])
+def storage_status():
+    """Whether photos and logos are stored where they survive a deploy, and
+    how many of this auction's are already lost."""
+    conn = get_db()
+    urls = [r['photo_url'] for r in conn.execute('SELECT photo_url FROM players').fetchall()]
+    urls += [r['logo_url'] for r in conn.execute('SELECT logo_url FROM teams').fetchall()]
+    urls += [r['value'] for r in conn.execute(
+        "SELECT value FROM config WHERE key IN ('org_logo', 'sponsor_logo', 'event_banner')").fetchall()]
+    conn.close()
+    return jsonify({'mode': 'supabase' if USE_SUPABASE_STORAGE else 'local',
+                    'problem': storage_problem(),
+                    'missing_files': sum(1 for u in urls if local_media_missing(u))})
 
 
 def purge_expired():
@@ -2544,6 +2601,8 @@ def resync_sheet():
             diffs.append({'field': 'base price', 'old': old.get('base_price'), 'new': new['base_price']})
         if (new['photo_url'] or '') and not (old.get('photo_url') or ''):
             diffs.append({'field': 'photo', 'old': '', 'new': 'added'})
+        elif (new['photo_url'] or '') and local_media_missing(old.get('photo_url')):
+            diffs.append({'field': 'photo', 'old': 'lost in a redeploy', 'new': 'restored from sheet'})
         if not diffs:
             continue
         entry = {'name': old['name'], 'changes': diffs}
@@ -2601,9 +2660,12 @@ def apply_sheet_changes():
         old, new = current[key], incoming[key]
         if old.get('status') == 'sold':
             continue
+        # A stored photo is kept (it may have been uploaded by hand); the
+        # sheet's link fills in only a missing one, or one lost from disk.
+        kept = old.get('photo_url') or ''
+        photo = kept if kept and not local_media_missing(kept) else (new['photo_url'] or kept)
         c.execute('UPDATE players SET category=?, base_price=?, photo_url=?, attributes=? WHERE id=?',
-                  (new['category'], new['base_price'],
-                   new['photo_url'] or old.get('photo_url') or '',
+                  (new['category'], new['base_price'], photo,
                    json.dumps(new.get('attributes') or {}), old['id']))
         updated += 1
 
