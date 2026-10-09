@@ -50,7 +50,14 @@ class _PGCur:
 
     def execute(self, sql, params=()):
         converted = _pg_sql(sql)
-        self._c.execute(converted, params or ())
+        # Without parameters, psycopg2 must get none at all: given even an
+        # empty tuple it treats every % in the SQL as a placeholder, so a
+        # LIKE '%drive.google.com%' fails ("%d") and the Drive photo download
+        # died before fetching a single photo.
+        if params:
+            self._c.execute(converted, params)
+        else:
+            self._c.execute(converted)
         return self
 
     def fetchone(self):  return self._c.fetchone()

@@ -1170,8 +1170,8 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                         </p>
                     </div>
 
-                    {driveStatus && (driveStatus.running || driveStatus.failed > 0 || driveStatus.done > 0 || driveStatus.linked > 0) && (
-                        <div className={`rounded-2xl p-4 border flex items-center gap-3 ${driveStatus.failed > 0 && !driveStatus.running ? 'bg-amber-500/10 border-amber-500/30' : 'bg-blue-500/10 border-blue-500/30'}`}>
+                    {driveStatus && (driveStatus.running || driveStatus.error || driveStatus.failed > 0 || driveStatus.done > 0 || driveStatus.linked > 0) && (
+                        <div className={`rounded-2xl p-4 border flex items-center gap-3 ${(driveStatus.failed > 0 || driveStatus.error) && !driveStatus.running ? 'bg-amber-500/10 border-amber-500/30' : 'bg-blue-500/10 border-blue-500/30'}`}>
                             <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 bg-black/20">
                                 {driveStatus.running ? <i className="fa-solid fa-spinner animate-spin text-blue-300"></i> : (driveStatus.failed > 0 ? '⚠️' : '🖼️')}
                             </div>
@@ -1179,6 +1179,7 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                                 <div className="font-bold text-sm text-white">
                                     {driveStatus.running
                                         ? 'Downloading photos from Google Drive...'
+                                        : driveStatus.error ? `Photo download stopped: ${driveStatus.error}`
                                         : (driveStatus.failed > 0
                                             ? `${driveStatus.failed} Drive photos could not be loaded`
                                             : `${driveStatus.done} photos saved${driveStatus.linked ? `, ${driveStatus.linked} linked from Drive` : ''}`)}
@@ -1191,7 +1192,7 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                                             : 'Photos are copied into the app, so the auction does not depend on Drive during the event.')}
                                 </div>
                             </div>
-                            {!driveStatus.running && driveStatus.failed > 0 && (
+                            {!driveStatus.running && (driveStatus.failed > 0 || driveStatus.error) && (
                                 <button onClick={retryDrivePhotos} className="text-xs font-bold px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 transition shrink-0">
                                     Retry
                                 </button>
