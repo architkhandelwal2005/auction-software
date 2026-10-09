@@ -398,6 +398,10 @@ def download_drive_photo(url, auction_id, player_id):
         try:
             req = _ureq.Request(source, headers={'User-Agent': 'Mozilla/5.0'})
             with _ureq.urlopen(req, timeout=25) as resp:
+                # A Google sign-in page means the file is not shared publicly;
+                # the other endpoints would ask for the same sign-in.
+                if 'accounts.google.com' in (resp.geturl() or ''):
+                    return None
                 ctype = (resp.headers.get('Content-Type') or '').split(';')[0].strip().lower()
                 if ctype not in _DRIVE_IMG_EXT:
                     continue
@@ -492,7 +496,7 @@ def _asset_version():
     base = os.path.dirname(os.path.abspath(__file__))
     latest = 0.0
     for rel in ('static/app.jsx', 'static/team_app.jsx', 'static/auction_display.js', 'static/auction_display.css',
-                'static/bidding.js'):
+                'static/bidding.js', 'static/player_details.js'):
         try:
             latest = max(latest, os.path.getmtime(os.path.join(base, rel)))
         except OSError:
@@ -2022,25 +2026,63 @@ def read_raw_auction_file(file_storage_or_path):
     if not raw_rows:
         return [], [], []
 
-    # First row as headers
-    headers = [str(h).strip() if h is not None and str(h).strip() != '' else f'Column {i+1}' for i, h in enumerate(raw_rows[0])]
+    # First row as headers. A blank header becomes "Column N" and a repeated
+    # one gets " (2)", so no column can overwrite another: a sheet whose own
+    # header read "Column 44" once lost its photo links to an empty, unnamed
+    # 44th column given the same name. Columns with no data at all are
+    # dropped; they are leftovers of the form, not player details.
+    headers, taken = [], set()
+    for i, h in enumerate(raw_rows[0]):
+        name = str(h).strip() if h is not None and str(h).strip() != '' else 'Column %d' % (i + 1)
+        base, n = name, 2
+        while name.lower() in taken:
+            name = '%s (%d)' % (base, n)
+            n += 1
+        taken.add(name.lower())
+        headers.append(name)
     data_rows = raw_rows[1:]
+    keep = [i for i in range(len(headers))
+            if any(i < len(r) and r[i] is not None and str(r[i]).strip() != '' for r in data_rows)]
+    headers = [headers[i] for i in keep]
 
     dict_rows = []
     for r in data_rows:
-        row_dict = {}
-        for i, h in enumerate(headers):
-            val = r[i] if i < len(r) else ''
-            row_dict[h] = val
-        dict_rows.append(row_dict)
+        dict_rows.append({headers[j]: (r[i] if i < len(r) else '') for j, i in enumerate(keep)})
 
     return headers, dict_rows, data_rows
+
+
+_PHOTO_LINK_RE = re.compile(
+    r'(drive\.google\.com/(open\?id=|file/d/|uc\?)|googleusercontent\.com|'
+    r'^https?://\S+\.(jpe?g|png|webp|gif)(\?\S*)?$)', re.I)
+
+
+def pick_photo_column(headers, dict_rows, col_details):
+    """The column holding player photos. Chosen by its values first: the
+    column where most answers are Drive or image links, whatever its header
+    says (a form's upload question can export under any heading). Failing
+    that, the first header that names a photo."""
+    best, best_hits = None, 0
+    for h in headers:
+        vals = [str(r.get(h) or '').strip() for r in dict_rows]
+        vals = [v for v in vals if v]
+        hits = sum(1 for v in vals if _PHOTO_LINK_RE.search(v))
+        if vals and hits * 2 >= len(vals) and hits > best_hits:
+            best, best_hits = h, hits
+    if best:
+        return best
+    return next((h for h in headers if col_details[h].get('is_photo_candidate')
+                 and any(str(r.get(h) or '').strip() for r in dict_rows)), None)
 
 
 def pick_name_column(headers, col_details):
     """The column holding player names. A header that says "name" wins, so a
     "Player ID" column ahead of "Name" is never read as the name; an ID or
-    number column is never chosen."""
+    number column is never chosen, nor a company or team name."""
+    not_a_person = re.compile(r'company|organi[sz]ation|team|club|father|mother|parent|guardian|reference', re.I)
+    for h in headers:
+        if 'name' in h.lower() and not not_a_person.search(h):
+            return h
     for h in headers:
         if 'name' in h.lower():
             return h
@@ -2079,7 +2121,7 @@ def inspect_file_data(headers, dict_rows):
             'is_gender_candidate': any(k in h_lower for k in ['gender', 'sex']),
             'is_role_candidate': any(k in h_lower for k in ['role', 'cat', 'position', 'type', 'class', 'dept', 'genre', 'tier']),
             'is_price_candidate': any(k in h_lower for k in ['price', 'base', 'cost', 'reserve', 'starting', 'bid', 'value']),
-            'is_photo_candidate': any(k in h_lower for k in ['photo', 'image', 'picture', 'avatar', 'img', 'url', 'link'])
+            'is_photo_candidate': any(k in h_lower for k in ['photo', 'image', 'picture', 'pic', 'avatar', 'img', 'selfie', 'headshot', 'url', 'link'])
         }
 
         if is_numeric and numeric_vals:
@@ -2217,7 +2259,7 @@ def parse_auction_file(file_storage, default_base_price=10.0):
     name_col = pick_name_column(headers, col_details)
     cat_col = next((h for h in headers if col_details[h]['is_role_candidate'] and h != name_col), None)
     bp_col = next((h for h in headers if col_details[h]['is_price_candidate']), None)
-    photo_col = next((h for h in headers if col_details[h]['is_photo_candidate']), None)
+    photo_col = pick_photo_column(headers, dict_rows, col_details)
 
     items = []
     for r in dict_rows:
@@ -3774,7 +3816,9 @@ def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val
         # "Intermediate, Beginner, Advanced".
         RANK = {w: i for i, w in enumerate([
             'novice', 'beginner', 'basic', 'amateur', 'rookie', 'intermediate',
-            'medium', 'average', 'advanced', 'expert', 'pro', 'professional', 'elite', 'master'])}
+            'medium', 'average', 'advanced', 'expert', 'pro', 'professional', 'elite', 'master',
+            # Auction tiers, top tier first: the order players go under the hammer.
+            'marquee', 'icon', 'diamond', 'platinum', 'gold', 'silver', 'bronze', 'retained'])}
         def order_key(label):
             parts = label.split(u' · ')
             key = []
@@ -3895,7 +3939,7 @@ def _run_pool_analysis(headers, dict_rows, num_teams, num_splits, base_price_val
         conn.commit()
         conn.close()
 
-    photo_cols = {h for h in headers if col_details[h].get('is_photo_candidate')}
+    photo_cols = {h for h in headers if col_details[h].get('is_photo_candidate')} | {pick_photo_column(headers, dict_rows, col_details)}
     visible_cols = [h for h in headers if h not in photo_cols]
     preview = [{k: v for k, v in row.items() if k not in photo_cols} for row in dict_rows[:6]]
 

@@ -9,6 +9,7 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="/static/bidding.js?v={{ asset_v }}"></script>
+    <script src="/static/player_details.js?v={{ asset_v }}"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -53,28 +54,12 @@
         const catColor = (c) => { if(!c) return '#71717a'; let h=0; for(let i=0;i<c.length;i++) h=c.charCodeAt(i)+((h<<5)-h); return PALETTE[Math.abs(h)%PALETTE.length]; };
         const initials = (n) => String(n||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase() || '?';
 
-        const HIDE_ATTRS = /^(name|player\s*name|full\s*name|photo|photo\s*url|photo\s*preview|image|base\s*price|price|category|role|id|player\s*id|mobile|mobile\s*(no|number)|phone|contact|email|whatsapp|address|team[\s_]*id|sold[\s_]*price|status|sold[\s_]*at)$/i;
-
-        // displayFields is null when the organiser never visited the wizard's
-        // "Player Roster Display" step (older/untouched auctions) — fall back to
-        // auto-picking the first few non-standard columns, same as before this
-        // was selectable. An explicit empty selection ([]) means "show none",
-        // and is respected as-is.
+        // The details under each name: the columns chosen in setup, or the most
+        // useful ones when none were chosen (static/player_details.js).
         function PlayerCard({ p, theme, idx, displayFields }) {
             const [imgErr, setImgErr] = useState(false);
             const cc = catColor(p.category);
-            const attrs = (p.attributes && typeof p.attributes === 'object') ? p.attributes : {};
-            let chips;
-            if (displayFields) {
-                const wanted = displayFields.map(f => f.toLowerCase());
-                chips = Object.entries(attrs)
-                    .filter(([k, v]) => v != null && String(v).trim() !== '' && wanted.includes(k.trim().toLowerCase()))
-                    .sort(([a], [b]) => wanted.indexOf(a.trim().toLowerCase()) - wanted.indexOf(b.trim().toLowerCase()));
-            } else {
-                chips = Object.entries(attrs)
-                    .filter(([k, v]) => v != null && String(v).trim() !== '' && !HIDE_ATTRS.test(k.trim()))
-                    .slice(0, 3);
-            }
+            const chips = playerDetails(p.attributes, displayFields, 4, p.category);
             return (
                 <div className="print-card card-in bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden hover:border-white/25 transition"
                      style={{ animationDelay: `${Math.min(idx * 25, 600)}ms` }}>
@@ -94,9 +79,9 @@
                                   style={{ background: `${cc}22`, color: cc }}>{p.category || 'General'}</span>
                             {chips.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-1.5">
-                                    {chips.map(([k, v], i) => (
-                                        <span key={i} className="text-[10px] font-semibold text-zinc-400 print-muted bg-white/5 px-1.5 py-0.5 rounded">
-                                            {String(v).slice(0, 18)}
+                                    {chips.map(c => (
+                                        <span key={c.key} className="text-[10px] font-semibold text-zinc-400 print-muted bg-white/5 px-1.5 py-0.5 rounded">
+                                            {c.label.length <= 6 && <span className="text-zinc-500 uppercase mr-1">{c.label}</span>}{c.value}
                                         </span>
                                     ))}
                                 </div>

@@ -219,29 +219,16 @@ const CatBadge = ({ category }) => {
 
 const PlayerAttributesBadges = ({ attributes, displayFields = [], max = 5, className = "" }) => {
     if (!attributes || typeof attributes !== 'object') return null;
-    const HIDDEN = ['name','photo','id','category','base_price','photo_url','team_id','sold_price','status','sold_at'];
-    let entries = Object.entries(attributes).filter(([k, v]) => {
-        if (v === null || v === undefined || String(v).trim() === '') return false;
-        if (HIDDEN.includes(k.toLowerCase())) return false;
-        return true;
-    });
-    if (displayFields.length > 0) {
-        const allowed = displayFields.map(f => f.toLowerCase());
-        entries = entries.filter(([k]) => allowed.includes(k.toLowerCase()));
-        entries.sort(([a], [b]) => {
-            const ai = displayFields.findIndex(f => f.toLowerCase() === a.toLowerCase());
-            const bi = displayFields.findIndex(f => f.toLowerCase() === b.toLowerCase());
-            return ai - bi;
-        });
-    }
+    // Chosen columns, or the most useful ones (static/player_details.js).
+    const entries = playerDetails(attributes, displayFields, max);
     if (entries.length === 0) return null;
 
     return (
         <div className={`flex flex-wrap items-center gap-1.5 ${className}`}>
-            {entries.slice(0, max).map(([key, val]) => (
-                <span key={key} className="text-[0.65rem] bg-slate-950/80 text-slate-300 border border-slate-800 px-2 py-0.5 rounded-lg font-semibold flex items-center gap-1 shadow-sm">
-                    <span className="text-slate-500 font-bold uppercase text-[0.55rem]">{key}:</span>
-                    <span className="text-white font-bold">{String(val)}</span>
+            {entries.map(e => (
+                <span key={e.key} className="text-[0.65rem] bg-slate-950/80 text-slate-300 border border-slate-800 px-2 py-0.5 rounded-lg font-semibold flex items-center gap-1 shadow-sm">
+                    <span className="text-slate-500 font-bold uppercase text-[0.55rem]">{e.label}:</span>
+                    <span className="text-white font-bold">{e.value}</span>
                 </span>
             ))}
         </div>
@@ -534,6 +521,34 @@ const ShareModal = ({ teams, onClose }) => {
             </div>
         </div>
     );
+};
+
+// ═══════════════════════════════════════════════
+// DIVIDE-BY OPTIONS — sheet columns players can be split by
+// ═══════════════════════════════════════════════
+// The sheet's own Category or Role column is offered too (e.g. Platinum /
+// Gold / Silver). Left out: names, photos, prices, contact details, serial
+// numbers, columns with a single answer for everyone, long free text, and
+// columns where nearly everyone differs (company names) — too many groups.
+const SPLIT_SKIP_COL = /^(name|player[\s_]*name|full[\s_]*name|photo|photo[\s_]*url|photo[\s_]*preview|image|base[\s_]*price|price|id|player[\s_]*id|mobile|mobile[\s_]*(no|number)\.?|phone|contact|contact[\s_]*(no|number)\.?|email|whatsapp|address|team[\s_]*id|team[\s_]*role|sold[\s_]*price|status|sold[\s_]*at|timestamp|column[\s_]*\d+|s\.?[\s_]*no\.?|sr\.?[\s_]*no\.?)$/i;
+const splitColumnCandidates = players => {
+    const cols = {};
+    players.forEach(p => Object.entries(p.attributes || {}).forEach(([k, v]) => {
+        if (SPLIT_SKIP_COL.test(k.trim())) return;
+        if (v === null || v === undefined || String(v).trim() === '') return;
+        if (!cols[k]) cols[k] = { name: k, values: new Set(), allNumeric: true, longest: 0 };
+        const val = String(v).trim();
+        cols[k].values.add(val);
+        cols[k].longest = Math.max(cols[k].longest, val.length);
+        if (isNaN(parseFloat(v))) cols[k].allNumeric = false;
+    }));
+    return Object.values(cols).map(c => {
+        const distinct = c.values.size;
+        const numeric = (c.allNumeric && distinct > 6) || /age|yr|year|dob|birth/i.test(c.name);
+        return { name: c.name, distinct, numeric, longest: c.longest, sample: [...c.values].slice(0, 4) };
+    }).filter(c => c.distinct > 1 && (c.numeric || (c.longest <= 40 && c.distinct <= 12)))
+      // The sheet's own category column first: it is the usual way to divide.
+      .sort((a, b) => (/categor|tier|grade|class/i.test(b.name) - /categor|tier|grade|class/i.test(a.name)) || a.name.localeCompare(b.name));
 };
 
 // ═══════════════════════════════════════════════
@@ -875,28 +890,7 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
 
     // Build the list of columns the organiser can divide players by, from the
     // already-imported preview. Detect numeric (age-like) vs categorical columns.
-    const splitCandidates = (() => {
-        if (!importedPreview.length) return [];
-        const cols = {};
-        importedPreview.forEach(p => {
-            const attrs = p.attributes || {};
-            Object.entries(attrs).forEach(([k, v]) => {
-                if (STANDARD_COL_RE.test(k.trim())) return;
-                if (v === null || v === undefined || String(v).trim() === '') return;
-                if (!cols[k]) cols[k] = { name: k, values: new Set(), allNumeric: true, filled: 0 };
-                cols[k].filled++;
-                cols[k].values.add(String(v).trim());
-                if (isNaN(parseFloat(v))) cols[k].allNumeric = false;
-            });
-        });
-        return Object.values(cols).map(c => {
-            const distinct = c.values.size;
-            const kl = c.name.toLowerCase();
-            const looksAge = /age|yr|year|dob|birth/.test(kl);
-            const numeric = (c.allNumeric && distinct > 6) || looksAge;
-            return { name: c.name, distinct, numeric, sample: [...c.values].slice(0, 4) };
-        }).sort((a, b) => a.name.localeCompare(b.name));
-    })();
+    const splitCandidates = splitColumnCandidates(importedPreview);
 
     const toggleSplitColumn = (col) => {
         setAnalysisResult(null);
@@ -1259,7 +1253,7 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
 
                     <div>
                         <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider block mb-1">Divide Players By</label>
-                        <p className="text-[0.68rem] text-zinc-500 mb-3">Pick one or more. Choosing two (e.g. Gender + Age) makes combined groups like “Male · 18–26”. Leave all unticked to auto-split by age &amp; gender.</p>
+                        <p className="text-[0.68rem] text-zinc-500 mb-3">Pick one or more. Pick your sheet's Category column to keep its groups (e.g. Platinum / Gold / Silver). Choosing two (e.g. Gender + Age) makes combined groups like “Male · 18–26”. Leave all unticked to auto-split by age &amp; gender.</p>
                         {splitCandidates.length === 0 ? (
                             <div className="bg-zinc-950 border border-dashed border-zinc-800 rounded-xl p-4 text-center text-zinc-500 text-xs font-bold">
                                 Upload a player file in Step 1 to see the columns you can divide by.
@@ -1531,7 +1525,7 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                         </div>
                     </div>
 
-                    {displayFields.length === 0 && <p className="text-xs text-zinc-600 text-center py-2">Nothing selected — only name and category will show on the card.</p>}
+                    {displayFields.length === 0 && <p className="text-xs text-zinc-600 text-center py-2">Nothing selected — the most useful details (role, age, batting, bowling…) are picked automatically.</p>}
                     {displayFields.length > 0 && <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
                         <p className="text-[0.65rem] text-zinc-500 uppercase font-bold tracking-wider mb-2">Will show on card:</p>
                         <div className="flex flex-wrap gap-1.5">
@@ -1851,6 +1845,30 @@ function App() {
         } else alert(ap.error || 'Could not apply the changes.');
     };
 
+    // Download Drive photos again — after the organiser shares the form's
+    // photo folder, or when the venue network dropped during the first pass.
+    const fetchDrivePhotos = async () => {
+        // Progress is read from the count of Drive links still waiting, which
+        // every server worker sees alike (the download itself runs on one).
+        const pending = () => fetch('/api/players/fetch_photos').then(r => r.json()).then(d => d.pending).catch(() => null);
+        const before = await pending();
+        if (before === null) { alert('Could not reach the server.'); return; }
+        if (!before) { alert('No Google Drive photo links are waiting to download.'); return; }
+        await fetch('/api/players/fetch_photos', { method: 'POST' }).catch(() => {});
+        let left = before, still = 0;
+        for (let i = 0; i < 150 && left > 0 && still < 15; i++) {     // stop after 30s without progress
+            await new Promise(r => setTimeout(r, 2000));
+            const now = await pending();
+            if (now === null) continue;
+            still = now < left ? 0 : still + 1;
+            left = now;
+        }
+        await loadData();
+        alert(left > 0
+            ? `${before - left} photos saved, ${left} could not be downloaded.\n\nGoogle asks for a sign-in on those files. In Google Drive, open the folder holding the form's photo uploads, choose Share, set General access to "Anyone with the link — Viewer", then run this again.`
+            : `${before} photos saved.`);
+    };
+
     const endAuction = async () => {
         const ok = confirm(['End this auction?', '',
             'The report unlocks straight after, and nothing can be sold or edited until you reopen it.', '',
@@ -1993,18 +2011,7 @@ function App() {
     };
     // Columns the current pool can be divided by (from each player's stored
     // sheet attributes), mirroring the setup wizard's split picker.
-    const POOL_SKIP_COL = /^(name|player[\s_]*name|full[\s_]*name|photo|photo[\s_]*url|image|base[\s_]*price|price|category|role|id|player[\s_]*id|mobile|phone|contact|email|whatsapp|address|team[\s_]*id|sold[\s_]*price|status|sold[\s_]*at)$/i;
-    const poolSplitCandidates = (() => {
-        const cols = {};
-        players.forEach(p => Object.entries(p.attributes||{}).forEach(([k,v])=>{
-            if (POOL_SKIP_COL.test(k.trim())) return;
-            if (v==null || String(v).trim()==='') return;
-            if (!cols[k]) cols[k]={name:k,vals:new Set(),allNum:true};
-            cols[k].vals.add(String(v).trim());
-            if (isNaN(parseFloat(v))) cols[k].allNum=false;
-        }));
-        return Object.values(cols).map(c=>{const numeric=(c.allNum&&c.vals.size>6)||/age|yr|year/i.test(c.name);return {name:c.name,distinct:c.vals.size,numeric};}).sort((a,b)=>a.name.localeCompare(b.name));
-    })();
+    const poolSplitCandidates = splitColumnCandidates(players);
     const runReanalyze = async () => {
         setReAnalyze(s=>({...s,loading:true}));
         const r = await fetch('/api/players/analyze',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -2313,6 +2320,7 @@ function App() {
                             {icon:'fa-tags', label:'Bargain Bin Round', onClick:startBargainBin},
                             {icon:'fa-share-nodes', label:'Share Links', onClick:()=>setShowShareModal(true)},
                             {icon:'fa-rotate', label:'Re-sync from Sheet', onClick:resyncSheet},
+                            {icon:'fa-images', label:'Fetch Photos from Drive', onClick:fetchDrivePhotos},
                             {divider:true},
                             ...(auctionInfo?.status === 'ended' || auctionInfo?.status === 'purged'
                                 ? [{icon:'fa-rotate-left', label:'Reopen Auction', onClick:reopenAuction}]

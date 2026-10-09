@@ -190,5 +190,33 @@ CURRENT['data'] = b'Name,Category\nNew One,Platinum\n'
 d = client.post('/api/auction/source/resync', json={}).get_json()
 check('after a fresh import the sheet category counts again', len(d['changed']) == 1, str(d))
 
+# ── A sheet laid out like DCL's: the photo column's own header reads
+#    "Column 44", and many untitled empty columns follow, the 44th of which
+#    would also be named "Column 44". ──
+header = ['', 'Full Name', 'Category', 'Baseprice', 'Company / Organization Name', 'Age', 'Column 44'] + [''] * 40
+rows = [header,
+        ['1', 'Aayush Kahar', 'Silver', '2', 'Galderma', '34', 'https://drive.google.com/open?id=1FfypLvv6YLAMp9zy_4hhWFbpbM8y1EzJ'] + [''] * 40,
+        ['2', 'Abhay Soni', 'Gold', '3', 'Medicrux', '38', 'https://drive.google.com/open?id=1KLkgfS3J5jamN3y8CON9HqYqAXbjGRSC'] + [''] * 40,
+        ['3', 'Ravi Patel', 'Platinum', '5', 'Galderma', '29', 'https://drive.google.com/open?id=1xsdwHlyAQplk4207gtgz96cUzGaDIA7S'] + [''] * 40]
+import csv as _csv
+buf = io.StringIO(); _csv.writer(buf).writerows(rows)
+CURRENT['data'] = buf.getvalue().encode()
+r = client.post('/api/auction/source/import', json={'sheet_url': SHEET_URL})
+pool = {p['name']: p for p in client.get('/api/players').get_json()}
+check('DCL-style sheet imports', r.status_code == 200 and len(pool) == 3, r.get_data(as_text=True)[:120])
+check('photo links found under a "Column 44" header',
+      all('drive.google.com' in (p.get('photo_url') or '') for p in pool.values()),
+      str([p.get('photo_url') for p in pool.values()]))
+check('person name, not company name', 'Aayush Kahar' in pool)
+check('empty untitled columns dropped (only the filled serial column stays)',
+      sorted(pool['Aayush Kahar']['attributes']) == ['Age', 'Baseprice', 'Category', 'Column 1', 'Company / Organization Name'],
+      str(list(pool['Aayush Kahar']['attributes'])))
+check("the sheet's Category column sets the category", pool['Ravi Patel']['category'] == 'Platinum')
+# Dividing by the sheet's Category column keeps its tiers, top tier first.
+r = client.post('/api/players/analyze', json={'num_teams': 1, 'num_splits': 2, 'split_by': ['Category']})
+check('divide by Category: Platinum, Gold, Silver', r.status_code == 200 and
+      [s['category'] for s in r.get_json()['suggestions']] == ['Platinum', 'Gold', 'Silver'],
+      str([s['category'] for s in (r.get_json() or {}).get('suggestions', [])]))
+
 print('\n%s' % ('ALL CHECKS PASSED' if check.failed == 0 else '%d CHECK(S) FAILED' % check.failed))
 sys.exit(1 if check.failed else 0)
