@@ -226,6 +226,7 @@ abhay = pool['Abhay Soni']
 kept_file = 'players_still_here_test.jpg'
 open(os.path.join(A.UPLOAD_FOLDER, kept_file), 'wb').write(b'x')
 client.post('/api/players/edit', json={'id': abhay['id'], 'photo_url': '/uploads/' + kept_file})
+A.sync_media(aid2)
 st = client.get('/api/storage/status').get_json()
 check('dashboard counts the lost photo', st['missing_files'] == 1, str(st))
 d = client.post('/api/auction/source/resync', json={}).get_json()

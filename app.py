@@ -293,37 +293,191 @@ def storage_put(path, data, ext):
     raise last_exc
 
 
-def local_media_missing(url):
-    """True for a file saved to local disk that is no longer there — on a
-    host like Render, every one saved before the last deploy."""
-    if not url or not url.startswith('/uploads/'):
+# ─── Two copies of every file ───────────────────────────────────────────────
+# Each photo and logo is written to this server's disk AND to Supabase
+# Storage, and stored in the database as one URL, /media/<path>, that serves
+# whichever copy exists:
+#   - the server's own copy when it has one: fastest, and the event keeps
+#     running if Supabase is slow or down;
+#   - otherwise Supabase's copy, fetched once and kept on the server again.
+# Render wipes the disk at every deploy, so Supabase is the copy that lasts;
+# the disk copy covers Supabase failing during an event. A file Supabase did
+# not accept stays on the disk and is uploaded again by sync_media().
+
+MEDIA_DIR = os.path.join(UPLOAD_FOLDER, 'media')
+_BACKED_DIR = os.path.join(UPLOAD_FOLDER, 'media-backed')   # empty marker per file in Supabase
+
+
+def _media_local(path):
+    from werkzeug.utils import safe_join
+    return safe_join(MEDIA_DIR, path)
+
+
+def _media_write(path, data):
+    local = _media_local(path)
+    os.makedirs(os.path.dirname(local), exist_ok=True)
+    with open(local, 'wb') as fh:
+        fh.write(data)
+
+
+def _media_mark_backed(path):
+    from werkzeug.utils import safe_join
+    marker = safe_join(_BACKED_DIR, path)
+    os.makedirs(os.path.dirname(marker), exist_ok=True)
+    open(marker, 'wb').close()
+
+
+def _media_is_backed(path):
+    from werkzeug.utils import safe_join
+    marker = safe_join(_BACKED_DIR, path)
+    return bool(marker) and os.path.exists(marker)
+
+
+def media_backup(path, data, ext):
+    """Copy a file to Supabase. False when not configured or refused; the
+    reason is kept for the dashboard."""
+    if not USE_SUPABASE_STORAGE:
         return False
-    return not os.path.exists(os.path.join(UPLOAD_FOLDER, os.path.basename(url)))
+    try:
+        storage_put(path, data, ext)
+        _media_mark_backed(path)
+        return True
+    except Exception as exc:
+        print('[storage] Supabase copy failed, kept on this server only: %s' % exc, flush=True)
+        _STORAGE_LAST_ERROR.update(message=str(exc)[:240], at=str(datetime.datetime.now()))
+        return False
+
+
+def storage_get(path):
+    """Supabase's copy of a file, or None."""
+    if not USE_SUPABASE_STORAGE:
+        return None
+    url = '%s/storage/v1/object/public/%s/%s' % (SUPABASE_URL, SUPABASE_BUCKET, path)
+    try:
+        with _ureq.urlopen(_ureq.Request(url, headers={'User-Agent': 'auction'}), timeout=15) as resp:
+            return resp.read()
+    except Exception:
+        return None
+
+
+def media_restore(path):
+    """Bring a file back onto this server's disk from Supabase. True when the
+    server has it afterwards."""
+    local = _media_local(path)
+    if local and os.path.isfile(local):
+        return True
+    data = storage_get(path)
+    if not data:
+        return False
+    _media_write(path, data)
+    _media_mark_backed(path)
+    return True
+
+
+def media_path(url):
+    """The storage path inside a /media URL, or None for any other URL."""
+    if not url or not url.startswith('/media/'):
+        return None
+    return url[len('/media/'):].split('?', 1)[0] or None
+
+
+def media_lost(urls):
+    """The URLs whose file is gone from both copies: an old /uploads file the
+    disk lost, or a /media file Supabase does not have either. A file only
+    this server lost is brought back from Supabase on the way, several at a
+    time, so a pool of a hundred photos after a deploy takes seconds."""
+    from concurrent.futures import ThreadPoolExecutor
+    urls = [u for u in dict.fromkeys(urls) if u]
+    lost = {u for u in urls if u.startswith('/uploads/')
+            and not os.path.exists(os.path.join(UPLOAD_FOLDER, os.path.basename(u)))}
+    media = [u for u in urls if media_path(u)]
+    if media:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for url, ok in zip(media, pool.map(lambda u: media_restore(media_path(u)), media)):
+                if not ok:
+                    lost.add(url)
+    return lost
+
+
+# Per auction: whether a sync is running and what the last one found.
+_MEDIA_SYNC = {}
+_MEDIA_SYNC_LOCK = threading.Lock()
+
+
+def auction_media_urls(conn):
+    urls = [r['photo_url'] for r in conn.execute('SELECT photo_url FROM players').fetchall()]
+    urls += [r['logo_url'] for r in conn.execute('SELECT logo_url FROM teams').fetchall()]
+    urls += [r['value'] for r in conn.execute(
+        "SELECT value FROM config WHERE key IN ('org_logo', 'sponsor_logo', 'event_banner')").fetchall()]
+    return [u for u in urls if u]
+
+
+def sync_media(auction_id):
+    """Make both copies whole for one auction: download what this server's
+    disk lost from Supabase, upload what Supabase is missing from the disk.
+    Runs in the background; the dashboard starts it and reads the result."""
+    with _MEDIA_SYNC_LOCK:
+        state = _MEDIA_SYNC.setdefault(str(auction_id), {'running': False, 'lost': 0, 'unbacked': 0, 'at': 0})
+        if state['running']:
+            return
+        state['running'] = True
+    lost = unbacked = 0
+    try:
+        conn = open_auction_conn(auction_id)
+        urls = auction_media_urls(conn)
+        conn.close()
+        gone = media_lost(urls)
+        lost = len(gone)
+        for url in urls:
+            path = media_path(url)
+            if not path or url in gone:
+                continue
+            if not _media_is_backed(path):
+                with open(_media_local(path), 'rb') as fh:
+                    data = fh.read()
+                if not media_backup(path, data, path.rsplit('.', 1)[-1]):
+                    unbacked += 1
+    except Exception as exc:
+        print('[storage] sync for auction %s failed: %s' % (auction_id, exc), flush=True)
+    finally:
+        with _MEDIA_SYNC_LOCK:
+            state.update(running=False, lost=lost, unbacked=unbacked, at=__import__('time').time())
+
+
+def sync_media_async(auction_id, min_gap=60):
+    """Start sync_media unless one ran in the last `min_gap` seconds."""
+    state = _MEDIA_SYNC.get(str(auction_id)) or {}
+    if state.get('running') or __import__('time').time() - state.get('at', 0) < min_gap:
+        return
+    threading.Thread(target=sync_media, args=(auction_id,), daemon=True).start()
 
 
 def storage_problem(conn=None):
     """What the organiser must fix so photos and logos are kept, or ''."""
     if EPHEMERAL_DISK and not USE_SUPABASE_STORAGE:
-        return ('Photos and logos are saved on the server\'s temporary disk, which Render wipes on every '
-                'deploy. In Render > Environment, set SUPABASE_URL and SUPABASE_SERVICE_KEY, then redeploy.')
+        return ('Photos and logos are saved only on the server\'s disk, which Render wipes on every '
+                'deploy. In Render > Environment, set SUPABASE_URL and SUPABASE_SERVICE_KEY so a second '
+                'copy goes to Supabase, then redeploy.')
     if _STORAGE_LAST_ERROR['message']:
-        return ('Saving to Supabase Storage failed (%s), so files went to the temporary disk and will be '
-                'lost at the next deploy. In Render > Environment, check SUPABASE_SERVICE_KEY is the '
-                'service_role key and SUPABASE_BUCKET is "%s", then redeploy.'
-                % (_STORAGE_LAST_ERROR['message'], SUPABASE_BUCKET))
+        return ('Supabase did not accept a copy (%s). Those files are only on the server, and Render '
+                'wipes it at the next deploy. In Render > Environment, check SUPABASE_SERVICE_KEY is the '
+                'service_role key and SUPABASE_BUCKET is "%s", then redeploy; the copies are retried '
+                'whenever the dashboard opens.' % (_STORAGE_LAST_ERROR['message'], SUPABASE_BUCKET))
     return ''
 
 
 def storage_object_path(url):
-    """The bucket-relative path inside one of our own public storage URLs, or
-    None. Used to delete exactly the files a purge should remove, rather than
+    """The bucket-relative path inside one of our own /media URLs or public
+    storage URLs, or None. Used to delete exactly the files a purge should remove, rather than
     trusting Storage's list endpoint — which was found to lag noticeably
     behind a write (a file fetched fine by direct URL immediately after
     upload, yet did not appear in list for the same prefix), making list-then-
     delete an unreliable way to find what a purge should remove.
     """
+    if media_path(url):
+        return media_path(url)
     marker = '/storage/v1/object/public/%s/' % SUPABASE_BUCKET
-    if not url or SUPABASE_URL not in url or marker not in url:
+    if not url or not SUPABASE_URL or SUPABASE_URL not in url or marker not in url:
         return None
     path = url.split(marker, 1)[1]
     return path.split('?', 1)[0] or None
@@ -347,24 +501,18 @@ def storage_delete_paths(paths):
 
 
 def save_media(auction_id, kind, key, data, ext):
-    """Store one file and return the URL to put in the database.
+    """Store one file on this server's disk and in Supabase Storage, and
+    return its /media URL for the database (see "Two copies" above).
 
     kind is a folder under the auction (players, logos, banner); key names the
-    file within it. Falls back to local disk when Supabase Storage is not
-    configured, or if the upload itself fails, so a flaky network never loses
-    a photo the organiser just took.
+    file within it. A unique suffix makes each upload a new file, so a
+    replaced photo never shows a cached old one.
     """
     ext = (ext or 'jpg').lower().lstrip('.')
-    if USE_SUPABASE_STORAGE:
-        try:
-            return storage_put('%s/%s/%s.%s' % (auction_id, kind, key, ext), data, ext)
-        except Exception as exc:
-            print('[storage] upload failed, falling back to local disk: %s' % exc, flush=True)
-            _STORAGE_LAST_ERROR.update(message=str(exc)[:240], at=str(datetime.datetime.now()))
-    fname = '%s_a%s_%s_%s.%s' % (kind, auction_id, key, uuid.uuid4().hex[:8], ext)
-    with open(os.path.join(UPLOAD_FOLDER, fname), 'wb') as fh:
-        fh.write(data)
-    return '/uploads/' + fname
+    path = '%s/%s/%s-%s.%s' % (auction_id, kind, key, uuid.uuid4().hex[:8], ext)
+    _media_write(path, data)
+    media_backup(path, data, ext)
+    return '/media/' + path
 
 
 # ─── Google Drive photo links ────────────────────────────────────────────────
@@ -898,7 +1046,7 @@ init_registry()
 # player pool of the live auction.
 ROUTE_POLICY = {
     # Public: the screens an audience opens, and the way in.
-    'static': 'public', 'uploaded_file': 'public', 'log_error': 'public',
+    'static': 'public', 'uploaded_file': 'public', 'media_file': 'public', 'log_error': 'public',
     'login_portal': 'public', 'logout': 'public', 'auth_login': 'public',
     'auth_me': 'public',
     'live_view': 'public', 'presentation_view': 'public',
@@ -997,7 +1145,7 @@ def enforce_route_policy():
 # not — so a route accidentally left off this list fails loudly rather than
 # reading whichever auction happens to be around.
 AUCTION_FREE_ENDPOINTS = {
-    'static', 'uploaded_file', 'log_error', 'login_portal', 'logout',
+    'static', 'uploaded_file', 'media_file', 'log_error', 'login_portal', 'logout',
     'auth_login', 'auth_me',
     # The admin shell hosts the auction chooser, so it must load before any
     # auction is bound.
@@ -1350,15 +1498,13 @@ def auction_status():
 def storage_status():
     """Whether photos and logos are stored where they survive a deploy, and
     how many of this auction's are already lost."""
-    conn = get_db()
-    urls = [r['photo_url'] for r in conn.execute('SELECT photo_url FROM players').fetchall()]
-    urls += [r['logo_url'] for r in conn.execute('SELECT logo_url FROM teams').fetchall()]
-    urls += [r['value'] for r in conn.execute(
-        "SELECT value FROM config WHERE key IN ('org_logo', 'sponsor_logo', 'event_banner')").fetchall()]
-    conn.close()
-    return jsonify({'mode': 'supabase' if USE_SUPABASE_STORAGE else 'local',
+    sync_media_async(g.auction_id)
+    state = _MEDIA_SYNC.get(str(g.auction_id)) or {}
+    return jsonify({'mode': 'server+supabase' if USE_SUPABASE_STORAGE else 'server only',
                     'problem': storage_problem(),
-                    'missing_files': sum(1 for u in urls if local_media_missing(u))})
+                    'syncing': bool(state.get('running')),
+                    'missing_files': state.get('lost', 0),
+                    'server_only_files': state.get('unbacked', 0)})
 
 
 def purge_expired():
@@ -1394,6 +1540,12 @@ def purge_expired():
             paths = [p for p in (storage_object_path(u) for u in urls) if p]
             destroy_auction_storage(auction_id)
             storage_delete_paths(paths)
+            for path in filter(None, (media_path(u) for u in urls)):
+                for root in (MEDIA_DIR, _BACKED_DIR):
+                    try:
+                        os.remove(os.path.join(root, *path.split('/')))
+                    except OSError:
+                        pass
             conn.execute("UPDATE %s SET status = 'purged' WHERE id = ?" % tbl, (auction_id,))
             conn.commit()
             purged += 1
@@ -1430,6 +1582,15 @@ def final_report():
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
+
+
+@app.route('/media/<path:path>')
+def media_file(path):
+    """A stored photo or logo: this server's copy, or Supabase's when the
+    server lost its own in a deploy (then kept here again)."""
+    if not _media_local(path) or not media_restore(path):
+        return jsonify({'error': 'not_found'}), 404
+    return send_from_directory(MEDIA_DIR, path, max_age=86400)
 
 # ─── Authentication ───
 
@@ -2591,6 +2752,7 @@ def resync_sheet():
     incoming = dict(zip(occurrence_keys([it['name'] for it in items]), items))
     added   = [incoming[k]['name'] for k in incoming.keys() - current.keys()]
     removed_keys = current.keys() - incoming.keys()
+    gone = media_lost([p.get('photo_url') for p in current.values()])
     changed, blocked = [], []
     for key in incoming.keys() & current.keys():
         new, old = incoming[key], current[key]
@@ -2601,7 +2763,7 @@ def resync_sheet():
             diffs.append({'field': 'base price', 'old': old.get('base_price'), 'new': new['base_price']})
         if (new['photo_url'] or '') and not (old.get('photo_url') or ''):
             diffs.append({'field': 'photo', 'old': '', 'new': 'added'})
-        elif (new['photo_url'] or '') and local_media_missing(old.get('photo_url')):
+        elif (new['photo_url'] or '') and old.get('photo_url') in gone:
             diffs.append({'field': 'photo', 'old': 'lost in a redeploy', 'new': 'restored from sheet'})
         if not diffs:
             continue
@@ -2645,6 +2807,7 @@ def apply_sheet_changes():
         for key, it in incoming.items():
             it['category'] = (current[key].get('category') if key in current
                               else category_from_recipe(recipe, it.get('attributes') or {}))
+    gone = media_lost([p.get('photo_url') for p in current.values()])
     c = conn.cursor()
     added = updated = removed = 0
 
@@ -2663,7 +2826,7 @@ def apply_sheet_changes():
         # A stored photo is kept (it may have been uploaded by hand); the
         # sheet's link fills in only a missing one, or one lost from disk.
         kept = old.get('photo_url') or ''
-        photo = kept if kept and not local_media_missing(kept) else (new['photo_url'] or kept)
+        photo = kept if kept and kept not in gone else (new['photo_url'] or kept)
         c.execute('UPDATE players SET category=?, base_price=?, photo_url=?, attributes=? WHERE id=?',
                   (new['category'], new['base_price'], photo,
                    json.dumps(new.get('attributes') or {}), old['id']))

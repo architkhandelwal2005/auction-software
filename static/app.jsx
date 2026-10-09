@@ -1804,7 +1804,13 @@ function App() {
     const [storage, setStorage] = useState(null);
     useEffect(() => {
         if (view !== 'dashboard') return;
-        fetch('/api/storage/status').then(r => r.ok ? r.json() : null).then(setStorage).catch(() => {});
+        // Checking starts a background sync of the two copies; read it again
+        // shortly to show what that sync found, then now and then.
+        const check = () => fetch('/api/storage/status').then(r => r.ok ? r.json() : null).then(setStorage).catch(() => {});
+        check();
+        const soon = setTimeout(check, 8000);
+        const every = setInterval(check, 60000);
+        return () => { clearTimeout(soon); clearInterval(every); };
     }, [view]);
 
     const refreshAuctionInfo = async () => {
@@ -2278,12 +2284,13 @@ function App() {
             {showTeamRoster && <TeamRosterModal team={showTeamRoster} onClose={()=>setShowTeamRoster(null)} />}
             {showShareModal && <ShareModal teams={teams} onClose={()=>setShowShareModal(false)} />}
 
-            {storage && (storage.problem || storage.missing_files > 0) && (
+            {storage && (storage.problem || storage.missing_files > 0 || storage.server_only_files > 0) && (
                 <div className="bg-red-600/90 text-white px-6 py-3 text-sm font-bold flex items-start gap-3">
                     <i className="fa-solid fa-triangle-exclamation mt-0.5"></i>
                     <div className="space-y-1">
                         {storage.problem && <p>{storage.problem}</p>}
-                        {storage.missing_files > 0 && <p>{storage.missing_files} photo(s) or logo(s) were lost from the server disk. Drive photos come back with More → Re-sync from Sheet (after the storage is fixed); logos must be uploaded again.</p>}
+                        {storage.server_only_files > 0 && <p>{storage.server_only_files} photo(s) or logo(s) are only on the server, not yet in Supabase. They are copied as soon as Supabase accepts them.</p>}
+                        {storage.missing_files > 0 && <p>{storage.missing_files} photo(s) or logo(s) are in neither copy. Drive photos come back with More → Re-sync from Sheet; logos must be uploaded again.</p>}
                     </div>
                 </div>
             )}
