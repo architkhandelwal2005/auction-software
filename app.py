@@ -930,13 +930,16 @@ def enforce_route_policy():
     role = session.get('role')
     if not role:
         if request.path.startswith('/api/'):
-            return jsonify({'error': 'login_required'}), 401
+            return jsonify({'error': 'login_required',
+                            'message': 'This browser is not signed in. Sign in as the auctioneer, then try again.'}), 401
         return redirect('/login')
 
     if _ROLE_RANK.get(role, 0) < _ROLE_RANK[required]:
         if request.path.startswith('/api/'):
+            who = {'viewer': 'a spectator', 'team': 'a team owner'}.get(role, role)
             return jsonify({'error': 'forbidden',
-                            'message': 'This action is for the auctioneer.'}), 403
+                            'message': 'This browser is signed in as %s, not the auctioneer. '
+                                       'Sign in as the auctioneer again, then retry.' % who}), 403
         return redirect('/login')
 
     # A team owner may only open their own dashboard.
@@ -1469,7 +1472,13 @@ def auth_login():
             return jsonify({'success': True, 'url': '/admin'})
         return jsonify({'error': 'Incorrect admin password'}), 401
 
-    elif role == 'team':
+    # One browser holds one sign-in. Opening the team or spectator view on the
+    # auctioneer's own browser used to replace the auctioneer's sign-in, and
+    # the next SOLD or PASS was refused (403). The auctioneer can already see
+    # every team page and the live view, so their sign-in is kept.
+    keep_auctioneer = session.get('role') in ('admin', 'auctioneer')
+
+    if role == 'team':
         live = live_auction_row()
         if live is None:
             return jsonify({'error': 'No auction is live right now.'}), 409
@@ -1487,6 +1496,8 @@ def auth_login():
         entered_pass = password.replace(' ', '').lower()
 
         if expected_pass == entered_pass:
+            if keep_auctioneer:
+                return jsonify({'success': True, 'url': f'/team/{team_id}'})
             session['user'] = team_name
             session['role'] = 'team'
             session['team_id'] = team_id
@@ -1499,6 +1510,8 @@ def auth_login():
         live = live_auction_row()
         if live is None:
             return jsonify({'error': 'No auction is live right now.'}), 409
+        if keep_auctioneer:
+            return jsonify({'success': True, 'url': '/live'})
         session['user'] = 'spectator'
         session['role'] = 'viewer'
         session['auction_id'] = dict(live)['id']

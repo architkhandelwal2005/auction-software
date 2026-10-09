@@ -59,6 +59,23 @@ check('team owner can sign in', r.status_code == 200, r.get_data(as_text=True)[:
 check('team owner sees their dashboard', team.get('/api/team/%d' % team_id).status_code == 200)
 check('team owner refused selling', team.post('/api/sell_player', json={}).status_code == 403)
 check('team owner refused wiping', team.post('/api/players/clear_pool', json={}).status_code == 403)
+r = team.post('/api/sell_player', json={})
+check('refusal says how to fix it', 'not the auctioneer' in (r.get_json() or {}).get('message', ''), str(r.get_json()))
+
+# The auctioneer opening the team or spectator view on their own browser
+# keeps their sign-in: SOLD and PASS must not start failing with 403.
+r = admin.post('/api/auth/login', json={'role': 'team', 'team_id': team_id, 'password': 'reds'})
+check('auctioneer can open a team view', r.status_code == 200 and r.get_json().get('url') == '/team/%d' % team_id)
+admin.post('/api/auth/login', json={'role': 'spectator'})
+check('auctioneer still signed in as auctioneer', admin.get('/api/auth/me').get_json().get('role') == 'admin',
+      str(admin.get('/api/auth/me').get_json()))
+keeper = admin.get('/api/players').get_json()[0]
+r = admin.post('/api/action/pass', json={'player_id': keeper['id']})
+check('auctioneer can still pass after opening other views', r.status_code == 200, r.get_data(as_text=True)[:120])
+admin.post('/api/action/revive', json={'player_id': keeper['id']})
+r = admin.post('/api/sell_player', json={'player_id': keeper['id'], 'team_id': team_id, 'sold_price': 10})
+check('auctioneer can still sell after opening other views', r.status_code == 200, r.get_data(as_text=True)[:120])
+admin.post('/api/undo')
 
 # A second team must not be able to read the first team's dashboard.
 admin.post('/api/teams', json={'name': 'Blues', 'total_budget': 1000})

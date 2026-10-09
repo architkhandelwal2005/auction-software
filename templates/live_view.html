@@ -468,7 +468,7 @@
                                         {/* Attributes Row */}
                                         <div className="mt-8 border-t border-zinc-800 pt-6 relative z-10">
                                             <div className={`${revealPhase >= 2 ? 'anim-slideInRight' : 'opacity-0'}`}>
-                                                <PlayerAttributesBadges attributes={state.attributes} displayFields={displayFields} max={8} className="justify-start md:justify-center" />
+                                                <PlayerAttributesBadges attributes={state.attributes} displayFields={displayFields} max={displayFields.length || 8} className="justify-start md:justify-center" />
                                             </div>
                                         </div>
                                     </div>

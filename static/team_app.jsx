@@ -51,7 +51,7 @@ const TeamApp = () => {
                     category: st.category || (match ? match.category : '') || '',
                     base_price: parseFloat(st.base_price) || (match ? match.base_price : 0) || 0,
                     photo_url: st.photo_url || (match ? match.photo_url : '') || '',
-                    attributes: match ? match.attributes : {},
+                    attributes: st.attributes || (match ? match.attributes : {}) || {},
                     status: match ? match.status : 'unsold',
                 };
             } else {
@@ -175,6 +175,18 @@ const TeamApp = () => {
                                             {liveData.current_player.category || 'General'}
                                         </div>
                                         <div className="text-sm font-bold text-zinc-500 mt-2">Base: {fmtL(liveData.current_player.base_price)}</div>
+                                        {/* Every detail chosen in setup (or the most useful ones). */}
+                                        {(() => {
+                                            let chosen = [];
+                                            try { chosen = JSON.parse((liveData.config || {}).display_fields || '[]'); } catch (e) {}
+                                            const details = playerDetails(liveData.current_player.attributes, chosen, chosen.length || 8, liveData.current_player.category);
+                                            return details.length > 0 && <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 mt-3 text-left">
+                                                {details.map(d => <div key={d.key} className="text-xs">
+                                                    <span className="font-bold text-zinc-500 uppercase tracking-wide">{d.label}</span>{' '}
+                                                    <span className="font-bold text-white">{d.value}</span>
+                                                </div>)}
+                                            </div>;
+                                        })()}
                                         
                                         {/* Strategy Warning for this player */}
                                         {(() => {

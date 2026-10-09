@@ -97,14 +97,15 @@
                 if (!leader) { alert('Tap a franchise first to set the winning bid.'); return; }
                 const res = await post('/api/sell_player', { player_id: cur.id, team_id: parseInt(leader.id), sold_price: bid });
                 const j = await res.json().catch(()=>({}));
-                if (!res.ok || j.error) { alert('Sale rejected: ' + (j.error || 'Unknown error')); await load(); return; }
+                if (!res.ok || j.error) { alert('Sale rejected: ' + (j.message || j.error || 'Unknown error')); await load(); return; }
                 await post('/api/auction/state', { current_player:'', current_bid:0, category:'', base_price:0, photo_url:'', bidder_team_id:'', bidder_team_name:'', bidder_team_color:'' });
                 local.current = { player:null, bid:null, leaderId:null }; await load();
             };
             const pass = async () => {
                 if (!cur) return;
                 if (!confirm('Mark this player UNSOLD / passed?')) return;
-                await post('/api/action/pass', { player_id: cur.id });
+                const res = await post('/api/action/pass', { player_id: cur.id });
+                if (!res.ok) { const j = await res.json().catch(()=>({})); alert('Pass failed: ' + (j.message || j.error || ('HTTP ' + res.status))); return; }
                 await post('/api/auction/state', { current_player:'', current_bid:0, category:'', base_price:0, photo_url:'', bidder_team_id:'', bidder_team_name:'', bidder_team_color:'' });
                 local.current = { player:null, bid:null, leaderId:null }; await load();
             };

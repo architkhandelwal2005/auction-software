@@ -2141,8 +2141,13 @@ function App() {
 
     
     const handlePass = async () => {
+        const res = await fetch('/api/action/pass', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({player_id: currentPlayer.id})});
+        if (!res.ok) {
+            const j = await res.json().catch(()=>({}));
+            alert('Pass failed: ' + (j.message || j.error || ('HTTP ' + res.status)));
+            return;
+        }
         SFX.sold(); // reusing sold sound for now or maybe undo
-        await fetch('/api/action/pass', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({player_id: currentPlayer.id})});
         saveAuctionState(null, 0);
         await loadData();
         setCurrentPlayer(null);
@@ -2201,7 +2206,7 @@ function App() {
         const res = await fetch('/api/sell_player',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:currentPlayer.id,team_id:parseInt(teamId),sold_price:price})});
         const json = await res.json().catch(()=>({}));
         if(!res.ok || json.error){
-            alert('🚫 Sale rejected: ' + (json.error || 'Unknown error'));
+            alert('🚫 Sale rejected: ' + (json.message || json.error || 'Unknown error'));
             await loadData();
             return;
         }
