@@ -72,4 +72,33 @@ admin.post('/api/config', json={'config': {'sponsor_name': '', 'sponsor_logo': '
 cfg = admin.get('/api/live_data').get_json()['config']
 check('sponsor can be removed again', not cfg.get('sponsor_name') and not cfg.get('sponsor_logo'))
 
+# ── Pre-allotment: a retained player goes straight to a team at the admin's
+#    price (zero allowed), the purse follows, and the player leaves the pool. ──
+def team(t_id):
+    return next(t for t in admin.get('/api/teams').get_json() if t['id'] == t_id)
+def player(name):
+    return next(p for p in admin.get('/api/players').get_json() if p['name'] == name)
+blues = admin.post('/api/teams', json={'name': 'Blues', 'total_budget': 100}).get_json()['id']
+admin.post('/api/players', json={'name': 'Ravi', 'category': 'A', 'base_price': 10})
+rid = player('Ravi')['id']
+r = admin.post('/api/players/edit_sale', json={'player_id': rid, 'status': 'sold', 'team_id': blues, 'sold_price': 30})
+p = player('Ravi')
+check('player allotted at chosen price', r.status_code == 200 and p['status'] == 'sold' and p['team_id'] == blues and p['sold_price'] == 30, r.get_data(as_text=True)[:100])
+check('purse charged', team(blues)['remaining_budget'] == 70, str(team(blues)['remaining_budget']))
+r = admin.post('/api/players/edit_sale', json={'player_id': rid, 'status': 'sold', 'team_id': blues, 'sold_price': 0})
+check('price can be zero; same-team change refunds the difference', r.status_code == 200 and player('Ravi')['sold_price'] == 0 and team(blues)['remaining_budget'] == 100)
+r = admin.post('/api/players/edit_sale', json={'player_id': rid, 'status': 'sold', 'team_id': blues, 'sold_price': 101})
+check('price above the purse refused', r.status_code == 400 and player('Ravi')['sold_price'] == 0, r.get_data(as_text=True)[:100])
+r = admin.post('/api/players/edit_sale', json={'player_id': rid, 'status': 'sold', 'team_id': blues, 'sold_price': -5})
+check('negative price refused', r.status_code == 400)
+r = admin.post('/api/players/edit_sale', json={'player_id': rid, 'status': 'sold', 'team_id': 9999, 'sold_price': 5})
+check('unknown team refused', r.status_code == 404)
+admin.post('/api/players/edit_sale', json={'player_id': rid, 'status': 'sold', 'team_id': blues, 'sold_price': 40})
+r = admin.post('/api/players/edit_sale', json={'player_id': rid, 'status': 'unsold'})
+p = player('Ravi')
+check('return to pool refunds the purse', r.status_code == 200 and p['status'] == 'unsold' and p['team_id'] is None and team(blues)['remaining_budget'] == 100, str(p))
+admin.post('/api/players/edit_sale', json={'player_id': rid, 'status': 'sold', 'team_id': blues, 'sold_price': 25})
+admin.post('/api/undo')
+check('undo reverses an allotment', player('Ravi')['status'] == 'unsold' and team(blues)['remaining_budget'] == 100)
+
 print('\nALL CHECKS PASSED' if not check.failed else '\n%d CHECK(S) FAILED' % check.failed)

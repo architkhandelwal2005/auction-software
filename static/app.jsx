@@ -1850,6 +1850,21 @@ function App() {
     );
     const addPlayer = async e => { e.preventDefault(); await fetch('/api/players',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:newPlayer.name,category:newPlayer.category,base_price:parseFloat(newPlayer.base_price||0)})}); setNewPlayer({name:'',category:'',base_price:''}); loadData(); };
     const updatePlayer = async e => { e.preventDefault(); await fetch('/api/players/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:editPlayer.id,name:editPlayer.name,category:editPlayer.category,base_price:parseFloat(editPlayer.base_price||0)})}); setEditPlayer(null); loadData(); };
+    // Allot a retained player to a team at a price the admin sets (zero allowed),
+    // or return an allotted player to the pool. Purses rebalance server-side.
+    const openPlayer = p => setEditPlayer({...p, allotTeam: p.status==='sold' ? String(p.team_id||'') : '', allotPrice: p.status==='sold' ? String(p.sold_price ?? 0) : String(p.base_price ?? 0)});
+    const allotPlayer = async release => {
+        const p = editPlayer;
+        if (!release && !p.allotTeam) { alert('Choose a team'); return; }
+        const price = parseFloat(p.allotPrice);
+        if (!release && (isNaN(price) || price < 0)) { alert('Enter a price of 0 or more'); return; }
+        const r = await fetch('/api/players/edit_sale',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+            player_id:p.id, name:p.name, category:p.category, base_price:parseFloat(p.base_price||0),
+            status: release ? 'unsold' : 'sold', team_id: release ? null : p.allotTeam, sold_price: release ? null : price })});
+        const d = await r.json().catch(()=>({}));
+        if (!r.ok) { alert(d.error||'Could not allot player'); return; }
+        setEditPlayer(null); loadData();
+    };
     const uploadPhoto = async (pid,file) => { const fd=new FormData();fd.append('photo',file); await fetch(`/api/players/photo/${pid}`,{method:'POST',body:fd}); loadData(); };
     const deletePlayer = async (p) => {
         if (p.status==='sold') { alert('Player is sold. Unsell them first (Undo the sale), then delete.'); return; }
@@ -2453,7 +2468,7 @@ function App() {
                                     <input type="file" accept="image/*" className="hidden" onChange={e=>{if(e.target.files[0])uploadPhoto(p.id,e.target.files[0]);}} />
                                 </label>
                             </div>
-                            <div className="flex-1 min-w-0">
+                            <div className="flex-1 min-w-0 cursor-pointer" onClick={()=>openPlayer(p)} title="Open player profile">
                                 <div className="font-extrabold text-white text-xs truncate">{p.name}</div>
                                 <div className="flex items-center gap-1 mt-0.5">{p.category&&<CatBadge category={p.category}/>}</div>
                             </div>
@@ -2461,7 +2476,7 @@ function App() {
                                 <span className="text-[0.55rem] text-slate-400 font-bold">₹{p.base_price}L</span>
                                 {p.status==='sold'?<span className="text-[0.5rem] text-green-400 font-extrabold">SOLD ₹{p.sold_price}L</span>:p.status==='passed'?<span className="text-[0.5rem] text-red-400 font-bold">PASSED</span>:<span className="text-[0.5rem] text-amber-400 font-bold">POOL</span>}
                                 <div className="flex items-center gap-1.5">
-                                    <button onClick={()=>setEditPlayer(p)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-purple-400 transition text-[0.6rem]"><i className="fa-solid fa-pen"></i></button>
+                                    <button onClick={()=>openPlayer(p)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-purple-400 transition text-[0.6rem]"><i className="fa-solid fa-pen"></i></button>
                                     {p.status!=='sold' && <button onClick={()=>deletePlayer(p)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition text-[0.6rem]" title="Remove player"><i className="fa-solid fa-trash"></i></button>}
                                 </div>
                             </div>
@@ -2505,10 +2520,26 @@ function App() {
 
             {editPlayer && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md anim-scaleIn" onClick={()=>setEditPlayer(null)}>
                 <form onSubmit={updatePlayer} onClick={e=>e.stopPropagation()} className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-96 space-y-4 shadow-2xl">
-                    <h3 className="fredoka text-lg font-bold text-white">Edit Player</h3>
+                    <h3 className="fredoka text-lg font-bold text-white">Player Profile</h3>
                     <input required type="text" className="w-full bg-slate-950 border border-slate-700 text-white p-3 rounded-xl font-bold text-sm" value={editPlayer.name} onChange={e=>setEditPlayer({...editPlayer,name:e.target.value})} />
                     <select className="w-full bg-slate-950 border border-slate-700 text-white p-3 rounded-xl font-bold text-sm" value={editPlayer.category} onChange={e=>setEditPlayer({...editPlayer,category:e.target.value})}><option value="">Category</option>{categoryList.map(c=><option key={c}>{c}</option>)}</select>
                     <input type="number" className="w-full bg-slate-950 border border-slate-700 text-white p-3 rounded-xl font-bold text-sm" value={editPlayer.base_price} onChange={e=>setEditPlayer({...editPlayer,base_price:e.target.value})} />
+                    <div className="space-y-2 bg-slate-950/60 border border-amber-500/25 rounded-xl p-3">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-extrabold text-amber-300"><i className="fa-solid fa-handshake mr-1.5"></i>Allot to team</span>
+                            {editPlayer.status==='sold' && <span className="text-[0.65rem] font-bold text-green-400">With {editPlayer.team_name||'team'} · ₹{editPlayer.sold_price}L</span>}
+                        </div>
+                        <div className="flex gap-2">
+                            <select className="flex-1 min-w-0 bg-slate-950 border border-slate-700 text-white p-2.5 rounded-xl font-bold text-xs" value={editPlayer.allotTeam} onChange={e=>setEditPlayer({...editPlayer,allotTeam:e.target.value})}>
+                                <option value="">Choose team</option>{teams.map(t=><option key={t.id} value={String(t.id)}>{t.name} (₹{t.remaining_budget}L left)</option>)}
+                            </select>
+                            <input type="number" min="0" step="any" placeholder="Price (L)" className="w-24 bg-slate-950 border border-slate-700 text-white p-2.5 rounded-xl font-bold text-xs" value={editPlayer.allotPrice} onChange={e=>setEditPlayer({...editPlayer,allotPrice:e.target.value})} />
+                        </div>
+                        <div className="flex gap-2">
+                            <button type="button" onClick={()=>allotPlayer(false)} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white py-2 rounded-xl font-bold text-xs">{editPlayer.status==='sold'?'Update allotment':'Allot player'}</button>
+                            {editPlayer.status==='sold' && <button type="button" onClick={()=>allotPlayer(true)} className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-xl font-bold text-xs">Return to pool</button>}
+                        </div>
+                    </div>
                     <div className="flex gap-3"><button type="submit" className="flex-1 bg-purple-600 hover:bg-purple-500 text-white py-2.5 rounded-xl font-bold text-sm">Save</button><button type="button" onClick={()=>setEditPlayer(null)} className="bg-slate-800 text-slate-300 px-5 py-2.5 rounded-xl font-bold text-sm">Cancel</button></div>
                 </form>
             </div>}

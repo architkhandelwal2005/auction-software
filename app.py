@@ -2755,15 +2755,23 @@ def undo_last_sale():
 
 @app.route('/api/players/edit_sale', methods=['POST'])
 def edit_player_sale():
-    data = request.json
+    """Set a player's team and price directly, outside the bidding: allot a
+    retained player to a team before the auction, move a sale, or return a
+    player to the pool. Purses are rebalanced and the change can be undone."""
+    data = request.json or {}
     pid = data.get('player_id')
     name = data.get('name')
     category = data.get('category')
-    base_price = float(data.get('base_price', 0)) if data.get('base_price') is not None else 0
     photo_url = data.get('photo_url')
-    new_status = data.get('status', 'unsold') # 'sold' or 'unsold'
-    new_team_id = int(data.get('team_id')) if data.get('team_id') else None
-    new_sold_price = float(data.get('sold_price', 0)) if data.get('sold_price') is not None else None
+    new_status = data.get('status', 'unsold')  # 'sold' or 'unsold'
+    if new_status not in ('sold', 'unsold'):
+        return jsonify({'error': "status must be 'sold' or 'unsold'"}), 400
+    try:
+        base_price = float(data['base_price']) if data.get('base_price') is not None else None
+        new_sold_price = float(data['sold_price']) if data.get('sold_price') not in (None, '') else None
+        new_team_id = int(data['team_id']) if data.get('team_id') else None
+    except (TypeError, ValueError):
+        return jsonify({'error': 'team_id, base_price and sold_price must be numbers'}), 400
 
     conn = get_db()
     c = conn.cursor()
@@ -2773,25 +2781,45 @@ def edit_player_sale():
         return jsonify({'error': 'Player not found'}), 404
 
     old_status = old_p['status']
-    old_team_id = old_p['team_id']
-    old_sold_price = old_p['sold_price'] or 0
+    old_team_id = old_p['team_id'] if old_status == 'sold' else None
+    old_sold_price = (old_p['sold_price'] or 0) if old_status == 'sold' else 0
+    if base_price is None:
+        base_price = old_p['base_price'] or 0
+
+    if new_status == 'sold':
+        if new_team_id is None or new_sold_price is None:
+            conn.close()
+            return jsonify({'error': 'Choose a team and a price'}), 400
+        if new_sold_price < 0:
+            conn.close()
+            return jsonify({'error': 'Price cannot be negative'}), 400
+        team = c.execute('SELECT * FROM teams WHERE id=?', (new_team_id,)).fetchone()
+        if not team:
+            conn.close()
+            return jsonify({'error': 'Team not found'}), 404
+        # The purse may not go negative. A move within the same team only
+        # charges the difference, since the old price is refunded first.
+        available = float(team['remaining_budget'] or 0)
+        if old_team_id == new_team_id:
+            available += old_sold_price
+        if new_sold_price > available + 1e-6:
+            conn.close()
+            return jsonify({'error': '%s has only ₹%gL left in the purse.' % (team['name'], available)}), 400
+    else:
+        new_team_id, new_sold_price = None, None
 
     # Record in history for undo
     c.execute('''INSERT INTO action_history 
         (action_type, player_id, player_name, old_team_id, new_team_id, old_sold_price, new_sold_price, old_status, new_status, base_price, category, photo_url)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-        ('edit_sale', pid, name or old_p['name'], old_team_id, new_team_id, old_sold_price, new_sold_price, old_status, new_status, base_price, category, photo_url or old_p['photo_url']))
+        ('edit_sale', pid, name or old_p['name'], old_team_id, new_team_id, old_sold_price, new_sold_price, old_status, new_status, base_price, category or old_p['category'], photo_url or old_p['photo_url']))
 
-    # Rebalance team budgets
-    # 1. If was sold previously, refund old team
-    if old_status == 'sold' and old_team_id and old_sold_price > 0:
+    # Rebalance team budgets: refund the old team, then charge the new one.
+    if old_team_id and old_sold_price > 0:
         c.execute('UPDATE teams SET remaining_budget = remaining_budget + ? WHERE id = ?', (old_sold_price, old_team_id))
-
-    # 2. If is sold now, deduct new team
-    if new_status == 'sold' and new_team_id and new_sold_price and new_sold_price > 0:
+    if new_team_id and new_sold_price > 0:
         c.execute('UPDATE teams SET remaining_budget = remaining_budget - ? WHERE id = ?', (new_sold_price, new_team_id))
 
-    # 3. Update player record
     c.execute('''UPDATE players SET 
         name = ?, 
         category = ?, 
@@ -2802,7 +2830,8 @@ def edit_player_sale():
         sold_price = ?,
         sold_at = CASE WHEN ? = 'sold' THEN COALESCE(sold_at, CURRENT_TIMESTAMP) ELSE NULL END
         WHERE id = ?''',
-        (name or old_p['name'], category or old_p['category'], base_price, photo_url, new_status, new_team_id, new_sold_price if new_status == 'sold' else None, new_status, pid))
+        (name or old_p['name'], category if category is not None else old_p['category'], base_price, photo_url,
+         new_status, new_team_id, new_sold_price, new_status, pid))
 
     conn.commit()
     conn.close()
