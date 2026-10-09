@@ -2545,26 +2545,37 @@ class _SheetUpload:
         return self._data
 
 
-def sheet_csv_url(url):
+def sheet_csv_urls(url):
+    """The addresses to read a public sheet's tab as CSV, best first.
+
+    /export returns every row. gviz is only the fallback: it returns just the
+    rows a filter in the sheet leaves visible (a "Retained" filter once cut a
+    98-player sheet to 14, and a re-sync would have offered to delete the
+    rest), but it answers for some Forms response sheets where /export gives
+    400."""
     match = _SHEET_ID_RE.search(url or '')
     if not match:
-        return None
+        return []
     gid = _SHEET_GID_RE.search(url or '')
-    # The gviz endpoint is used instead of /export?format=csv: the classic
-    # export endpoint 400s for some public spreadsheets (Google Forms
-    # response sheets in particular), while gviz serves the same public
-    # data reliably.
-    return 'https://docs.google.com/spreadsheets/d/%s/gviz/tq?tqx=out:csv&gid=%s' % (
-        match.group(1), gid.group(1) if gid else '0')
+    sid, tab = match.group(1), (gid.group(1) if gid else '0')
+    return ['https://docs.google.com/spreadsheets/d/%s/export?format=csv&gid=%s' % (sid, tab),
+            'https://docs.google.com/spreadsheets/d/%s/gviz/tq?tqx=out:csv&gid=%s' % (sid, tab)]
 
 
 def fetch_public_sheet(url):
-    """The sheet's rows as CSV bytes. Raises ValueError with a message the
-    organiser can act on."""
-    csv_url = sheet_csv_url(url)
-    if not csv_url:
+    """The sheet's rows as CSV bytes, every row whatever filter the sheet
+    shows. Raises ValueError with a message the organiser can act on."""
+    urls = sheet_csv_urls(url)
+    if not urls:
         raise ValueError('That does not look like a Google Sheet link. Copy the '
                          'address from the browser while the sheet is open.')
+    try:
+        return _fetch_sheet_csv(urls[0])
+    except ValueError:
+        return _fetch_sheet_csv(urls[1])
+
+
+def _fetch_sheet_csv(csv_url):
     req = _ureq.Request(csv_url, headers={
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         'Accept': 'text/csv,text/plain,*/*',

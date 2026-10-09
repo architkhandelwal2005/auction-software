@@ -246,5 +246,11 @@ A._STORAGE_LAST_ERROR.update(message='HTTP 403 new row violates row-level securi
 check('a failed upload is reported with its reason', 'row-level security' in client.get('/api/storage/status').get_json()['problem'])
 A._STORAGE_LAST_ERROR.update(message='')
 
+# The sheet is read with /export first: gviz returns only the rows a filter in
+# the sheet leaves visible, which once cut 98 players to 14.
+urls = A.sheet_csv_urls(SHEET_URL)
+check('every row read: /export first, gviz only as fallback',
+      '/export?format=csv' in urls[0] and '/gviz/' in urls[1], str(urls))
+
 print('\n%s' % ('ALL CHECKS PASSED' if check.failed == 0 else '%d CHECK(S) FAILED' % check.failed))
 sys.exit(1 if check.failed else 0)
