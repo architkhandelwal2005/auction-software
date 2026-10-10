@@ -28,3 +28,8 @@ auction_sheet*.xlsx
 data/
 auction_backup_*.xlsx
 missing_photos/
+
+# Local copies of stored photos and logos (the server keeps its own; Supabase
+# holds the backup). Real participant photos: never commit.
+uploads/media/
+uploads/media-backed/
