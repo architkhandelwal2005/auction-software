@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for, g
-import sqlite3, os, webbrowser, csv, io, uuid, json, re, threading, datetime
+import sqlite3, os, webbrowser, csv, io, uuid, json, re, threading, datetime, functools, time
 import urllib.request as _ureq
 import urllib.error as _uerr
 from threading import Timer
@@ -1305,6 +1305,53 @@ def resolve_auction():
     return None
 
 
+# ─── Shared reads for the polling screens ────────────────────────────────────
+# Every open screen polls: team phones ask for /api/live_data every second, the
+# stage and spectator views every two seconds, the console every 1.5. One
+# /api/live_data reads every player with their sheet details from the database
+# (about 75 KB), so a dozen screens pulled gigabytes an hour out of Supabase,
+# whose free plan allows 5 GB of egress a month. These answers are the same for
+# everyone, so one is built and shared until something changes. Every write
+# request clears them the moment it finishes; SHARED_READ_SECONDS bounds how
+# long a change made outside a request (a photo downloading in the background)
+# takes to show. Only for views whose answer depends on the auction alone: not
+# on the viewer, nor on query arguments.
+SHARED_READ_SECONDS = 5
+_shared_reads = {}
+_shared_reads_gen = [0]
+_shared_reads_lock = threading.Lock()
+
+
+def shared_read(view):
+    @functools.wraps(view)
+    def wrapper(*args, **kwargs):
+        key = (g.auction_id, request.path)
+        started = time.monotonic()
+        with _shared_reads_lock:
+            gen = _shared_reads_gen[0]
+            hit = _shared_reads.get(key)
+        if hit and hit[0] == gen and started - hit[1] < SHARED_READ_SECONDS:
+            return app.response_class(hit[2], mimetype='application/json')
+        resp = app.make_response(view(*args, **kwargs))
+        if resp.status_code == 200:
+            with _shared_reads_lock:
+                # A write that finished while this was being built may have
+                # been missed by it: keep the answer only if none did.
+                if _shared_reads_gen[0] == gen:
+                    _shared_reads[key] = (gen, started, resp.get_data())
+        return resp
+    return wrapper
+
+
+@app.after_request
+def clear_shared_reads(response):
+    if request.method not in ('GET', 'HEAD', 'OPTIONS'):
+        with _shared_reads_lock:
+            _shared_reads_gen[0] += 1
+            _shared_reads.clear()
+    return response
+
+
 # ─── Auctions registry ───────────────────────────────────────────────────────
 # Create, list, open and end auctions. These routes are the only ones that talk
 # to the registry rather than to an auction's own tables.
@@ -1838,6 +1885,7 @@ def report_view():
     return render_template('report.html')
 
 @app.route('/api/config', methods=['GET'])
+@shared_read
 def get_config():
     conn = get_db()
     rows = conn.execute('SELECT * FROM config').fetchall()
@@ -2120,6 +2168,7 @@ def team_squad(conn, team_id):
         (team_id,)).fetchall()
 
 @app.route('/api/teams', methods=['GET'])
+@shared_read
 def get_teams():
     conn = get_db()
     teams = conn.execute('SELECT * FROM teams').fetchall()
@@ -2196,6 +2245,7 @@ def edit_team():
 
 # ─── Players ───
 @app.route('/api/players', methods=['GET'])
+@shared_read
 def get_players():
     conn = get_db()
     players = conn.execute('SELECT p.*, t.name as team_name FROM players p LEFT JOIN teams t ON p.team_id = t.id').fetchall()
@@ -3764,6 +3814,7 @@ def build_live_report(conn):
 
 
 @app.route('/api/live_data', methods=['GET'])
+@shared_read
 def get_live_data():
     conn = get_db()
     data = build_live_report(conn)
