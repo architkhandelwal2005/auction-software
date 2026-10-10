@@ -2040,6 +2040,17 @@ def block_player(conn, state):
     return None
 
 
+# auction_state keys that are console settings rather than the player on the
+# block: kept when a sale, pass, undo or reset clears the stage.
+STAGE_SETTINGS = ('auction_sport', 'auction_template_mode', 'auction_template', 'draw_category')
+
+
+def clear_stage(c):
+    """Clear the player on the block and their result, keeping the settings."""
+    c.execute('DELETE FROM auction_state WHERE key NOT IN (%s)' % ','.join('?' * len(STAGE_SETTINGS)),
+              STAGE_SETTINGS)
+
+
 def block_category(conn):
     """The category of the player on the block, or None between players."""
     state = {r['key']: r['value'] for r in conn.execute(
@@ -3302,7 +3313,7 @@ def sell_player():
         return jsonify({'error': '%s was just sold by another action. Refresh and try again.' % player['name']}), 409
     c.execute('UPDATE teams SET remaining_budget=remaining_budget-? WHERE id=?', (price, tid))
     # Clear player-specific auction state but preserve stage settings (sport, template mode)
-    c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
+    clear_stage(c)
     # Write SOLD state so Cinematic Stage can show the sold overlay
     c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('auction_status', 'sold')")
     c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_sold_player', ?)", (player['name'],))
@@ -3368,7 +3379,7 @@ def undo_last_sale():
         # a squad correction or allotment only reverts it: the player being
         # auctioned right now stays on the stage.
         if act['action_type'] != 'edit_sale':
-            c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
+            clear_stage(c)
             c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES ("current_player", ?)', (act['player_name'] or '',))
             c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES ("current_player_id", ?)', (str(pid),))
             c.execute('INSERT INTO auction_state (key, value) VALUES ("current_bid", ?)', (str(restored_bid),))
@@ -3401,7 +3412,7 @@ def undo_last_sale():
         c.execute('UPDATE players SET status="unsold", team_id=NULL, sold_price=NULL, sold_at=NULL WHERE id=?', (last['id'],))
 
         # Restore to auction state
-        c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
+        clear_stage(c)
         c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES ("current_player", ?)', (last['name'],))
         c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES ("current_player_id", ?)', (str(last['id']),))
         restored_bid = last['sold_price'] or last['base_price'] or 0
@@ -3524,7 +3535,7 @@ def reset_auction():
     c = conn.cursor()
     c.execute('UPDATE players SET status="unsold", team_id=NULL, sold_price=NULL, sold_at=NULL, team_role=NULL')
     c.execute('UPDATE teams SET remaining_budget=total_budget')
-    c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
+    clear_stage(c)
     c.execute('DELETE FROM action_history')
     conn.commit()
     conn.close()
@@ -4423,7 +4434,7 @@ def pass_player():
 
     c.execute('UPDATE players SET status="passed", team_id=NULL, sold_price=NULL WHERE id=?', (player_id,))
     # Clear current player from stage + write UNSOLD state for Cinematic Stage overlay
-    c.execute("DELETE FROM auction_state WHERE key NOT IN ('auction_sport','auction_template_mode','auction_template')")
+    clear_stage(c)
     c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('auction_status', 'passed')")
     c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_passed_player', ?)", (player['name'],))
     c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_passed_photo', ?)", (player['photo_url'] or '',))

@@ -212,6 +212,7 @@
         </select>
       </div>
       <div class="admin-idle-btns">
+        <select class="admin-team-sel" id="adminDrawCat" title="Category that Spin Draw and Random Draw pick from"></select>
         <button class="admin-btn admin-btn-purple" id="adminSpinBtn">Spin Draw</button>
         <button class="admin-btn admin-btn-amber" id="adminRandomBtn">Random Draw</button>
         <button class="admin-btn admin-btn-blue" id="adminPickBtn">Pick Player</button>
@@ -249,6 +250,7 @@
     <div class="spin-inner">
       <div class="spin-head">
         <span class="spin-title" id="spinTitle">DRAW PLAYER</span>
+        <select class="admin-team-sel spin-cat" id="spinCat" title="Category to draw from"></select>
         <button class="admin-btn admin-btn-gray" id="spinClose">Cancel</button>
       </div>
       <div class="spin-body">
@@ -290,6 +292,7 @@
   </div>
 
   <script src="/static/bidding.js?v={{ asset_v }}"></script>
+  <script src="/static/draw_order.js?v={{ asset_v }}"></script>
   <script src="{{ url_for('static', filename='auction_display.js') }}?v={{ asset_v }}"></script>
 </body>
 </html>

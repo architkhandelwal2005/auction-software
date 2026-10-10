@@ -1811,7 +1811,8 @@ input.admin-bid-amount:focus { border-color: #10b981; background: rgba(16,185,12
   border-radius: 22px;
   box-shadow: 0 40px 120px rgba(0,0,0,.8);
 }
-.spin-head { display: flex; justify-content: space-between; align-items: center; }
+.spin-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.spin-head .spin-cat { margin-left: auto; }
 .spin-title { font-size: 20px; font-weight: 800; letter-spacing: 3px; color: #f1f5f9; }
 .spin-body { display: grid; grid-template-columns: 1fr 300px; gap: 24px; min-height: 0; }
 .spin-stage { position: relative; display: grid; place-items: center; padding: 12px 0; }

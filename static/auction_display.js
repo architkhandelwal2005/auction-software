@@ -1253,6 +1253,8 @@
     const spinConfirm     = $('spinConfirm');
     const spinClose       = $('spinClose');
     const spinResult      = $('spinResult');
+    const adminDrawCat    = $('adminDrawCat');
+    const spinCat         = $('spinCat');
 
     if (!adminPanel) { console.warn('Admin panel elements not found'); return; }
     adminPanel.style.display = 'block';
@@ -1272,6 +1274,10 @@
     let adminTotalPlayers = 0;
     let adminSoldCount = 0;
     let adminCatRules = [];
+    // Category Spin Draw and Random Draw pick from ('' = every category);
+    // static/draw_order.js moves it on when the category runs out.
+    let drawCategory = '';
+    let drawCategoryChangedAt = 0;
 
     /* ═══════════ SOUND ENGINE ═══════════
        Synthesized with the Web Audio API — no sound files. Frequencies and
@@ -1518,6 +1524,8 @@
         adminTeams = data.teams || [];
         adminCatRules = data.category_rules || [];
         adminUnsoldPlayers = (data.unsold_players || []).filter(p => p.status === 'unsold');
+        if (Date.now() - drawCategoryChangedAt > 8000) drawCategory = (data.auction_state || {}).draw_category || '';
+        paintDrawCats();
         const stats = data.stats || {};
         adminTotalPlayers = stats.total || 0;
         adminSoldCount = stats.sold || 0;
@@ -1581,6 +1589,7 @@
         const data = await r.json();
         adminUnsoldPlayers = (data.unsold_players || []).filter(p => p.status === 'unsold');
         adminTeams = data.teams || [];
+        paintDrawCats();
         updateTeamDropdown();
         updateStats();
       } catch(e) {
@@ -1589,14 +1598,55 @@
       }
     }
 
+    /* ── category-wise draws ── */
+    function paintDrawCats() {
+      const cats = DrawOrder.categories(adminUnsoldPlayers, adminCatRules);
+      const html = '<option value="">All categories · ' + adminUnsoldPlayers.length + ' left</option>' +
+        cats.map(c => '<option value="' + esc(c.name) + '">' + esc(DrawOrder.label(c)) + '</option>').join('');
+      [adminDrawCat, spinCat].forEach(sel => {
+        if (!sel) return;
+        if (sel.innerHTML !== html) sel.innerHTML = html;
+        sel.value = drawCategory;
+      });
+    }
+
+    function chooseDrawCategory(cat) {
+      drawCategory = cat || '';
+      drawCategoryChangedAt = Date.now();
+      paintDrawCats();
+      fetch('/api/auction/state', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ draw_category: drawCategory })
+      }).catch(() => toast('Could not save the draw category', 'err'));
+    }
+
+    /* The players the next draw picks from. When the chosen category has run
+       out, moves on to the next one and says so. */
+    function drawPool() {
+      const r = DrawOrder.pool(adminUnsoldPlayers, adminCatRules, drawCategory);
+      if (drawCategory && r.category && r.category !== drawCategory) {
+        toast(drawCategory + ' players are done. Now drawing ' + r.category + '.', 'ok');
+        chooseDrawCategory(r.category);
+      }
+      return r.players;
+    }
+
+    if (adminDrawCat) adminDrawCat.onchange = () => chooseDrawCategory(adminDrawCat.value);
+    if (spinCat) spinCat.onchange = () => {
+      if (spinning) { spinCat.value = drawCategory; return; }
+      chooseDrawCategory(spinCat.value);
+      openSpin('player');
+    };
+
     /* ── random draw ── */
     async function randomDraw() {
       // Use the in-memory player list (kept fresh by background polling) so the
       // draw is instant. Only block on a fetch if we have nothing cached yet.
       if (!adminUnsoldPlayers.length) await refreshPlayers();
       else refreshPlayers();  // refresh in the background, don't make the user wait
-      if (!adminUnsoldPlayers.length) { toast('No unsold players remaining!', 'err'); return; }
-      const pick = adminUnsoldPlayers[Math.floor(Math.random() * adminUnsoldPlayers.length)];
+      const pool = drawPool();
+      if (!pool.length) { toast('No unsold players remaining!', 'err'); return; }
+      const pick = pool[Math.floor(Math.random() * pool.length)];
       playerPickModal.style.display = 'none';
       await putOnBlock(pick);
     }
@@ -1877,13 +1927,15 @@
       spinGo.style.display = '';
       spinConfirm.style.display = 'none';
 
+      if (spinCat) spinCat.style.display = mode === 'player' ? '' : 'none';
       if (mode === 'player') {
-        spinTitle.textContent = 'DRAW PLAYER';
         spinSideTitle.textContent = 'INCLUDE IN DRAW';
         // Use the cached list for an instant wheel; only block if nothing cached.
         if (!adminUnsoldPlayers.length) await refreshPlayers();
         else refreshPlayers();  // background refresh, non-blocking
-        spinItems = adminUnsoldPlayers.map((p, i) => ({
+        const pool = drawPool();
+        spinTitle.textContent = drawCategory ? 'DRAW ' + drawCategory.toUpperCase() : 'DRAW PLAYER';
+        spinItems = pool.map((p, i) => ({
           id: p.id, label: p.name, color: WHEEL_COLORS[i % WHEEL_COLORS.length], raw: p
         }));
       } else {
@@ -1912,6 +1964,7 @@
       }
       spinning = true;
       spinGo.disabled = true;
+      if (spinCat) spinCat.disabled = true;
       spinConfirm.style.display = 'none';
       spinResult.innerHTML = '&nbsp;';
       SFX.draw();
@@ -1928,6 +1981,7 @@
       setTimeout(() => {
         spinning = false;
         spinGo.disabled = false;
+        if (spinCat) spinCat.disabled = false;
         spinWheel.classList.add('spin-hit');
         setTimeout(() => spinWheel.classList.remove('spin-hit'), 900);
         spinResult.textContent = spinWinner.label;

@@ -153,4 +153,22 @@ cols = [r['name'] for r in oc.execute('PRAGMA table_info(players)').fetchall()]
 oc.close()
 check('old auction gains team_role column', 'team_role' in cols, str(cols))
 
+# ── The category draws pick from (static/draw_order.js) is a console setting:
+#    a sale, a pass, an undo or a reset clears the stage but keeps it. ──
+def draw_category():
+    return admin.get('/api/auction/state').get_json().get('draw_category')
+admin.post('/api/auction/state', json={'draw_category': 'Gold'})
+d1 = admin.post('/api/players', json={'name': 'Draw One', 'category': 'Gold', 'base_price': 1}).get_json()['id']
+d2 = admin.post('/api/players', json={'name': 'Draw Two', 'category': 'Gold', 'base_price': 1}).get_json()['id']
+admin.post('/api/auction/state', json={'current_player': 'Draw One', 'current_player_id': str(d1), 'current_bid': 1})
+admin.post('/api/sell_player', json={'player_id': d1, 'team_id': tid, 'sold_price': 1})
+check('draw category kept after a sale', draw_category() == 'Gold', str(draw_category()))
+admin.post('/api/auction/state', json={'current_player': 'Draw Two', 'current_player_id': str(d2), 'current_bid': 1})
+admin.post('/api/action/pass', json={'player_id': d2})
+check('draw category kept after a pass', draw_category() == 'Gold', str(draw_category()))
+admin.post('/api/undo')
+check('draw category kept after an undo', draw_category() == 'Gold', str(draw_category()))
+admin.post('/api/reset')
+check('draw category kept after a reset', draw_category() == 'Gold', str(draw_category()))
+
 print('\nALL CHECKS PASSED' if not check.failed else '\n%d CHECK(S) FAILED' % check.failed)

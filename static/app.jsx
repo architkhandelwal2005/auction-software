@@ -257,12 +257,12 @@ const SpinWheel = ({ items, title, onSelect, onClose }) => {
 
     const toggle = id => {
         if(spinning) return;
-        if(selected.includes(id)){if(selected.length>2)setSelected(selected.filter(i=>i!==id));}
+        if(selected.includes(id)){if(selected.length>1)setSelected(selected.filter(i=>i!==id));}
         else setSelected([...selected,id]);
     };
 
     useEffect(()=>{
-        const cv=canvasRef.current; if(!cv||active.length<2) return;
+        const cv=canvasRef.current; if(!cv||active.length<1) return;
         const ctx=cv.getContext('2d'),sz=cv.width,ctr=sz/2,r=ctr-8,n=active.length,a=2*Math.PI/n;
         ctx.clearRect(0,0,sz,sz);
         active.forEach((item,i)=>{
@@ -282,7 +282,7 @@ const SpinWheel = ({ items, title, onSelect, onClose }) => {
 
     // Reduced by 2 seconds: from 5.5s down to 3.5s
     const spin = () => {
-        if(spinning||active.length<2) return;
+        if(spinning||active.length<1) return;
         SFX.click(); setSpinning(true); setWinner(null);
         const n=active.length,sa=360/n,wi=Math.floor(Math.random()*n),w=active[wi];
         const target=360-(wi*sa)-sa/2;
@@ -310,7 +310,7 @@ const SpinWheel = ({ items, title, onSelect, onClose }) => {
                         <button onClick={()=>onSelect(winner)} className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white px-8 py-3 rounded-full fredoka font-bold text-lg hover:scale-105 transition shadow-lg shadow-green-500/25">✓ Confirm Selection</button>
                     </div>
                 ) : (
-                    <button onClick={spin} disabled={spinning||active.length<2} className={`mt-6 px-12 py-4 rounded-full fredoka font-bold text-xl transition-all ${spinning?'bg-slate-800 text-slate-500 cursor-wait':'bg-gradient-to-r from-yellow-400 via-amber-500 to-orange-500 hover:from-yellow-300 hover:to-orange-400 text-black hover:scale-105 shadow-xl shadow-yellow-500/20'}`}>
+                    <button onClick={spin} disabled={spinning||active.length<1} className={`mt-6 px-12 py-4 rounded-full fredoka font-bold text-xl transition-all ${spinning?'bg-slate-800 text-slate-500 cursor-wait':'bg-gradient-to-r from-yellow-400 via-amber-500 to-orange-500 hover:from-yellow-300 hover:to-orange-400 text-black hover:scale-105 shadow-xl shadow-yellow-500/20'}`}>
                         {spinning?'Spinning Fast (3.5s)... 🎰':'🎰 SPIN THE WHEEL!'}
                     </button>
                 )}
@@ -1796,6 +1796,9 @@ function App() {
     const [stats, setStats] = useState(null);
     const [config, setConfig] = useState({});
     const [catRules, setCatRules] = useState([]);
+    // Category Spin Draw and Random Draw pick from ('' = every category);
+    // static/draw_order.js moves it on when the category runs out.
+    const [drawCategory, setDrawCategory] = useState('');
     const [currentPlayer, setCurrentPlayer] = useState(null);
     const [savedAuctionState, setSavedAuctionState] = useState(null);
     const [currentBid, setCurrentBid] = useState(0);
@@ -1844,6 +1847,7 @@ function App() {
                     if (asData.auction_sport) setAuctionSport(asData.auction_sport);
                     if (asData.auction_template_mode) setTemplateMode(asData.auction_template_mode);
                     if (asData.auction_template) setFixedTemplate(asData.auction_template);
+                    setDrawCategory(asData.draw_category || '');
                 }
             } catch(e) {}
             
@@ -2170,8 +2174,24 @@ function App() {
         }
     };
 
+    const chooseDrawCategory = cat => {
+        setDrawCategory(cat || '');
+        fetch('/api/auction/state', {method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({draw_category: cat || ''})}).catch(()=>{});
+    };
+
+    // The players the next draw picks from; moves on to the next category
+    // once the chosen one has run out.
+    const drawPool = () => {
+        const r = window.DrawOrder.pool(players, catRules, drawCategory);
+        if (drawCategory && r.category && r.category !== drawCategory) chooseDrawCategory(r.category);
+        return r.players;
+    };
+
+    const openPlayerSpin = () => { drawPool(); setWheelMode('player'); setShowWheel(true); };
+
     const drawRandom = () => {
-        const unsold=players.filter(p=>p.status==='unsold');
+        const unsold=drawPool();
         if(!unsold.length){alert('No players left in pool!');return;}
         const pick=unsold[Math.floor(Math.random()*unsold.length)];
         setCurrentPlayer(pick);
@@ -2324,6 +2344,10 @@ function App() {
     const unsoldPlayers = players.filter(p=>p.status==='unsold');
     const soldPlayers = players.filter(p=>p.status==='sold');
     const categoryList = catRules.map(r=>r.category);
+    const drawNow = window.DrawOrder.pool(players, catRules, drawCategory);
+    const drawCats = window.DrawOrder.categories(players, catRules);
+    const wheelItems = wheelMode==='player' ? drawNow.players : teams;
+    const wheelTitle = wheelMode==='player' ? '🎯 Draw ' + (drawNow.category || 'Player') : '🎰 Pick Team';
 
     if(view==='loading') return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="text-center"><div className="text-5xl mb-3 animate-bounce">🏏</div><p className="fredoka text-xl text-slate-400">Loading auction system...</p></div></div>;
     if(view==='chooser') return <AuctionChooser onOpen={enterAuction} />;
@@ -2356,7 +2380,7 @@ function App() {
                 }}
                 onClose={()=>setShowPresetsModal(false)}
             />}
-            {showWheel && <SpinWheel items={wheelMode==='player'?unsoldPlayers:teams} title={wheelMode==='player'?'🎯 Draw Player':'🎰 Pick Team'} onSelect={handleSpinSelect} onClose={()=>setShowWheel(false)} />}
+            {showWheel && <SpinWheel items={wheelItems} title={wheelTitle} onSelect={handleSpinSelect} onClose={()=>setShowWheel(false)} />}
             {showTeamRoster && <TeamRosterModal team={teams.find(t=>t.id===showTeamRoster.id)||showTeamRoster} teams={teams} onChanged={loadData} onClose={()=>setShowTeamRoster(null)} />}
             {showShareModal && <ShareModal teams={teams} onClose={()=>setShowShareModal(false)} />}
 
@@ -2421,7 +2445,7 @@ function App() {
                         <MoreMenu items={[
                             {icon:'fa-gamepad', label:'Open Control Page', onClick:()=>window.open('/control','_blank')},
                             {divider:true},
-                            {icon:'fa-dharmachakra', label:'Spin Draw', onClick:()=>{setWheelMode('player');setShowWheel(true);}},
+                            {icon:'fa-dharmachakra', label:'Spin Draw', onClick:openPlayerSpin},
                             {icon:'fa-shuffle', label:'Random Draw', onClick:drawRandom},
                             {divider:true},
                             {icon:'fa-tags', label:'Bargain Bin Round', onClick:startBargainBin},
@@ -2865,7 +2889,7 @@ function App() {
                 style={{ background: currentTheme.bg, '--accent-rgb': hexToRgb(currentTheme.accent) }}>
         <ArenaAtmosphere theme={currentTheme} />
         <Confetti show={showConfetti} />
-        {showWheel && <SpinWheel items={wheelMode==='player'?unsoldPlayers:teams} title={wheelMode==='player'?'🎯 Draw Player':'🎰 Pick Team'} onSelect={handleSpinSelect} onClose={()=>setShowWheel(false)} />}
+        {showWheel && <SpinWheel items={wheelItems} title={wheelTitle} onSelect={handleSpinSelect} onClose={()=>setShowWheel(false)} />}
         {showTeamRoster && <TeamRosterModal team={teams.find(t=>t.id===showTeamRoster.id)||showTeamRoster} teams={teams} onChanged={loadData} onClose={()=>setShowTeamRoster(null)} />}
         {showShareModal && <ShareModal teams={teams} onClose={()=>setShowShareModal(false)} />}
 
@@ -2995,8 +3019,16 @@ function App() {
                             <span className="text-7xl filter drop-shadow-xl">{currentTheme.emoji}</span>
                         </div>
                         <p className="fredoka uppercase text-sm font-bold tracking-[0.3em] text-slate-500 -mt-4">Waiting for next player</p>
+                        <label className="flex items-center gap-3 text-slate-400 text-xs font-bold uppercase tracking-widest">
+                            Draw from
+                            <select value={drawCategory} onChange={e=>chooseDrawCategory(e.target.value)} title="Category that Spin Draw and Random Draw pick from"
+                                className="bg-slate-900/90 border border-slate-700 rounded-xl px-4 py-2 text-white text-sm font-bold normal-case tracking-normal">
+                                <option value="">All categories · {unsoldPlayers.length} left</option>
+                                {drawCats.map(c => <option key={c.name} value={c.name}>{window.DrawOrder.label(c)}</option>)}
+                            </select>
+                        </label>
                         <div className="flex gap-4">
-                            <button onClick={()=>{setWheelMode('player');setShowWheel(true);}} className="group bg-slate-900/80 backdrop-blur-md border-2 border-slate-700/50 hover:border-white/50 px-10 py-5 rounded-3xl flex items-center gap-4 hover:bg-slate-800 transition shadow-2xl">
+                            <button onClick={openPlayerSpin} className="group bg-slate-900/80 backdrop-blur-md border-2 border-slate-700/50 hover:border-white/50 px-10 py-5 rounded-3xl flex items-center gap-4 hover:bg-slate-800 transition shadow-2xl">
                                 <i className="fa-solid fa-dharmachakra text-3xl group-hover:animate-spin" style={{color: currentTheme.accent}}></i>
                                 <span className="fredoka text-2xl font-bold text-white">Spin Draw</span>
                             </button>
