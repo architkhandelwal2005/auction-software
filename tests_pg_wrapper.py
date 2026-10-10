@@ -49,5 +49,32 @@ except Exception as exc:
 check('a literal % without parameters is not read as a placeholder', ok)
 check('placeholders converted for PostgreSQL', raw.calls[0][0].count('%s') == 1 and raw.calls[0][1] == (5,))
 
+# PostgreSQL returns TIMESTAMP columns as datetime objects where SQLite returns
+# text. End Auction stores the report as JSON; a sold player's sale time once
+# made it fail with a 500, so the auction could not be ended nor its report
+# opened. The report is built here with sale times as datetimes.
+import datetime
+admin = A.app.test_client()
+admin.post('/api/auth/login', json={'role': 'admin', 'password': os.environ.get('ADMIN_PASSWORD', 'admin@123')})
+aid = admin.post('/api/auctions', json={'name': 'PG dates'}).get_json()['auction']['id']
+admin.post('/api/auctions/%d/open' % aid)
+admin.post('/api/auction/go_live', json={})
+tid = admin.post('/api/teams', json={'name': 'Reds', 'total_budget': 100}).get_json()['id']
+pid = admin.post('/api/players', json={'name': 'Asha', 'category': 'A', 'base_price': 1}).get_json()['id']
+admin.post('/api/sell_player', json={'player_id': pid, 'team_id': tid, 'sold_price': 5})
+_live = A.build_live_report
+def pg_dates(conn):
+    report = _live(conn)
+    for p in report['sold_players'] + [q for t in report['teams'] for q in t['players']]:
+        if p.get('sold_at'):
+            p['sold_at'] = datetime.datetime(2026, 10, 10, 20, 15, 0)
+    return report
+A.build_live_report = pg_dates
+r = admin.post('/api/auction/end', json={})
+check('End Auction works when sale times are datetimes', r.status_code == 200 and r.get_json().get('success'), r.get_data(as_text=True)[:120])
+A.build_live_report = _live
+r = admin.get('/api/report/final')
+check('and the report opens', r.status_code == 200 and r.get_json()['report']['sold_players'][0]['name'] == 'Asha', r.get_data(as_text=True)[:120])
+
 print('\nALL CHECKS PASSED' if not check.failed else '\n%d CHECK(S) FAILED' % check.failed)
 sys.exit(1 if check.failed else 0)

@@ -333,8 +333,14 @@ def _media_local(path):
 def _media_write(path, data):
     local = _media_local(path)
     os.makedirs(os.path.dirname(local), exist_ok=True)
-    with open(local, 'wb') as fh:
+    # Written aside and moved into place in one step: after a restart several
+    # screens and the background sync restore the same photo at once, and a
+    # request must never serve a file still being written (browsers keep a
+    # photo for a day, so a half-written one stayed broken).
+    tmp = '%s.%s.part' % (local, uuid.uuid4().hex[:8])
+    with open(tmp, 'wb') as fh:
         fh.write(data)
+    os.replace(tmp, local)
 
 
 def _media_mark_backed(path):
@@ -1589,9 +1595,12 @@ def end_auction():
 
     purge_after = datetime.datetime.now() + datetime.timedelta(days=RETENTION_DAYS)
     reg = get_registry_db()
+    # PostgreSQL returns sale times as datetime objects (SQLite as text), and
+    # json.dumps refuses them: on the live site End Auction failed with a 500
+    # and the report stayed locked. Stored as text, the same as SQLite's.
     reg.execute("UPDATE %s SET status = 'ended', ended_at = ?, purge_after = ?, report_json = ? "
                 'WHERE id = ?' % _registry_table(),
-                (datetime.datetime.now(), purge_after, json.dumps(report), g.auction_id))
+                (datetime.datetime.now(), purge_after, json.dumps(report, default=str), g.auction_id))
     reg.commit()
     return jsonify({'success': True, 'purge_after': str(purge_after),
                     'retention_days': RETENTION_DAYS})

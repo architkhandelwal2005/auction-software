@@ -98,6 +98,31 @@ check('and its URL answers 404', fetch(url)[0] == 404)
 
 check('paths cannot leave the media folder', fetch('/media/../app.py')[0] == 404)
 
+# After a restart, screens ask for a photo while another request is still
+# writing it back: they get the whole file, never the half written so far.
+import threading, time as _time
+BIG = PNG + b'\x00' * 200000
+gpath = '%d/players/race.png' % aid
+BUCKET[gpath] = BIG
+_real_open = open
+def slow_open(file, mode='r', *a, **k):
+    fh = _real_open(file, mode, *a, **k)
+    if 'w' in mode and 'race.png' in str(file):
+        real_write = fh.write
+        def write(data):
+            real_write(data[:len(data) // 2]); fh.flush()
+            _time.sleep(0.5)
+            return real_write(data[len(data) // 2:])
+        fh.write = write
+    return fh
+A.open = slow_open
+writer = threading.Thread(target=fetch, args=('/media/' + gpath,))
+writer.start(); _time.sleep(0.2)
+A.open = _real_open
+code, body = fetch('/media/' + gpath)
+writer.join()
+check('a photo being restored is never served half-written', code == 200 and body == BIG, '%d of %d bytes' % (len(body), len(BIG)))
+
 # A player's photo uploaded as a PDF: the picture inside is used.
 from PIL import Image as _Img
 _buf = io.BytesIO(); _Img.new('RGB', (40, 50), (200, 30, 30)).save(_buf, 'PDF')
