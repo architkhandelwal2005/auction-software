@@ -2051,7 +2051,8 @@ function App() {
         if (teamBusy) return;
         setTeamBusy(true);
         try {
-            await fetch('/api/teams/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:editTeam.id,name:editTeam.name,total_budget:parseFloat(editTeam.total_budget),color:editTeam.color})});
+            const r = await fetch('/api/teams/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:editTeam.id,name:editTeam.name,total_budget:parseFloat(editTeam.total_budget),color:editTeam.color})});
+            if (!r.ok) { const d = await r.json().catch(()=>({})); alert(d.message || d.error || 'Could not save the team.'); return; }
             if (editTeam.logoFile) await uploadTeamLogo(editTeam.id, editTeam.logoFile);
             setEditTeam(null); loadData();
         } finally { setTeamBusy(false); }
@@ -2591,14 +2592,14 @@ function App() {
                                 return <div key={t.id} onClick={()=>setShowTeamRoster(t)}
                                     className="bg-slate-900/80 rounded-2xl p-4 border border-slate-800 cursor-pointer hover:border-amber-500/30 hover:bg-slate-800/60 hover:-translate-y-0.5 transition-all group shadow-lg anim-slideUp"
                                     style={{animationDelay:`${i*0.04}s`}}>
-                                    <div className="flex justify-between items-start mb-3">
-                                        <div className="flex items-center gap-2 flex-wrap">
+                                    <div className="flex justify-between items-start gap-2 mb-3">
+                                        <div className="flex items-center gap-2 min-w-0 flex-1">
                                             <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-md shrink-0" style={{background:t.color||'#3b82f6'}}>
                                                 {t.logo_url ? <img src={t.logo_url} className="w-6 h-6 object-contain" /> : t.name[0]}
                                             </div>
-                                            <h3 className="font-extrabold text-white text-sm truncate">{t.name}</h3>
+                                            <h3 className="font-extrabold text-white text-sm truncate" title={t.name}>{t.name}</h3>
                                         </div>
-                                        <button onClick={e=>{e.stopPropagation();setEditTeam(t);}} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-amber-400 transition p-1">
+                                        <button onClick={e=>{e.stopPropagation();setEditTeam(t);}} title="Edit team" className="shrink-0 opacity-50 group-hover:opacity-100 text-slate-400 hover:text-amber-400 transition p-1">
                                             <i className="fa-solid fa-pen text-xs"></i>
                                         </button>
                                     </div>

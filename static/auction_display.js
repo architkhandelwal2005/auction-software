@@ -798,6 +798,7 @@
       }
       prevPurse.set(t.id, t.remaining_budget);
     });
+    fitTeamPanel();
   }
 
   function paintAll() {
@@ -1124,7 +1125,24 @@
     const clear = panelH ? Math.min(320, Math.round((panelH + 26) / scale)) : 44;
     document.documentElement.style.setProperty('--grid-bottom', clear + 'px');
     fitPlayerCard();
+    fitTeamPanel();
   }
+
+  /* Shrink the teams panel when it is taller than the space beside the
+     player. With eight or more teams, or with the admin controls taking the
+     bottom of the screen, the last teams otherwise sat under the controls or
+     off the stage (8 teams on a laptop: the eighth was hidden). */
+  function fitTeamPanel() {
+    const panel = document.querySelector('.purse-panel');
+    const grid = panel && panel.parentElement;
+    if (!panel || !grid) return;
+    panel.style.zoom = '';
+    // The panel can be stretched to the grid and clip its own rows, so its
+    // content height (scrollHeight) is what must fit.
+    const avail = grid.clientHeight, need = Math.max(panel.offsetHeight, panel.scrollHeight);
+    if (avail && need > avail) panel.style.zoom = (avail / need).toFixed(3);
+  }
+  window.__fitTeamPanel = fitTeamPanel;
 
   /* Shrink the player card if it is taller/wider than its zone, so the photo
      stays fully visible and vertically centred for every template and any
@@ -1155,6 +1173,8 @@
   window.__fitStage = fitStage;
 
   window.addEventListener('resize', fitStage);
+  // Web fonts change text widths (and so how team names wrap): fit again once loaded.
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitStage);
   if (sportSelect) sportSelect.addEventListener('change', e => setSport(e.target.value));
   if (templateSelect) templateSelect.addEventListener('change', e => setTemplate(e.target.value));
   if (bgSelect) bgSelect.addEventListener('change', e => { bgManual = true; setBackground(e.target.value); });
