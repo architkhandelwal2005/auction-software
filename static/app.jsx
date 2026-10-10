@@ -2255,19 +2255,33 @@ function App() {
         setCurrentPlayer(null);
     };
 
+    // Auction a passed player again, at half price or at full price (their
+    // category's base price; the server works it out and returns it).
     const handleRevive = async (player, halfPrice) => {
-        if(halfPrice) {
-            await fetch('/api/action/revive', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({player_id: player.id, half_price: true})});
-        } else {
-            await fetch('/api/action/revive', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({player_id: player.id, half_price: false})});
-        }
+        const r = await fetch('/api/action/revive', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({player_id: player.id, half_price: !!halfPrice})});
+        const d = await r.json().catch(()=>({}));
+        if(!r.ok) { alert(d.error || 'Could not bring the player back.'); return; }
         await loadData();
         // Automatically put them on the block
-        const updatedPlayer = { ...player, base_price: halfPrice ? BidRules.round(player.base_price / 2) : player.base_price, status: 'unsold' };
+        const base = d.players && d.players[0] ? d.players[0].base_price : player.base_price;
+        const updatedPlayer = { ...player, base_price: base, status: 'unsold' };
         setCurrentPlayer(updatedPlayer);
         setCurrentBid(updatedPlayer.base_price || 0);
         setView('auction');
         saveAuctionState(updatedPlayer, updatedPlayer.base_price || 0);
+    };
+
+    // Every passed player back into the pool at full price, to come up in
+    // the draws again.
+    const reviveAllPassed = async () => {
+        const n = players.filter(p => p.status === 'passed').length;
+        if(!n) { alert('No passed players to bring back.'); return; }
+        if(!confirm(`Bring all ${n} passed player(s) back into the pool at full base price?`)) return;
+        const r = await fetch('/api/action/revive', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({all_passed: true})});
+        const d = await r.json().catch(()=>({}));
+        if(!r.ok) { alert(d.error || 'Could not bring the players back.'); return; }
+        await loadData();
+        alert(`${d.count} player(s) are back in the pool. To draw them now, choose their category in "Draw from", or use Pick Player.`);
     };
 
     const handleReviveSpin = async (player) => {
@@ -2449,6 +2463,7 @@ function App() {
                             {icon:'fa-shuffle', label:'Random Draw', onClick:drawRandom},
                             {divider:true},
                             {icon:'fa-tags', label:'Bargain Bin Round', onClick:startBargainBin},
+                            {icon:'fa-rotate-left', label:'Bring Back Passed Players', onClick:reviveAllPassed},
                             {icon:'fa-share-nodes', label:'Share Links', onClick:()=>setShowShareModal(true)},
                             {icon:'fa-rotate', label:'Re-sync from Sheet', onClick:resyncSheet},
                             {icon:'fa-images', label:'Fetch Photos from Drive', onClick:fetchDrivePhotos},
@@ -2756,13 +2771,18 @@ function App() {
                                 </div>
                             </div>
                             {p.status==='passed' && (
-                                <div className="absolute inset-0 bg-slate-900/95 backdrop-blur flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-2 rounded-xl border border-red-500/50 p-2 z-10">
-                                    <button onClick={()=>handleRevive(p, true)} className="bg-amber-600 hover:bg-amber-500 text-white text-[0.6rem] font-bold px-2 py-1 rounded w-full flex justify-center items-center gap-1 shadow-lg">
-                                        <i className="fa-solid fa-gavel"></i> Auction @ 50%
+                                <div className="absolute inset-0 bg-slate-900/95 backdrop-blur flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-1 rounded-xl border border-red-500/50 p-1.5 z-10">
+                                    <button onClick={()=>handleRevive(p, false)} className="bg-green-600 hover:bg-green-500 text-white text-[0.6rem] font-bold px-2 py-0.5 rounded w-full flex justify-center items-center gap-1 shadow-lg" title="Back on the block at full base price">
+                                        <i className="fa-solid fa-rotate-left"></i> Auction Again
                                     </button>
-                                    <button onClick={()=>handleReviveSpin(p)} className="bg-purple-600 hover:bg-purple-500 text-white text-[0.6rem] font-bold px-2 py-1 rounded w-full flex justify-center items-center gap-1 shadow-lg">
-                                        <i className="fa-solid fa-dharmachakra"></i> Random Spin
-                                    </button>
+                                    <div className="flex gap-1 w-full">
+                                        <button onClick={()=>handleRevive(p, true)} className="bg-amber-600 hover:bg-amber-500 text-white text-[0.6rem] font-bold px-1 py-0.5 rounded flex-1 flex justify-center items-center gap-1 shadow-lg" title="Back on the block at half the base price">
+                                            <i className="fa-solid fa-gavel"></i> @ 50%
+                                        </button>
+                                        <button onClick={()=>handleReviveSpin(p)} className="bg-purple-600 hover:bg-purple-500 text-white text-[0.6rem] font-bold px-1 py-0.5 rounded flex-1 flex justify-center items-center gap-1 shadow-lg" title="Spin a team to get this player at base price">
+                                            <i className="fa-solid fa-dharmachakra"></i> Spin
+                                        </button>
+                                    </div>
                                 </div>
                             )}
 

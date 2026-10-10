@@ -49,6 +49,14 @@ except Exception as exc:
 check('a literal % without parameters is not read as a placeholder', ok)
 check('placeholders converted for PostgreSQL', raw.calls[0][0].count('%s') == 1 and raw.calls[0][1] == (5,))
 
+# The connection pool fails at once when empty, so it must hold two
+# connections (registry + auction) for every gunicorn thread. At 10 it ran
+# out during the live auction and putting a player on the block failed.
+import re
+threads = int(re.search(r'--threads\s+(\d+)', open('Procfile').read()).group(1))
+check('connection pool covers every request thread', A.PG_POOL_MAX >= 2 * threads,
+      'pool %d, threads %d' % (A.PG_POOL_MAX, threads))
+
 # PostgreSQL returns TIMESTAMP columns as datetime objects where SQLite returns
 # text. End Auction stores the report as JSON; a sold player's sale time once
 # made it fail with a 500, so the auction could not be ended nor its report

@@ -120,4 +120,20 @@ check('category without its own rule uses the shared rule', out['other'] == [0.3
 check('auction set up before pricing keeps its single increment', out['legacy'] == ['same', 15], str(out['legacy']))
 check('screen money format', out['fmt'] == ['₹50K', '₹1L', '₹1.25L', '₹30K', '₹0L'], str(out['fmt']))
 
+# ── Passed players auctioned again: at half price for a bargain round, or at
+#    full price, which gives a halved player their category's price back. ──
+plat_a, gold_d = players()['Plat A']['id'], players()['Gold D']['id']
+admin.post('/api/action/pass', json={'player_id': plat_a})
+r = admin.post('/api/action/revive', json={'player_id': plat_a, 'half_price': True}).get_json()
+check('half-price revive halves', players()['Plat A']['base_price'] == 0.5 and r['players'][0]['base_price'] == 0.5, str(r))
+admin.post('/api/action/pass', json={'player_id': plat_a})
+admin.post('/api/action/pass', json={'player_id': gold_d})
+r = admin.post('/api/action/revive', json={'all_passed': True}).get_json()
+ps = players()
+check('bring back all passed: both back in the pool', r['count'] == 2 and ps['Plat A']['status'] == 'unsold' and ps['Gold D']['status'] == 'unsold', str(r))
+check('full price restores the category price', ps['Plat A']['base_price'] == 1, str(ps['Plat A']['base_price']))
+check('a player priced above their category keeps it', ps['Gold D']['base_price'] == 2, str(ps['Gold D']['base_price']))
+check('nothing passed: nothing brought back', admin.post('/api/action/revive', json={'all_passed': True}).get_json()['count'] == 0)
+check('revive needs a player', admin.post('/api/action/revive', json={}).status_code == 400)
+
 print('\nALL CHECKS PASSED' if not check.failed else '\n%d CHECK(S) FAILED' % check.failed)

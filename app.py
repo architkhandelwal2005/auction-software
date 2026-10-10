@@ -795,11 +795,18 @@ def inject_asset_version():
 # connect to a remote DB costs ~0.5s). This is the single biggest speed win for
 # the deployed/cloud app. Each gunicorn worker gets its own small pool.
 _pg_pool = None
+PG_POOL_MAX = 2 * 16
 def _get_pg_pool():
     global _pg_pool
     if _pg_pool is None:
         import psycopg2.pool
-        _pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 10, DATABASE_URL)
+        # A request holds up to two connections (the registry and its
+        # auction), and gunicorn runs 16 request threads (Procfile and Render's
+        # start command). The pool fails at once rather than waiting when it is
+        # empty, so it must cover every thread: at 10, a burst of screens
+        # polling together exhausted it and putting a player on the block
+        # failed during the live auction.
+        _pg_pool = psycopg2.pool.ThreadedConnectionPool(1, PG_POOL_MAX, DATABASE_URL)
     return _pg_pool
 
 class _PGOwnedConn(_PGConn):
@@ -4445,25 +4452,40 @@ def pass_player():
 
 @app.route('/api/action/revive', methods=['POST'])
 def revive_player():
+    """Put passed players back in the pool to be auctioned again: one
+    (player_id) or every passed player (all_passed).
+
+    half_price halves the base price, for a bargain round. Otherwise the
+    player goes back at full price: their category's base price, so a player
+    halved in an earlier round gets it back, or their own price when that is
+    higher (a player priced above their category keeps it). Auctions that
+    never set category prices keep the player's price as it is."""
     data = request.json or {}
-    player_id = data.get('player_id')
     half_price = data.get('half_price', False)
-    
-    if not player_id:
-        return jsonify({'error': 'Player ID required'}), 400
-        
     conn = get_db()
     c = conn.cursor()
-    if half_price:
-        row = c.execute('SELECT base_price FROM players WHERE id=?', (player_id,)).fetchone()
-        half = round(float((row['base_price'] if row else 0) or 0) / 2.0, 2)
-        c.execute('UPDATE players SET status="unsold", base_price = ? WHERE id=?', (half, player_id))
+    if data.get('all_passed'):
+        rows = c.execute("SELECT id, category, base_price FROM players WHERE status = 'passed'").fetchall()
+    elif data.get('player_id'):
+        rows = c.execute('SELECT id, category, base_price FROM players WHERE id = ?', (data['player_id'],)).fetchall()
     else:
-        c.execute('UPDATE players SET status="unsold" WHERE id=?', (player_id,))
+        conn.close()
+        return jsonify({'error': 'Player ID required'}), 400
+    cfg = {r['key']: r['value'] for r in c.execute('SELECT key, value FROM config').fetchall()}
+    pricing = pricing_from_config(cfg) if cfg.get('pricing') else None
+    revived = []
+    for r in rows:
+        base = float(r['base_price'] or 0)
+        if half_price:
+            base = round(base / 2.0, 2)
+        elif pricing:
+            base = max(base, pricing_rule(pricing, r['category'])['base'])
+        c.execute("UPDATE players SET status = 'unsold', base_price = ? WHERE id = ?", (base, r['id']))
+        revived.append({'id': r['id'], 'base_price': base})
     conn.commit()
     conn.close()
     excel_backup_async(g.auction_id)
-    return jsonify({'success': True})
+    return jsonify({'success': True, 'count': len(revived), 'players': revived})
 
 @app.route('/api/action/bargain_bin', methods=['POST'])
 def bargain_bin():
