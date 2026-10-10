@@ -1002,6 +1002,9 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                     color: s.color,
                     auto: true,
                     count: s.count,
+                    // Shown on the category rules step: "Exact" or "Flex (+N extra)".
+                    is_exact: s.is_exact,
+                    remainder: s.remainder,
                     description: s.description,
                 })));
                 // Target squad size = Total Players / Teams. Independent of category
@@ -1444,13 +1447,18 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                     <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-2xl p-4">
                         <div className="flex items-center justify-between gap-4">
                             <div className="flex-1 min-w-0">
-                                <label className="text-xs font-extrabold text-indigo-300 uppercase tracking-wider block mb-1">Target Squad Size (per team)</label>
-                                <p className="text-[0.65rem] text-zinc-400 leading-tight">Total players ÷ teams. Every team must fill this many spots — separate from the category quotas below, which can leave flex slots unassigned.</p>
+                                <label className="text-xs font-extrabold text-indigo-300 uppercase tracking-wider block mb-1">Minimum Squad Size (per team)</label>
+                                <p className="text-[0.65rem] text-zinc-400 leading-tight">Total players ÷ teams. Every team must fill at least this many spots (it may buy more) — separate from the category quotas below, which can leave flex slots unassigned.</p>
                             </div>
                             <input type="number" min="1" className="w-20 bg-zinc-950 border-2 border-indigo-500/50 rounded-xl py-2.5 text-2xl font-bold text-white text-center outline-none focus:border-indigo-400 fredoka shrink-0"
                                 value={targetSquadSize}
                                 onChange={e => { setTargetSquadTouched(true); setTargetSquadSize(parseInt(e.target.value) || 0); }} />
                         </div>
+                        {/* Players that do not divide evenly: some teams end with one more. */}
+                        {numTeams > 0 && uploadedCount % numTeams > 0 && targetSquadSize === Math.floor(uploadedCount / numTeams) &&
+                            <p className="text-[0.7rem] text-indigo-200 font-bold mt-2">
+                                {uploadedCount} players ÷ {numTeams} teams = {targetSquadSize} each, with {uploadedCount % numTeams} left over: {uploadedCount % numTeams} team{uploadedCount % numTeams > 1 ? 's' : ''} can buy a {targetSquadSize + 1}th player. {targetSquadSize} is the minimum, not a limit.
+                            </p>}
                         {(() => {
                             const catMinSum = categories.reduce((s, c) => s + (parseInt(c.per_team_min) || 0), 0);
                             if (catMinSum !== targetSquadSize) {
