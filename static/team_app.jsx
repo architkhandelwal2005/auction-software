@@ -82,7 +82,9 @@ const TeamApp = () => {
     // with what the admin/auctioneer actually enforces on a sale.
     const basePrice = team.common_base_price != null ? team.common_base_price : parseFloat(config.common_base_price || 10);
     const currentSquadSize = team.players ? team.players.length : 0;
-    const remainingSlots = team.needed_players != null ? team.needed_players : 0;
+    // Slots still to fill after the player on the block, and the purse kept
+    // for them: the same figures the server quotes when it refuses a bid.
+    const reservedSlots = team.reserved_spots != null ? team.reserved_spots : 0;
     const reservedFunds = team.reserved_purse != null ? team.reserved_purse : 0;
     const maxBid = team.max_allowed_bid != null ? team.max_allowed_bid : team.remaining_budget;
 
@@ -211,6 +213,14 @@ const TeamApp = () => {
                                         <div className="text-xs font-extrabold text-zinc-500 uppercase tracking-widest mb-1">Your Max Allowed Bid</div>
                                         {maxBid >= (liveData.current_bid || liveData.current_player.base_price) ? (
                                             <div className="text-2xl fredoka font-bold text-emerald-400">{fmtL(maxBid)}</div>
+                                        ) : maxBid >= (liveData.current_player.base_price || 0) ? (
+                                            // The team can bid, just not this high: the bid is over its limit.
+                                            <div>
+                                                <div className="text-2xl fredoka font-bold text-red-500">{fmtL(maxBid)}</div>
+                                                <div className="text-[0.7rem] font-bold text-red-400 flex items-center gap-1.5 mt-0.5">
+                                                    <i className="fa-solid fa-ban"></i> The bid is over your limit
+                                                </div>
+                                            </div>
                                         ) : (
                                             <div className="text-xl fredoka font-bold text-red-500 flex items-center gap-2">
                                                 <i className="fa-solid fa-ban"></i> Out of Funds
@@ -219,7 +229,9 @@ const TeamApp = () => {
                                     </div>
                                     <div className="text-right">
                                         <div className="text-[0.65rem] text-zinc-500 max-w-[200px] leading-tight">
-                                            Calculated by reserving {fmtL(reservedFunds)} for your {remainingSlots} remaining required slots.
+                                            {reservedSlots > 0
+                                                ? `Keeps ${fmtL(reservedFunds)} to fill your other ${reservedSlots} squad ${reservedSlots === 1 ? 'slot' : 'slots'} at base price.`
+                                                : 'No purse held back: your required slots are covered.'}
                                         </div>
                                     </div>
                                 </div>
