@@ -10,6 +10,15 @@ const SFX = { bid(){}, sold(){}, draw(){}, reveal(){}, click(){}, undo(){} };
 // Voice commentary removed by request — no-op stub keeps call sites valid.
 const speakCommentary = () => {};
 
+// A second tap while the first is still being saved is ignored: one click
+// must not sell, pass or undo twice.
+const busyActions = new Set();
+const oneAtATime = (key, fn) => async (...args) => {
+    if (busyActions.has(key)) return;
+    busyActions.add(key);
+    try { return await fn(...args); } finally { busyActions.delete(key); }
+};
+
 // ═══════════════════════════════════════════════
 // SHARED COMPONENTS (Dark Themed)
 // ═══════════════════════════════════════════════
@@ -2158,7 +2167,7 @@ function App() {
 
     // Auction actions
     
-    const startBargainBin = async () => {
+    const startBargainBin = oneAtATime('bargain', async () => {
         if(!confirm('🚨 WARNING: This will take ALL unsold players, slash their base price by 50%, and restock them into the auction pool! Proceed?')) return;
         try {
             const r = await fetch('/api/action/bargain_bin', { method: 'POST' });
@@ -2170,7 +2179,7 @@ function App() {
                 alert(d.error || 'Failed');
             }
         } catch(e) { alert(e); }
-    };
+    });
 
     
     const resumeLiveAuction = () => {
@@ -2254,7 +2263,7 @@ function App() {
     };
 
     
-    const handlePass = async () => {
+    const handlePass = oneAtATime('pass', async () => {
         const res = await fetch('/api/action/pass', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({player_id: currentPlayer.id})});
         if (!res.ok) {
             const j = await res.json().catch(()=>({}));
@@ -2265,7 +2274,7 @@ function App() {
         saveAuctionState(null, 0);
         await loadData();
         setCurrentPlayer(null);
-    };
+    });
 
     // Auction a passed player again, at half price or at full price (their
     // category's base price; the server works it out and returns it).
@@ -2306,7 +2315,7 @@ function App() {
         saveAuctionState(updatedPlayer, updatedPlayer.base_price || 0);
     };
 
-    const handleSold = async (teamId, price = currentBid) => {
+    const handleSold = oneAtATime('sell', async (teamId, price = currentBid) => {
         const chosenTeam = teams.find(t => t.id == teamId);
         if(!chosenTeam) { alert('Please select a franchise!'); return; }
 
@@ -2343,9 +2352,9 @@ function App() {
         speakCommentary(`Sold! ${currentPlayer.name} goes to ${chosenTeam.name} for ${price} Lakhs!`, voiceEnabled);
         saveAuctionState(null, 0);
         await loadData(); setCurrentPlayer(null);
-    };
+    });
 
-    const undoLast = async () => { SFX.undo(); const r=await fetch('/api/undo',{method:'POST'}); const d=await r.json(); if(d.success){alert(`↩️ Undid: ${d.player_name}`);loadData();}else alert(d.error||'Nothing to undo'); };
+    const undoLast = oneAtATime('undo', async () => { SFX.undo(); const r=await fetch('/api/undo',{method:'POST'}); const d=await r.json(); if(d.success){alert(`↩️ Undid: ${d.player_name}`);loadData();}else alert(d.error||'Nothing to undo'); });
     
     const wipeAllAndRestart = async () => {
         const pwd = prompt('⚠️ START NEW AUCTION\n\nThis will permanently wipe ALL players, teams, and settings.\n\nEnter wipe password to confirm:');

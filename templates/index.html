@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="/static/auction_guard.js?v={{ asset_v }}" data-auction="{{ auction_pin }}"></script>
 <script>
 window.onerror = function(msg, url, line, col, error) {
     fetch('/log_error', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({msg: msg, line: line, col: col}) });

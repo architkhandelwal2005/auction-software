@@ -1412,10 +1412,13 @@
       updateTeamDropdown();          // affordability labels track the new bid
       clearTimeout(bidPostTimer);
       bidPostTimer = setTimeout(async () => {
+        if (!adminPlayer) return;     // sold or passed meanwhile: nothing to bid on
         try {
           await fetch('/api/auction/state', {
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({
+              // No id (an older stage state): sent without, so not checked.
+              for_player_id: adminPlayer.id != null ? String(adminPlayer.id) : undefined,
               current_bid: adminBid,
               bidder_team_id: adminBidder ? String(adminBidder.id) : '',
               bidder_team_name: adminBidder ? adminBidder.name : '',
@@ -1686,8 +1689,19 @@
       buildPlayerList('');
     }
 
+    /* A second tap while the first is still being saved is ignored: one click
+       must not sell, pass or undo twice. */
+    function oneAtATime(fn) {
+      let busy = false;
+      return async function () {
+        if (busy) return;
+        busy = true;
+        try { return await fn.apply(this, arguments); } finally { busy = false; }
+      };
+    }
+
     /* ── undo last action ── */
-    async function undoLast() {
+    const undoLast = oneAtATime(async function () {
       try {
         SFX.undo();
         const r = await fetch('/api/undo', { method: 'POST' });
@@ -1703,7 +1717,7 @@
       } catch(e) {
         toast('Undo failed', 'err');
       }
-    }
+    });
 
     /* ── sport / template selectors ── */
     // Only templates that actually exist for a sport are offered
@@ -1791,7 +1805,7 @@
     if (adminUndoBtn2) adminUndoBtn2.onclick = undoLast;
 
     // PASS
-    if (adminPassBtn) adminPassBtn.onclick = async () => {
+    if (adminPassBtn) adminPassBtn.onclick = oneAtATime(async () => {
       if (!adminPlayer) return;
       if (!adminPlayer.id) { toast('Cannot pass — player ID unknown', 'err'); return; }
       try {
@@ -1807,10 +1821,10 @@
       } catch(e) {
         toast('Pass failed: ' + e.message, 'err');
       }
-    };
+    });
 
     // SOLD
-    if (adminSoldBtn) adminSoldBtn.onclick = async () => {
+    if (adminSoldBtn) adminSoldBtn.onclick = oneAtATime(async () => {
       if (!adminPlayer) return;
       const teamId = adminTeamSel.value;
       if (!teamId) { toast('Select a team first!', 'err'); return; }
@@ -1848,7 +1862,7 @@
       } catch(e) {
         toast('Not sold. ' + e.message, 'err');
       }
-    };
+    });
 
     // Next Player — default is the spin wheel, not the search/select list.
     if (adminNextBtn) adminNextBtn.onclick = async () => {

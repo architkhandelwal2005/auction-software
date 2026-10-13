@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Auction Control</title>
+    <script src="/static/auction_guard.js?v={{ asset_v }}" data-auction="{{ auction_pin }}"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -31,6 +32,14 @@
 
         const initials = (n) => String(n||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase() || '?';
         const post = (url, body) => fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{}) });
+        // A second tap while the first is still being saved is ignored: one click
+        // must not sell, pass or undo twice.
+        const busyActions = new Set();
+        const oneAtATime = (key, fn) => async (...args) => {
+            if (busyActions.has(key)) return;
+            busyActions.add(key);
+            try { return await fn(...args); } finally { busyActions.delete(key); }
+        };
 
         function Control() {
             const [data, setData] = useState(null);        // /api/live_data
@@ -86,14 +95,14 @@
             const raise = (t) => {
                 const nb = BidRules.up(rule, bid);
                 local.current.bid = nb; local.current.leaderId = t.id; rerender();
-                post('/api/auction/state', { current_bid: nb, bidder_team_id: String(t.id), bidder_team_name: t.name, bidder_team_color: t.color || '#3b82f6' });
+                post('/api/auction/state', { for_player_id: cur ? String(cur.id) : undefined, current_bid: nb, bidder_team_id: String(t.id), bidder_team_name: t.name, bidder_team_color: t.color || '#3b82f6' });
             };
             const lower = () => {
                 const nb = Math.max(basePrice, BidRules.down(rule, bid));
                 local.current.bid = nb; rerender();
-                post('/api/auction/state', { current_bid: nb, bidder_team_id: leader?String(leader.id):'', bidder_team_name: leader?leader.name:'', bidder_team_color: leader?(leader.color||''):'' });
+                post('/api/auction/state', { for_player_id: cur ? String(cur.id) : undefined, current_bid: nb, bidder_team_id: leader?String(leader.id):'', bidder_team_name: leader?leader.name:'', bidder_team_color: leader?(leader.color||''):'' });
             };
-            const sell = async () => {
+            const sell = oneAtATime('sell', async () => {
                 if (!cur) { alert('No player is on the block.'); return; }
                 if (!leader) { alert('Tap a franchise first to set the winning bid.'); return; }
                 const res = await post('/api/sell_player', { player_id: cur.id, team_id: parseInt(leader.id), sold_price: bid });
@@ -101,15 +110,15 @@
                 if (!res.ok || j.error) { alert('Sale rejected: ' + (j.message || j.error || 'Unknown error')); await load(); return; }
                 await post('/api/auction/state', { current_player:'', current_bid:0, category:'', base_price:0, photo_url:'', bidder_team_id:'', bidder_team_name:'', bidder_team_color:'' });
                 local.current = { player:null, bid:null, leaderId:null }; await load();
-            };
-            const pass = async () => {
+            });
+            const pass = oneAtATime('pass', async () => {
                 if (!cur) return;
                 if (!confirm('Mark this player UNSOLD / passed?')) return;
                 const res = await post('/api/action/pass', { player_id: cur.id });
                 if (!res.ok) { const j = await res.json().catch(()=>({})); alert('Pass failed: ' + (j.message || j.error || ('HTTP ' + res.status))); return; }
                 await post('/api/auction/state', { current_player:'', current_bid:0, category:'', base_price:0, photo_url:'', bidder_team_id:'', bidder_team_name:'', bidder_team_color:'' });
                 local.current = { player:null, bid:null, leaderId:null }; await load();
-            };
+            });
             const draw = async (pick) => {
                 const p = pick || (unsold.length ? unsold[Math.floor(Math.random()*unsold.length)] : null);
                 if (!p) { alert('No players left in the pool.'); return; }
@@ -117,7 +126,7 @@
                 await post('/api/auction/state', { current_player: p.name, current_player_id: String(p.id), current_bid: p.base_price||0, category: p.category||'', base_price: p.base_price||0, photo_url: p.photo_url||'', bidder_team_id:'', bidder_team_name:'', bidder_team_color:'' });
                 await load();
             };
-            const undo = async () => { if(!confirm('Undo the last sale?')) return; await post('/api/undo'); local.current={player:null,bid:null,leaderId:null}; await load(); };
+            const undo = oneAtATime('undo', async () => { if(!confirm('Undo the last sale?')) return; await post('/api/undo'); local.current={player:null,bid:null,leaderId:null}; await load(); });
 
             return (
                 <div className="min-h-screen flex flex-col max-w-3xl mx-auto">

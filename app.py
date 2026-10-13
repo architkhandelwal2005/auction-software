@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for, g
+from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for, g, abort, has_request_context
 import sqlite3, os, webbrowser, csv, io, uuid, json, re, threading, datetime, functools, time, hashlib
 import urllib.request as _ureq
 import urllib.error as _uerr
@@ -150,7 +150,17 @@ def archive_excel_backup(auction_id, reason='archive'):
     except Exception as e:
         print(f'[Excel Backup] archive failed: {e}', flush=True)
 
+_EXCEL_BACKUP_LOCK = threading.Lock()
+
 def _write_excel_backup(auction_id):
+    # Two changes in quick succession start two of these. One at a time, each
+    # reading the auction only once it has the lock, so the later snapshot is
+    # also the one written last; saved beside the backup and swapped in, so
+    # the file is never half-written.
+    with _EXCEL_BACKUP_LOCK:
+        _save_excel_backup(auction_id)
+
+def _save_excel_backup(auction_id):
     try:
         import openpyxl
         conn = open_auction_conn(auction_id)
@@ -193,7 +203,10 @@ def _write_excel_backup(auction_id):
                 length = max((len(str(c.value)) for c in col_cells if c.value is not None), default=10)
                 ws.column_dimensions[col_cells[0].column_letter].width = min(40, max(10, length + 2))
 
-        wb.save(excel_backup_path(auction_id))
+        path = excel_backup_path(auction_id)
+        saving = path[:-len('.xlsx')] + '.saving.xlsx'
+        wb.save(saving)
+        os.replace(saving, path)
     except Exception as e:
         print(f'[Excel Backup] failed: {e}', flush=True)
 
@@ -718,9 +731,12 @@ def _hydrate_drive_photos(auction_id):
         done = linked = failed = 0
         for row in rows:
             local = download_drive_photo(row['photo_url'], auction_id, row['id'])
+            # Each update applies only while the player still has the link
+            # that was downloaded: a photo the admin uploaded meanwhile wins.
             if local:
                 cur.execute('UPDATE players SET photo_url=' + placeholder +
-                            ' WHERE id=' + placeholder, (local, row['id']))
+                            ' WHERE id=' + placeholder + ' AND photo_url=' + placeholder,
+                            (local, row['id'], row['photo_url']))
                 conn.commit()
                 done += 1
             else:
@@ -730,7 +746,8 @@ def _hydrate_drive_photos(auction_id):
                 direct = drive_direct_url(row['photo_url'])
                 if direct and direct != row['photo_url']:
                     cur.execute('UPDATE players SET photo_url=' + placeholder +
-                                ' WHERE id=' + placeholder, (direct, row['id']))
+                                ' WHERE id=' + placeholder + ' AND photo_url=' + placeholder,
+                                (direct, row['id'], row['photo_url']))
                     conn.commit()
                     linked += 1
                 else:
@@ -788,7 +805,8 @@ def _asset_version():
 
 @app.context_processor
 def inject_asset_version():
-    return {'asset_v': _asset_version()}
+    # auction_pin: the auction a page was opened for (static/auction_guard.js).
+    return {'asset_v': _asset_version(), 'auction_pin': g.get('auction_id') or ''}
 
 # ── PostgreSQL connection pool ──
 # Reuse warm connections instead of opening a fresh one per request (a fresh
@@ -980,7 +998,47 @@ def get_db():
             g.db.row_factory = sqlite3.Row
             g.db.execute("PRAGMA foreign_keys = ON")
         upgrade_auction_schema(g.db, auction_id)
+        if has_request_context() and request.endpoint in TAKES_TURNS:
+            wait_turn(g.db, auction_id)
     return g.db
+
+
+def wait_turn(conn, auction_id):
+    """Hold this auction's turn until the request commits or ends (see
+    TAKES_TURNS)."""
+    try:
+        if USE_PG:
+            # A transaction lock: released by the commit, or by the rollback
+            # every request ends with, so it can never be left held.
+            conn.execute("SET LOCAL lock_timeout = '20s'")
+            conn.execute('SELECT pg_advisory_xact_lock(?, ?)', (_TURN_LOCK_SPACE, int(auction_id)))
+        else:
+            if conn.in_transaction:
+                conn.commit()
+            conn.execute('BEGIN IMMEDIATE')   # waits up to the connection's 20s timeout
+    except Exception as exc:
+        # Waited 20s: something is holding the auction far longer than any
+        # change takes. Nothing was changed; the screen can simply try again.
+        if not USE_PG and 'locked' not in str(exc):
+            raise
+        if USE_PG and getattr(exc, 'pgcode', None) != '55P03':   # lock_not_available
+            raise
+        conn.rollback()
+        abort(app.response_class(json.dumps({
+            'error': 'busy',
+            'message': 'Another change to this auction is still being saved. Try again in a moment.'}),
+            status=503, mimetype='application/json'))
+    # The auction may have ended while this waited for its turn.
+    row = auction_row(auction_id)
+    release_registry_db()
+    if row is not None:
+        g.auction = dict(row)
+        if g.auction['status'] in ('ended', 'purged') and request.endpoint in MUTATING_ENDPOINTS:
+            abort(app.response_class(json.dumps({
+                'error': 'auction_ended',
+                'message': 'This auction has ended and is read-only. Reopen it to make changes.'}),
+                status=403, mimetype='application/json'))
+
 
 def release_registry_db():
     """Give the request's registry connection back before the request ends."""
@@ -1344,6 +1402,19 @@ MUTATING_ENDPOINTS = {
     'import_from_sheet', 'resync_sheet', 'apply_sheet_changes',
 }
 
+# Changes to one auction take turns. A change reads, decides, then writes: a
+# sale checks the team's purse, an undo reads the last action, a pass checks
+# the player is still unsold. Two at once (a double tap, the stage and a phone
+# both in use) would each decide on what the other is about to change: two
+# sales passing one purse check, one undo refunding twice. Each waits for the
+# one before it to be saved, then reads. Screens only reading never wait.
+# Uploads are left out: they write one row, and hold no turn while a file
+# travels to storage.
+TAKES_TURNS = (MUTATING_ENDPOINTS | {'end_auction'}) - {
+    'upload_photo', 'upload_banner', 'upload_org_logo', 'upload_sponsor_logo',
+    'upload_team_logo', 'fetch_drive_photos'}
+_TURN_LOCK_SPACE = 0x41554354   # "AUCT": PostgreSQL advisory locks for auctions
+
 
 def live_auction_row():
     conn = get_registry_db()
@@ -1386,6 +1457,16 @@ def resolve_auction():
     # the registry. Return that connection now, so a request holds one
     # connection while it works rather than two.
     release_registry_db()
+
+    # A page sends the auction it was opened for (static/auction_guard.js).
+    # Opening another auction in a second tab moves this browser's session to
+    # it: a sale from the first tab would land in the wrong auction, so it is
+    # refused instead, and the page reloads.
+    pinned = request.headers.get('X-Auction-Id')
+    if pinned and pinned != str(g.auction_id):
+        return jsonify({'error': 'auction_switched', 'notify': bool(session.get('auction_id')),
+                        'message': '"%s" was opened in another tab of this browser, so this page '
+                                   'now reloads onto it. Nothing was changed.' % g.auction['name']}), 409
 
     if g.auction['status'] in ('ended', 'purged') and endpoint in MUTATING_ENDPOINTS:
         return jsonify({'error': 'auction_ended',
@@ -1476,6 +1557,14 @@ def live_snapshot():
         rev = hashlib.sha1(app.json.dumps(data).encode()).hexdigest()[:16]
         return full, rev, app.json.dumps({'rev': rev, 'auction_state': state}).encode()
     return _shared((g.auction_id, '__live__'), build)
+
+
+@app.after_request
+def name_the_auction(response):
+    # The auction this answer is about, so a page can keep to it.
+    if g.get('auction_id') and request.path.startswith('/api/'):
+        response.headers['X-Auction-Id'] = str(g.auction_id)
+    return response
 
 
 @app.after_request
@@ -1718,9 +1807,14 @@ def end_auction():
     if g.auction['status'] in ('ended', 'purged'):
         return jsonify({'success': True, 'already_ended': True})
 
+    # Waits for a change still being saved, and rereads the status. The turn
+    # is held until the request ends, past the registry update below: a sale
+    # waiting for it then finds the auction ended, rather than slipping in
+    # after the report was built.
     conn = get_db()
+    if g.auction['status'] in ('ended', 'purged'):
+        return jsonify({'success': True, 'already_ended': True})
     report = build_final_report(conn, g.auction)
-    conn.close()
 
     purge_after = datetime.datetime.now() + datetime.timedelta(days=RETENTION_DAYS)
     reg = get_registry_db()
@@ -3384,9 +3478,26 @@ def get_auction_state():
 
 @app.route('/api/auction/state', methods=['POST'])
 def set_auction_state():
-    data = request.json
+    data = dict(request.json or {})
+    # A bid names the player it was made for. One that arrives after that
+    # player was sold or replaced (a slow phone, a second screen) is refused,
+    # so it can never land on the next player.
+    bid_for = data.pop('for_player_id', None)
     conn = get_db()
     c = conn.cursor()
+    if bid_for is not None and 'current_player' not in data:
+        on_block = {r['key']: r['value'] for r in c.execute(
+            "SELECT key, value FROM auction_state WHERE key IN ('current_player', 'current_player_id')").fetchall()}
+        if not on_block.get('current_player') or str(on_block.get('current_player_id') or '') != str(bid_for):
+            conn.rollback()
+            return jsonify({'error': 'stale_bid',
+                            'message': 'That bid was for a player no longer on the block.'}), 409
+    # Nor does a late request put a player back on the block after their sale.
+    if str(data.get('current_player_id') or '').isdigit():
+        row = c.execute('SELECT name, status FROM players WHERE id = ?', (int(data['current_player_id']),)).fetchone()
+        if row and row['status'] == 'sold':
+            conn.rollback()
+            return jsonify({'error': 'already_sold', 'message': '%s is already sold.' % row['name']}), 409
     for k, v in data.items():
         c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES (?, ?)', (k, str(v)))
     # Clear sold/passed overlay and any previous leading bidder when a new
@@ -4594,6 +4705,13 @@ def pass_player():
     if not player:
         conn.close()
         return jsonify({'error': 'Player not found'}), 404
+    # Passing a sold player would free them while their team stays charged.
+    if player['status'] == 'sold':
+        conn.close()
+        return jsonify({'error': '%s is already sold.' % player['name']}), 409
+    if player['status'] == 'passed':   # a second tap: already done
+        conn.close()
+        return jsonify({'success': True, 'player_name': player['name'], 'already': True})
 
     c.execute('''INSERT INTO action_history
         (action_type, player_id, player_name, old_status, new_status, base_price, category, photo_url)
@@ -4629,7 +4747,10 @@ def revive_player():
     if data.get('all_passed'):
         rows = c.execute("SELECT id, category, base_price FROM players WHERE status = 'passed'").fetchall()
     elif data.get('player_id'):
-        rows = c.execute('SELECT id, category, base_price FROM players WHERE id = ?', (data['player_id'],)).fetchall()
+        # Still passed: a sold player brought back would be free while their
+        # team stays charged, and a second tap would halve the price again.
+        rows = c.execute("SELECT id, category, base_price FROM players WHERE id = ? AND status = 'passed'",
+                         (data['player_id'],)).fetchall()
     else:
         conn.close()
         return jsonify({'error': 'Player ID required'}), 400
