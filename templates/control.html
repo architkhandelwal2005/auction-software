@@ -9,6 +9,7 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="/static/bidding.js?v={{ asset_v }}"></script>
+    <script src="/static/live_feed.js?v={{ asset_v }}"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -43,7 +44,7 @@
             const load = useCallback(async () => {
                 try {
                     const [ld, pl] = await Promise.all([
-                        fetch('/api/live_data').then(r=>r.json()),
+                        LiveFeed.get(),
                         fetch('/api/players').then(r=>r.json()).catch(()=>[]),
                     ]);
                     setData(ld); setPlayers(Array.isArray(pl)?pl:[]);

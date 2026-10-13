@@ -10,6 +10,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="/static/bidding.js?v={{ asset_v }}"></script>
     <script src="/static/player_details.js?v={{ asset_v }}"></script>
+    <script src="/static/live_feed.js?v={{ asset_v }}"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -181,53 +182,50 @@
 
             const loadData = async () => {
                 try {
-                    const res = await fetch('/api/live_data');
-                    if (res.ok) {
-                        const d = await res.json();
-                        setData(d);
+                    const d = await LiveFeed.get();
+                    setData(d);
 
-                        // Flash a SOLD / UNSOLD overlay when a sale/pass lands.
-                        // The key includes player + price so back-to-back sales
-                        // (both status "sold") each re-trigger it.
-                        const st = d.auction_state || {};
-                        const status = st.auction_status || '';
-                        const key = status + '|' + (st.last_sold_player || st.last_passed_player || '') + '|' + (st.last_sold_price || '');
-                        if (key !== resultKeyRef.current) {
-                            const first = resultKeyRef.current === null;
-                            resultKeyRef.current = key;
-                            if (!first && status === 'sold') {
-                                setResult({ status, player: st.last_sold_player || '', price: st.last_sold_price || '',
-                                    teamName: st.last_sold_team_name || '', teamColor: st.last_sold_team_color || '#10b981',
-                                    teamLogo: st.last_sold_team_logo || '',
-                                    photo: st.last_sold_photo || '' });
-                                clearTimeout(resultTimerRef.current);
-                                resultTimerRef.current = setTimeout(() => setResult(null), 5000);
-                            } else if (!first && status === 'passed') {
-                                setResult({ status, player: st.last_passed_player || '', photo: st.last_passed_photo || '' });
-                                clearTimeout(resultTimerRef.current);
-                                resultTimerRef.current = setTimeout(() => setResult(null), 5000);
-                            } else {
-                                setResult(null);
-                            }
-                        }
-
-                        // Check if a new player has appeared on stage for animation
-                        if (d.auction_state?.current_player) {
-                            // The id tells two players with the same name apart.
-                            const onBlock = d.auction_state.current_player_id || d.auction_state.current_player;
-                            if (onBlock !== lastPlayerId) {
-                                setLastPlayerId(onBlock);
-                                setRevealPhase(0);
-                                setTimeout(() => setRevealPhase(1), 500);
-                                setTimeout(() => setRevealPhase(2), 1200);
-                                setTimeout(() => setRevealPhase(3), 2000);
-                                setTimeout(() => setRevealPhase(4), 2800);
-                                setTimeout(() => setRevealPhase(5), 3500);
-                                setTimeout(() => setRevealPhase(6), 3600);
-                            }
+                    // Flash a SOLD / UNSOLD overlay when a sale/pass lands.
+                    // The key includes player + price so back-to-back sales
+                    // (both status "sold") each re-trigger it.
+                    const st = d.auction_state || {};
+                    const status = st.auction_status || '';
+                    const key = status + '|' + (st.last_sold_player || st.last_passed_player || '') + '|' + (st.last_sold_price || '');
+                    if (key !== resultKeyRef.current) {
+                        const first = resultKeyRef.current === null;
+                        resultKeyRef.current = key;
+                        if (!first && status === 'sold') {
+                            setResult({ status, player: st.last_sold_player || '', price: st.last_sold_price || '',
+                                teamName: st.last_sold_team_name || '', teamColor: st.last_sold_team_color || '#10b981',
+                                teamLogo: st.last_sold_team_logo || '',
+                                photo: st.last_sold_photo || '' });
+                            clearTimeout(resultTimerRef.current);
+                            resultTimerRef.current = setTimeout(() => setResult(null), 5000);
+                        } else if (!first && status === 'passed') {
+                            setResult({ status, player: st.last_passed_player || '', photo: st.last_passed_photo || '' });
+                            clearTimeout(resultTimerRef.current);
+                            resultTimerRef.current = setTimeout(() => setResult(null), 5000);
                         } else {
-                            setLastPlayerId(null);
+                            setResult(null);
                         }
+                    }
+
+                    // Check if a new player has appeared on stage for animation
+                    if (d.auction_state?.current_player) {
+                        // The id tells two players with the same name apart.
+                        const onBlock = d.auction_state.current_player_id || d.auction_state.current_player;
+                        if (onBlock !== lastPlayerId) {
+                            setLastPlayerId(onBlock);
+                            setRevealPhase(0);
+                            setTimeout(() => setRevealPhase(1), 500);
+                            setTimeout(() => setRevealPhase(2), 1200);
+                            setTimeout(() => setRevealPhase(3), 2000);
+                            setTimeout(() => setRevealPhase(4), 2800);
+                            setTimeout(() => setRevealPhase(5), 3500);
+                            setTimeout(() => setRevealPhase(6), 3600);
+                        }
+                    } else {
+                        setLastPlayerId(null);
                     }
                 } catch (e) { }
             };

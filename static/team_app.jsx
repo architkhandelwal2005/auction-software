@@ -28,8 +28,7 @@ const TeamApp = () => {
 
     const fetchLive = async () => {
         try {
-            const res = await fetch('/api/live_data');
-            const data = await res.json();
+            const data = await LiveFeed.get();
             // /api/live_data returns the player on the block inside `auction_state`
             // as flat strings (current_player is a NAME, not an object). The views
             // below want a player object, so build one here.

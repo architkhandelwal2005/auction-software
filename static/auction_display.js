@@ -4,7 +4,7 @@
 
     The auction is conducted manually. This screen never conducts it: there is
     no bidding, no team selection, no sold/unsold workflow and no auctioneer
-    control here. It polls the SAME /api/live_data endpoint the existing /live
+    control here. It polls the SAME live data (static/live_feed.js) the /live
     spectator screen already uses, and writes those values into the `data-slot`
     elements defined by the display markup. No backend logic is touched.
   */
@@ -1071,9 +1071,7 @@
       return;
     }
     try {
-      const res = await fetch('/api/live_data', { cache: 'no-store' });
-      if (!res.ok) throw new Error('bad status');
-      ingest(await res.json());
+      ingest(await LiveFeed.get());
       state.connected = true;
     } catch (_) {
       state.connected = false;
@@ -1513,9 +1511,7 @@
     /* ── load all data from server ── */
     async function loadAdminMeta() {
       try {
-        const r = await fetch('/api/live_data');
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const data = await r.json();
+        const data = await LiveFeed.get();
 
         const cfg = data.config || {};
         adminPricing = BidRules.parse(cfg);
@@ -1584,9 +1580,7 @@
     /* ── refresh player list ── */
     async function refreshPlayers() {
       try {
-        const r = await fetch('/api/live_data');
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const data = await r.json();
+        const data = await LiveFeed.get();
         adminUnsoldPlayers = (data.unsold_players || []).filter(p => p.status === 'unsold');
         adminTeams = data.teams || [];
         paintDrawCats();

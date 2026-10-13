@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for, g
-import sqlite3, os, webbrowser, csv, io, uuid, json, re, threading, datetime, functools, time
+import sqlite3, os, webbrowser, csv, io, uuid, json, re, threading, datetime, functools, time, hashlib
 import urllib.request as _ureq
 import urllib.error as _uerr
 from threading import Timer
@@ -1219,7 +1219,7 @@ ROUTE_POLICY = {
     'auth_me': 'public',
     'live_view': 'public', 'presentation_view': 'public',
     'cricket_auction_view': 'public', 'roster_view': 'public',
-    'get_live_data': 'public',
+    'get_live_data': 'public', 'get_live_state': 'public',
     # The login page lists the live auction's teams before anyone signs in.
     'get_teams': 'public', 'get_config': 'public',
 
@@ -1326,7 +1326,7 @@ AUCTION_FREE_ENDPOINTS = {
 # auction is currently live.
 PUBLIC_LIVE_ENDPOINTS = {
     'live_view', 'presentation_view', 'cricket_auction_view', 'roster_view',
-    'get_live_data', 'report_view',
+    'get_live_data', 'get_live_state', 'report_view',
     # The login page lists the live auction's teams before anyone has a session.
     'get_teams', 'get_config',
 }
@@ -1414,25 +1414,68 @@ _shared_reads_gen = [0]
 _shared_reads_lock = threading.Lock()
 
 
+def _shared(key, build):
+    """The shared answer under key, built by build() when there is none, or
+    when a write or SHARED_READ_SECONDS has passed since it was built."""
+    started = time.monotonic()
+    with _shared_reads_lock:
+        gen = _shared_reads_gen[0]
+        hit = _shared_reads.get(key)
+    if hit and hit[0] == gen and started - hit[1] < SHARED_READ_SECONDS:
+        return hit[2]
+    value = build()
+    if value is not None:
+        with _shared_reads_lock:
+            # A write that finished while this was being built may have
+            # been missed by it: keep the answer only if none did.
+            if _shared_reads_gen[0] == gen:
+                _shared_reads[key] = (gen, started, value)
+    return value
+
+
+def conditional_json(body, headers=None):
+    """A JSON body the browser may keep: with an ETag and "no-cache", each poll
+    revalidates, and an unchanged answer is a bodyless 304 rather than the
+    same kilobytes again. (A proxy that compresses may weaken the tag to W/.)"""
+    etag = '"%s"' % hashlib.sha1(body).hexdigest()[:24]
+    sent = [t.strip().replace('W/', '', 1) for t in request.headers.get('If-None-Match', '').split(',')]
+    resp = app.response_class(status=304) if etag in sent else app.response_class(body, mimetype='application/json')
+    resp.headers['ETag'] = etag
+    resp.headers['Cache-Control'] = 'no-cache'
+    for k, v in (headers or {}).items():
+        resp.headers[k] = v
+    return resp
+
+
 def shared_read(view):
     @functools.wraps(view)
     def wrapper(*args, **kwargs):
-        key = (g.auction_id, request.path)
-        started = time.monotonic()
-        with _shared_reads_lock:
-            gen = _shared_reads_gen[0]
-            hit = _shared_reads.get(key)
-        if hit and hit[0] == gen and started - hit[1] < SHARED_READ_SECONDS:
-            return app.response_class(hit[2], mimetype='application/json')
-        resp = app.make_response(view(*args, **kwargs))
-        if resp.status_code == 200:
-            with _shared_reads_lock:
-                # A write that finished while this was being built may have
-                # been missed by it: keep the answer only if none did.
-                if _shared_reads_gen[0] == gen:
-                    _shared_reads[key] = (gen, started, resp.get_data())
-        return resp
+        failed = []
+        def build():
+            resp = app.make_response(view(*args, **kwargs))
+            if resp.status_code == 200:
+                return resp.get_data()
+            failed.append(resp)   # an error is answered, never shared
+        body = _shared((g.auction_id, request.path), build)
+        return failed[0] if failed else conditional_json(body)
     return wrapper
+
+
+def live_snapshot():
+    """The live screens' data, built once per change: (the full /api/live_data
+    body, a revision of everything in it but the stage state, the
+    /api/live_state body). A bid changes the stage state only, so the screens
+    poll the small state and fetch the full body only when the revision moves
+    (static/live_feed.js)."""
+    def build():
+        conn = get_db()
+        data = build_live_report(conn)
+        conn.close()
+        full = app.json.dumps(data).encode()
+        state = data.pop('auction_state', {})
+        rev = hashlib.sha1(app.json.dumps(data).encode()).hexdigest()[:16]
+        return full, rev, app.json.dumps({'rev': rev, 'auction_state': state}).encode()
+    return _shared((g.auction_id, '__live__'), build)
 
 
 @app.after_request
@@ -3949,12 +3992,16 @@ def build_live_report(conn):
 
 
 @app.route('/api/live_data', methods=['GET'])
-@shared_read
 def get_live_data():
-    conn = get_db()
-    data = build_live_report(conn)
-    conn.close()
-    return jsonify(data)
+    full, rev, _ = live_snapshot()
+    return conditional_json(full, {'X-Live-Rev': rev})
+
+
+@app.route('/api/live_state', methods=['GET'])
+def get_live_state():
+    """What changes on every bid: the stage state, with the revision of the
+    rest of /api/live_data. A few hundred bytes, polled every second."""
+    return conditional_json(live_snapshot()[2])
 
 # ─── Set Common Base Price for All Unsold Players ───
 @app.route('/api/players/fetch_photos', methods=['POST'])

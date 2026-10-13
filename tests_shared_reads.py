@@ -84,5 +84,62 @@ check('and its own live data', admin.get('/api/live_data').get_json()['sold_play
 # Viewer-only answers stay viewer-only.
 check('players list still needs a sign-in', A.app.test_client().get('/api/players').status_code in (401, 403))
 
+# Screens download only what changed. /api/live_state is the stage state with
+# a revision of the rest of /api/live_data; a bid moves the state only, a sale
+# moves the revision too.
+admin.post('/api/auctions/%d/open' % aid)
+p2 = admin.post('/api/players', json={'name': 'Bina', 'category': 'A', 'base_price': 1}).get_json()['id']
+admin.post('/api/auction/state', json={'current_player': 'Bina', 'current_player_id': str(p2), 'current_bid': 1})
+full = admin.get('/api/live_data')
+live = admin.get('/api/live_state').get_json()
+check('live state names the revision of the full data', live['rev'] == full.headers.get('X-Live-Rev'), str(live['rev']))
+check('and carries the stage state', live['auction_state'].get('current_player') == 'Bina')
+check('live state is small', len(admin.get('/api/live_state').data) * 10 < len(full.data),
+      '%d vs %d bytes' % (len(admin.get('/api/live_state').data), len(full.data)))
+body = full.get_json()
+state = body.pop('auction_state')
+check('full data is the live state plus the rest', state == live['auction_state'])
+
+admin.post('/api/auction/state', json={'current_bid': 2})
+bid = admin.get('/api/live_state').get_json()
+check('a bid shows in the live state', bid['auction_state'].get('current_bid') == '2')
+check('a bid keeps the revision', bid['rev'] == live['rev'])
+admin.post('/api/sell_player', json={'player_id': p2, 'team_id': tid, 'sold_price': 2})
+sold = admin.get('/api/live_state').get_json()
+check('a sale moves the revision', sold['rev'] != live['rev'])
+check('and the full data says so', admin.get('/api/live_data').headers.get('X-Live-Rev') == sold['rev'])
+
+# Polls of an unchanged answer are a bodyless 304.
+for path in ('/api/live_state', '/api/live_data', '/api/teams', '/api/config', '/api/players'):
+    first = admin.get(path)
+    again = admin.get(path, headers={'If-None-Match': first.headers.get('ETag')})
+    check(path + ' unchanged: 304, no body', again.status_code == 304 and again.data == b'', str(again.status_code))
+    weak = admin.get(path, headers={'If-None-Match': 'W/' + first.headers.get('ETag')})
+    check(path + ' tag weakened by a proxy still matches', weak.status_code == 304, str(weak.status_code))
+first = admin.get('/api/live_state')
+admin.post('/api/auction/state', json={'current_bid': 3})
+again = admin.get('/api/live_state', headers={'If-None-Match': first.headers.get('ETag')})
+check('a changed answer is sent whole', again.status_code == 200 and again.get_json()['auction_state']['current_bid'] == '3')
+check('and the browser is told to ask again each time', again.headers.get('Cache-Control') == 'no-cache')
+
+# The new endpoint is as public as /api/live_data: an audience screen with no
+# login reads the live auction.
+admin.post('/api/auction/go_live')
+anon = A.app.test_client()
+codes = (anon.get('/api/live_state').status_code, anon.get('/api/live_data').status_code)
+check('live state is public like live data', codes == (200, 200), str(codes))
+
+# A failed read is answered but never shared.
+calls = {'n': 0}
+_teams = A.app.view_functions['get_teams']
+def failing_once(*a, **k):
+    calls['n'] += 1
+    return (A.jsonify({'error': 'boom'}), 500) if calls['n'] == 1 else _teams.__wrapped__(*a, **k)
+A.app.view_functions['get_teams'] = A.shared_read(failing_once)
+admin.post('/api/auction/state', json={'current_bid': 4})
+check('an error is answered', admin.get('/api/teams').status_code == 500)
+check('and not kept for the next poll', admin.get('/api/teams').status_code == 200)
+A.app.view_functions['get_teams'] = _teams
+
 print('\nALL CHECKS PASSED' if not check.failed else '\n%d CHECK(S) FAILED' % check.failed)
 sys.exit(1 if check.failed else 0)
