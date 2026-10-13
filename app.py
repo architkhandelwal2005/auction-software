@@ -1537,7 +1537,9 @@ def shared_read(view):
             if resp.status_code == 200:
                 return resp.get_data()
             failed.append(resp)   # an error is answered, never shared
-        body = _shared((g.auction_id, request.path), build)
+        # The console and every other screen get different answers (see
+        # sees_private), so each is shared only within its own audience.
+        body = _shared((g.auction_id, request.path, sees_private()), build)
         return failed[0] if failed else conditional_json(body)
     return wrapper
 
@@ -1927,7 +1929,7 @@ def final_report():
         if g.auction.get('report_json'):
             try: stored = json.loads(g.auction['report_json'])
             except Exception: stored = {}
-        return jsonify({'retained': True, 'report': stored})
+        return jsonify({'retained': True, 'report': public_report(stored)})
     # Ended but not yet purged: the tables still exist, so serve the full rich
     # shape (photos, every analytic) rather than the frozen snapshot — that
     # only gets used once the tables are actually gone.
@@ -2122,6 +2124,8 @@ def get_config():
     conn = get_db()
     rows = conn.execute('SELECT * FROM config').fetchall()
     config = {r['key']: r['value'] for r in rows}
+    if not sees_private():
+        config = public_config(config)
     rules = conn.execute('SELECT * FROM category_rules').fetchall()
     conn.close()
     return jsonify({'config': config, 'category_rules': [dict(r) for r in rules]})
@@ -2521,16 +2525,17 @@ def get_players():
     conn = get_db()
     players = conn.execute('SELECT p.*, t.name as team_name FROM players p LEFT JOIN teams t ON p.team_id = t.id').fetchall()
     conn.close()
+    private = sees_private()
     res = []
     for p in players:
         pd = dict(p)
-        if pd.get('attributes'):
+        if private:
             try:
-                pd['attributes'] = json.loads(pd['attributes'])
+                pd['attributes'] = json.loads(pd['attributes']) if pd.get('attributes') else {}
             except Exception:
                 pd['attributes'] = {}
         else:
-            pd['attributes'] = {}
+            pd['attributes'] = public_attributes(pd.get('attributes'))
         res.append(pd)
     return jsonify(res)
 
@@ -3468,10 +3473,13 @@ def get_auction_state():
     if state.get('current_player'):
         p_row = block_player(conn, state)
         if p_row and p_row['attributes']:
-            try:
-                state['attributes'] = json.loads(p_row['attributes'])
-            except Exception:
-                state['attributes'] = {}
+            if sees_private():
+                try:
+                    state['attributes'] = json.loads(p_row['attributes'])
+                except Exception:
+                    state['attributes'] = {}
+            else:
+                state['attributes'] = public_attributes(p_row['attributes'])
     add_team_logos(conn, state)
     conn.close()
     return jsonify(state)
@@ -3953,7 +3961,7 @@ def get_team_data(team_id):
     rules = conn.execute('SELECT * FROM category_rules').fetchall()
     rows = conn.execute('SELECT * FROM config').fetchall()
     config = {r['key']: r['value'] for r in rows}
-    players = conn.execute('SELECT * FROM players WHERE team_id=?', (team_id,)).fetchall()
+    players = team_squad(conn, team_id)   # without the sheet's private columns
     on_block = block_category(conn)
     td = format_team_metrics(team, players, rules, config, on_block)
 
@@ -3968,9 +3976,62 @@ def get_team_data(team_id):
         t_players = conn.execute('SELECT id, name, category, sold_price, photo_url FROM players WHERE team_id = ?', (t['id'],)).fetchall()
         all_teams_result.append(format_team_metrics(t, t_players, rules, config, on_block))
     td['all_teams'] = all_teams_result
-    td['config'] = config
+    td['config'] = public_config(config)
     conn.close()
     return jsonify(td)
+
+# ─── Private details ───
+# A player sheet carries more than the screens show: phone numbers, email,
+# address, date of birth, payment details. Screens only showed the useful
+# columns, but every column was in the data they download, which anyone can
+# read from the browser, and team owners could fetch the full player list.
+# Only the auctioneer's console receives these now. A column is private by
+# its name, or by holding a phone number or email address whatever its name.
+_PRIVATE_COLUMN = re.compile(
+    r'phone|mobile|\bmob\b|\btel\b|\bph\.?\s*no|contact|e-?mail|\bmail\b|whats\s*app|address|'
+    r'aadh?a?r|passport|\bpan\b|birth|\bd\.?o\.?b\b|guardian|parent|father|mother|emergency|'
+    r'\bupi\b|\butr\b|transaction|payment|\bpaid\b|\bfees?\b|bank|ifsc|account\s*(no|number)|password',
+    re.I)
+_PRIVATE_VALUE = re.compile(r'[\w.+-]+@[\w-]+\.[\w.]+|(?<!\d)(?:\+?91[\s-]?|0)?[6-9]\d{4}[\s-]?\d{5}(?!\d)')
+# Settings no screen but the console needs: the Google Sheets webhook takes
+# writes from anyone who has its address.
+PRIVATE_CONFIG = {'sheets_webhook'}
+
+
+def sees_private():
+    """The auctioneer's console sees everything; every other screen (the
+    audience, the stage, team phones, the roster and the report) does not."""
+    return session.get('role') in ('admin', 'auctioneer')
+
+
+def public_attributes(attributes):
+    """A player's sheet columns without the private ones. Takes the stored
+    JSON text or a dict; returns a dict."""
+    if isinstance(attributes, str):
+        try:
+            attributes = json.loads(attributes)
+        except Exception:
+            return {}
+    if not isinstance(attributes, dict):
+        return {}
+    return {k: v for k, v in attributes.items()
+            if not _PRIVATE_COLUMN.search(str(k)) and not _PRIVATE_VALUE.search(str(v))}
+
+
+def public_config(config):
+    return {k: v for k, v in config.items() if k not in PRIVATE_CONFIG}
+
+
+def public_report(report):
+    """A stored report without private details. Reports kept before details
+    were filtered still carry them; this cleans them as they are served."""
+    if isinstance(report, list):
+        return [public_report(v) for v in report]
+    if not isinstance(report, dict):
+        return report
+    return {k: (public_attributes(v) if k == 'attributes' else public_report(v))
+            for k, v in report.items() if k not in PRIVATE_CONFIG}
+
 
 # ─── Live Spectator Data API ───
 def build_live_report(conn):
@@ -3983,7 +4044,8 @@ def build_live_report(conn):
     report all read from here, rather than each keeping its own copy of the
     same queries to drift out of sync.
     """
-    config = {r['key']: r['value'] for r in conn.execute('SELECT * FROM config').fetchall()}
+    # Everything here reaches screens anyone can open: no private details.
+    config = public_config({r['key']: r['value'] for r in conn.execute('SELECT * FROM config').fetchall()})
     state = add_team_logos(conn, {r['key']: r['value'] for r in conn.execute('SELECT * FROM auction_state').fetchall()})
 
     # Teams with Max Allowed Bid & Reserved Purse
@@ -4000,10 +4062,7 @@ def build_live_report(conn):
             # the spectator screen's PlayerAttributesBadges checks
             # `typeof attributes === 'object'` and silently renders nothing
             # otherwise, so the on-stage attributes row never showed up.
-            try:
-                state['attributes'] = json.loads(p_row['attributes'])
-            except Exception:
-                state['attributes'] = {}
+            state['attributes'] = public_attributes(p_row['attributes'])
 
     # Sold players
     sold = conn.execute('''
@@ -4071,13 +4130,7 @@ def build_live_report(conn):
 
     def parse_p(p):
         d = dict(p)
-        if d.get('attributes'):
-            try:
-                d['attributes'] = json.loads(d['attributes']) if isinstance(d['attributes'], str) else d['attributes']
-            except Exception:
-                d['attributes'] = {}
-        else:
-            d['attributes'] = {}
+        d['attributes'] = public_attributes(d.get('attributes'))
         return d
 
     return {
@@ -4095,7 +4148,7 @@ def build_live_report(conn):
             'unsold': len(unsold),
             'passed': passed_count,
             'spent': total_spent,
-            'top_buys': [dict(b) for b in top_buys],
+            'top_buys': [parse_p(b) for b in top_buys],
             'categories': cat_analytics,
             'most_spent_team': most_spent_team_summary,
         }

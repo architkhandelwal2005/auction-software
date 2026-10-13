@@ -137,8 +137,9 @@ check('file analysis also keeps same-name players apart', r.status_code == 200 a
 client.post('/api/auction/state', json={'current_player': 'Rahul Sharma', 'current_player_id': str(rahuls[1]['id']),
                                         'current_bid': 10})
 st = client.get('/api/live_data').get_json()['auction_state']
-check('stage shows the right one of two same-name players', str(st['attributes'].get('Mobile')) == '9000000002',
-      str(st.get('attributes')))
+# (By age: the stage's data no longer carries anyone's mobile number.)
+check('stage shows the right one of two same-name players', str(st['attributes'].get('Age')) == '41'
+      and 'Mobile' not in st['attributes'], str(st.get('attributes')))
 client.post('/api/auction/state', json={'current_player': 'Isha Jain', 'current_bid': 10})
 st = client.get('/api/live_data').get_json()['auction_state']
 check('next player without an id does not inherit the last id', not st.get('current_player_id'), str(st))
