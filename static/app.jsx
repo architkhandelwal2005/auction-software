@@ -996,6 +996,9 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                 setAnalysisResult(d);
                 setCategories(d.suggestions.map(s => ({
                     category: s.category,
+                    // The label the analysis gave the players, so a rename on
+                    // the rules step can rename them too.
+                    source: s.category,
                     base_price: basePrice,
                     per_team_min: s.per_team_min,
                     per_team_max: s.per_team_max || 99,
@@ -1046,6 +1049,9 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                     category: c.category, base_price: basePrice,
                     min_per_team: c.per_team_min, max_per_team: c.per_team_max || 99,
                 })),
+                category_renames: Object.fromEntries(categories
+                    .filter(c => c.source && c.category.trim() && c.category.trim() !== c.source)
+                    .map(c => [c.source, c.category.trim()])),
             })
         });
         // Saved after the categories, so every player gets their category's base price.
@@ -1525,7 +1531,13 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
 
                     <div>
                         <label className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider block mb-1.5">Starting Budget per Team (Lakhs)</label>
-                        <input type="number" className="w-full bg-zinc-950 border border-zinc-700 p-3.5 rounded-2xl text-xl font-bold text-white text-center focus:border-green-500 outline-none transition fredoka" value={defaultBudget} onChange={e => setDefaultBudget(parseFloat(e.target.value) || 0)} />
+                        <input type="number" className="w-full bg-zinc-950 border border-zinc-700 p-3.5 rounded-2xl text-xl font-bold text-white text-center focus:border-green-500 outline-none transition fredoka" value={defaultBudget} onChange={e => {
+                            // Every team takes the new budget: the teams were made on Step 2 with
+                            // the old one, so changing only the default launched them with ₹1000L.
+                            const v = parseFloat(e.target.value) || 0;
+                            setDefaultBudget(v);
+                            setTeams(ts => ts.map(t => ({ ...t, total_budget: v })));
+                        }} />
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[240px] overflow-y-auto custom-scrollbar pr-1">

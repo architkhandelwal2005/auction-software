@@ -1996,6 +1996,7 @@ def save_config():
     c = conn.cursor()
     for key, val in data.get('config', {}).items():
         c.execute('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', (key, str(val)))
+    rename_categories(c, data.get('category_renames') or {})
     # Category rules
     if 'category_rules' in data:
         c.execute('DELETE FROM category_rules')
@@ -2016,6 +2017,33 @@ def save_config():
     conn.commit()
     conn.close()
     return jsonify({'success': True})
+
+def rename_categories(c, renames):
+    """Categories renamed on the setup wizard's rules step ("72+" to
+    "Platinum"). The players carry the analysis' label, so they are renamed
+    with their category; otherwise no rule, price or quota matched them. The
+    saved split remembers the names, so players a re-sync adds get them too."""
+    renames = {str(old): str(new).strip() for old, new in renames.items()
+               if str(new).strip() and str(old) != str(new).strip()}
+    if not renames:
+        return
+    # In two passes, so swapping two names ("Gold" <-> "Silver") works.
+    tmp = 'renaming-%s-' % uuid.uuid4().hex
+    for i, old in enumerate(renames):
+        c.execute('UPDATE players SET category = ? WHERE category = ?', (tmp + str(i), old))
+    for i, new in enumerate(renames.values()):
+        c.execute('UPDATE players SET category = ? WHERE category = ?', (new, tmp + str(i)))
+    recipe = load_category_recipe(c)
+    if recipe:
+        # Keep one step from the analysis label to the latest name.
+        prior = recipe.get('renames') or {}
+        merged = {label: renames.get(name, name) for label, name in prior.items()}
+        for old, new in renames.items():
+            if old not in prior.values():
+                merged.setdefault(old, new)
+        recipe['renames'] = merged
+        c.execute('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ('category_recipe', json.dumps(recipe)))
+
 
 @app.route('/api/setup/restart', methods=['POST'])
 def restart_setup():
@@ -4098,7 +4126,14 @@ def _row_age(row, age_col):
 
 
 def category_from_recipe(recipe, row):
-    """The category a sheet row gets under a saved analysis split."""
+    """The category a sheet row gets under a saved analysis split, under the
+    name the organiser gave it on the rules step."""
+    label = _recipe_label(recipe, row)
+    return (recipe.get('renames') or {}).get(label, label)
+
+
+def _recipe_label(recipe, row):
+    """The label the analysis itself gives a row ("72+", "Male · 18–26")."""
     if recipe.get('mode') == 'split':
         return u' · '.join(_bucket_label(row.get(c['col']), c.get('thresholds')) for c in recipe['columns'])
     age = _row_age(row, recipe.get('age_col'))

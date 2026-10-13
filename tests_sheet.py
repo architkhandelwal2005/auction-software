@@ -252,5 +252,39 @@ urls = A.sheet_csv_urls(SHEET_URL)
 check('every row read: /export first, gviz only as fallback',
       '/export?format=csv' in urls[0] and '/gviz/' in urls[1], str(urls))
 
+# ── Categories renamed on the setup rules step ("72+" -> "Platinum") rename
+#    their players too. They kept the analysis label, so no rule, price or
+#    quota matched anyone. ──
+from collections import Counter
+CURRENT['data'] = b'Name,Score\n' + b''.join(b'R%d,%d\n' % (i, 40 + i * 5) for i in range(12))
+client.post('/api/auction/source/import', json={'sheet_url': SHEET_URL})
+r = client.post('/api/players/analyze', json={'num_teams': 2, 'num_splits': 2, 'split_by': ['Score'], 'bins': {'Score': 2}}).get_json()
+labels = [s['category'] for s in r['suggestions']]
+def pool():
+    return {p['name']: p for p in client.get('/api/players').get_json()}
+top_label = pool()['R11']['category']
+names = {lab: ('Gold' if lab == top_label else 'Silver') for lab in labels}
+client.post('/api/config', json={'config': {}, 'category_rules': [
+    {'category': n, 'min_per_team': 3, 'max_per_team': 3} for n in names.values()], 'category_renames': names})
+ps = pool()
+check('players renamed with their category', Counter(p['category'] for p in ps.values()) == Counter({'Silver': 6, 'Gold': 6}),
+      str(Counter(p['category'] for p in ps.values())) + ' ' + str(labels))
+client.post('/api/pricing', json={'pricing': {'mode': 'category', 'same': {'base': 1, 'increment': 1, 'steps': []},
+    'categories': {'Silver': {'base': 2, 'increment': 0.5, 'steps': []}, 'Gold': {'base': 5, 'increment': 1, 'steps': []}}}})
+ps = pool()
+check('category prices reach the renamed players', ps['R0']['base_price'] == 2 and ps['R11']['base_price'] == 5,
+      str((ps['R0']['base_price'], ps['R11']['base_price'])))
+CURRENT['data'] += b'Newbie,99\n'
+client.post('/api/auction/source/resync', json={}); client.post('/api/auction/source/apply', json={})
+check('a player added by re-sync gets the new name', pool()['Newbie']['category'] == 'Gold', pool()['Newbie']['category'])
+client.post('/api/config', json={'config': {}, 'category_renames': {'Silver': 'Gold', 'Gold': 'Silver'}})
+ps = pool()
+check('two names can be swapped', ps['R0']['category'] == 'Gold' and ps['R11']['category'] == 'Silver'
+      and Counter(p['category'] for p in ps.values()) == Counter({'Gold': 6, 'Silver': 7}),
+      str(Counter(p['category'] for p in ps.values())))
+CURRENT['data'] += b'Second Newbie,98\n'
+client.post('/api/auction/source/resync', json={}); client.post('/api/auction/source/apply', json={})
+check('re-sync follows the latest name', pool()['Second Newbie']['category'] == 'Silver', pool()['Second Newbie']['category'])
+
 print('\n%s' % ('ALL CHECKS PASSED' if check.failed == 0 else '%d CHECK(S) FAILED' % check.failed))
 sys.exit(1 if check.failed else 0)
