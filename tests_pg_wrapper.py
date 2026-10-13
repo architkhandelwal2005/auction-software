@@ -49,13 +49,76 @@ except Exception as exc:
 check('a literal % without parameters is not read as a placeholder', ok)
 check('placeholders converted for PostgreSQL', raw.calls[0][0].count('%s') == 1 and raw.calls[0][1] == (5,))
 
-# The connection pool fails at once when empty, so it must hold two
-# connections (registry + auction) for every gunicorn thread. At 10 it ran
-# out during the live auction and putting a player on the block failed.
-import re
-threads = int(re.search(r'--threads\s+(\d+)', open('Procfile').read()).group(1))
-check('connection pool covers every request thread', A.PG_POOL_MAX >= 2 * threads,
-      'pool %d, threads %d' % (A.PG_POOL_MAX, threads))
+# ── The connection pool. psycopg2's own pool closed all but one returned
+#    connection (so nearly every request reconnected) and failed at once when
+#    busy: during the live auction a burst of screens got "connection pool
+#    exhausted" and a spun player never reached the block. ──
+import threading, time
+import psycopg2, psycopg2.extensions as ext
+
+class FakeRaw:
+    made = 0
+    def __init__(self):
+        FakeRaw.made += 1
+        self.closed = False
+        self.status = ext.TRANSACTION_STATUS_IDLE
+        self.info = self
+        self.rolled_back = False
+    @property
+    def transaction_status(self): return self.status
+    def rollback(self): self.rolled_back = True; self.status = ext.TRANSACTION_STATUS_IDLE
+    def close(self): self.closed = True
+
+pool = A._BlockingPool(3, FakeRaw)
+for _ in range(20):
+    pool.putconn(pool.getconn())
+check('connections are reused, not reopened', FakeRaw.made == 1, str(FakeRaw.made))
+
+FakeRaw.made = 0
+pool = A._BlockingPool(4, FakeRaw)
+out, peak, errors, lock = [0], [0], [], threading.Lock()
+def worker():
+    for _ in range(15):
+        try:
+            c = pool.getconn()
+        except Exception as e:
+            errors.append(e); continue
+        with lock:
+            out[0] += 1; peak[0] = max(peak[0], out[0])
+        time.sleep(0.002)
+        with lock:
+            out[0] -= 1
+        pool.putconn(c)
+ts = [threading.Thread(target=worker) for _ in range(16)]
+[t.start() for t in ts]; [t.join() for t in ts]
+check('16 threads share 4 connections: none fails', not errors, str(errors[:1]))
+check('never more connections than the pool size', peak[0] <= 4 and FakeRaw.made <= 4, 'peak %d made %d' % (peak[0], FakeRaw.made))
+
+held = [pool.getconn() for _ in range(4)]
+got = []
+t = threading.Thread(target=lambda: got.append(pool.getconn())); t.start()
+time.sleep(0.2)
+check('a request waits while every connection is busy', not got)
+pool.putconn(held.pop())
+t.join(2)
+check('and gets one as soon as one is returned', len(got) == 1)
+[pool.putconn(c) for c in held + got]
+
+c = pool.getconn(); c.status = ext.TRANSACTION_STATUS_INTRANS; pool.putconn(c)
+check('a connection left in a transaction is rolled back before reuse', c.rolled_back and not c.closed)
+c = pool.getconn(); c.status = ext.TRANSACTION_STATUS_UNKNOWN; pool.putconn(c)
+check('a connection the server dropped is closed, not reused', c.closed)
+
+# A connection that died while idle fails when prepared: a fresh one is used.
+A._pg_pool = A._BlockingPool(2, FakeRaw)
+dead = A._pg_pool.getconn(); A._pg_pool.putconn(dead)
+def prepare(raw):
+    if raw is dead:
+        raise psycopg2.OperationalError('server closed the connection unexpectedly')
+fresh = A._pg_checkout(prepare)
+check('a dead idle connection is replaced on checkout', fresh is not dead and dead.closed)
+A._pg_pool.putconn(fresh)
+A._pg_pool = None
 
 # PostgreSQL returns TIMESTAMP columns as datetime objects where SQLite returns
 # text. End Auction stores the report as JSON; a sold player's sale time once

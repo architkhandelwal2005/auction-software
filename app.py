@@ -792,22 +792,97 @@ def inject_asset_version():
 
 # ── PostgreSQL connection pool ──
 # Reuse warm connections instead of opening a fresh one per request (a fresh
-# connect to a remote DB costs ~0.5s). This is the single biggest speed win for
-# the deployed/cloud app. Each gunicorn worker gets its own small pool.
+# connect to the remote database costs ~0.5s).
+#
+# psycopg2's ThreadedConnectionPool did neither job well here. It keeps only
+# `minconn` idle connections and closes the rest when they are returned, so
+# with minconn=1 nearly every request opened a new connection; and when all
+# are in use it fails at once instead of waiting. During the live auction a
+# burst of polling screens hit "connection pool exhausted" and putting a
+# player on the block failed.
+#
+# This pool keeps up to PG_POOL_SIZE connections open for reuse, and a request
+# that finds them all busy waits for one. The size stays under the 15 clients
+# Supabase's session-mode pooler allows on its smallest plan, leaving room for
+# the background jobs, which open their own connections.
+PG_POOL_SIZE = 12
+PG_POOL_WAIT_SECONDS = 30
+
+
+class _BlockingPool:
+    def __init__(self, size, connect):
+        self._connect = connect
+        self._idle = []
+        self._lock = threading.Lock()
+        self._slots = threading.BoundedSemaphore(size)
+
+    def getconn(self):
+        import psycopg2.pool
+        if not self._slots.acquire(timeout=PG_POOL_WAIT_SECONDS):
+            raise psycopg2.pool.PoolError('database busy: no connection free for %ds' % PG_POOL_WAIT_SECONDS)
+        try:
+            with self._lock:
+                raw = self._idle.pop() if self._idle else None
+            if raw is None or raw.closed:
+                raw = self._connect()
+            return raw
+        except Exception:
+            self._slots.release()
+            raise
+
+    def putconn(self, raw, close=False):
+        """Return a connection. Never raises: its slot is always given back."""
+        try:
+            import psycopg2.extensions as ext
+            if not close and not raw.closed:
+                status = raw.info.transaction_status
+                if status == ext.TRANSACTION_STATUS_UNKNOWN:
+                    close = True                       # the server went away
+                elif status != ext.TRANSACTION_STATUS_IDLE:
+                    raw.rollback()
+            if close or raw.closed:
+                try: raw.close()
+                except Exception: pass
+            else:
+                with self._lock:
+                    self._idle.append(raw)
+        except Exception:
+            try: raw.close()
+            except Exception: pass
+        finally:
+            self._slots.release()
+
+
 _pg_pool = None
-PG_POOL_MAX = 2 * 16
+_pg_pool_lock = threading.Lock()
 def _get_pg_pool():
     global _pg_pool
-    if _pg_pool is None:
-        import psycopg2.pool
-        # A request holds up to two connections (the registry and its
-        # auction), and gunicorn runs 16 request threads (Procfile and Render's
-        # start command). The pool fails at once rather than waiting when it is
-        # empty, so it must cover every thread: at 10, a burst of screens
-        # polling together exhausted it and putting a player on the block
-        # failed during the live auction.
-        _pg_pool = psycopg2.pool.ThreadedConnectionPool(1, PG_POOL_MAX, DATABASE_URL)
+    with _pg_pool_lock:
+        if _pg_pool is None:
+            import psycopg2
+            _pg_pool = _BlockingPool(PG_POOL_SIZE, lambda: psycopg2.connect(DATABASE_URL))
     return _pg_pool
+
+
+def _pg_checkout(prepare):
+    """A pooled connection with `prepare(raw)` run on it. A connection the
+    server dropped while it sat idle fails there; it is discarded and a fresh
+    one used, rather than failing the request."""
+    import psycopg2
+    pool = _get_pg_pool()
+    raw = pool.getconn()
+    try:
+        prepare(raw)
+        return raw
+    except (psycopg2.OperationalError, psycopg2.InterfaceError):
+        pool.putconn(raw, close=True)
+    raw = pool.getconn()
+    try:
+        prepare(raw)
+        return raw
+    except Exception:
+        pool.putconn(raw, close=True)
+        raise
 
 class _PGOwnedConn(_PGConn):
     """A PostgreSQL connection this caller owns outright, rather than one
@@ -874,10 +949,11 @@ def get_registry_db():
     never be confused with, or closed by, the auction connection."""
     if 'registry_db' not in g:
         if USE_PG:
-            raw = _get_pg_pool().getconn()
-            cur = raw.cursor()
-            cur.execute('SET search_path TO public')
-            cur.close()
+            def to_public(raw):
+                cur = raw.cursor()
+                cur.execute('SET search_path TO public')
+                cur.close()
+            raw = _pg_checkout(to_public)
             g.registry_db = (_PGConn(raw), raw)
         else:
             conn = sqlite3.connect(REGISTRY_DB, timeout=20, check_same_thread=False)
@@ -897,8 +973,7 @@ def get_db():
         raise RuntimeError('unscoped database access: no auction bound to this request')
     if 'db' not in g:
         if USE_PG:
-            raw = _get_pg_pool().getconn()
-            _pg_scope(raw, auction_id)
+            raw = _pg_checkout(lambda r: _pg_scope(r, auction_id))
             g.db = _PGConn(raw)
         else:
             g.db = sqlite3.connect(auction_db_path(auction_id), timeout=20, check_same_thread=False)
@@ -907,21 +982,24 @@ def get_db():
         upgrade_auction_schema(g.db, auction_id)
     return g.db
 
+def release_registry_db():
+    """Give the request's registry connection back before the request ends."""
+    reg = g.pop('registry_db', None)
+    if reg is None:
+        return
+    conn, raw = reg
+    if USE_PG:
+        try: raw.rollback()
+        except Exception: pass
+        _get_pg_pool().putconn(raw)
+    else:
+        try: conn.close()
+        except Exception: pass
+
+
 @app.teardown_appcontext
 def close_db(exception=None):
-    reg = g.pop('registry_db', None)
-    if reg is not None:
-        conn, raw = reg
-        if USE_PG:
-            try: raw.rollback()
-            except Exception: pass
-            try: _get_pg_pool().putconn(raw)
-            except Exception:
-                try: raw.close()
-                except Exception: pass
-        else:
-            try: conn.close()
-            except Exception: pass
+    release_registry_db()
 
     db = g.pop('db', None)
     if db is None:
@@ -937,10 +1015,7 @@ def close_db(exception=None):
             cur = db._r.cursor(); cur.execute('SET search_path TO public'); cur.close()
             db._r.commit()
         except Exception: pass
-        try: _get_pg_pool().putconn(db._r)
-        except Exception:
-            try: db._r.close()
-            except Exception: pass
+        _get_pg_pool().putconn(db._r)
     else:
         if exception:
             try: db.rollback()
@@ -1307,6 +1382,10 @@ def resolve_auction():
 
     g.auction = dict(row)
     g.auction_id = g.auction['id']
+    # Every request, every screen's poll included, looks its auction up in
+    # the registry. Return that connection now, so a request holds one
+    # connection while it works rather than two.
+    release_registry_db()
 
     if g.auction['status'] in ('ended', 'purged') and endpoint in MUTATING_ENDPOINTS:
         return jsonify({'error': 'auction_ended',
