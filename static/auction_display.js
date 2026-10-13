@@ -1852,7 +1852,7 @@
         await loadAdminMeta();
         toast('SOLD to ' + (team ? team.name : 'team') + '!', 'ok');
       } catch(e) {
-        toast('Sell failed: ' + e.message, 'err');
+        toast('Not sold. ' + e.message, 'err');
       }
     };
 

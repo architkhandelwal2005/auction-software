@@ -3402,11 +3402,12 @@ def sell_player():
     if price > max_bid + 1e-6:
         conn.close()
         if reserved_purse > 0:
-            msg = ("Bid %s exceeds %s's max allowed bid of %s. "
-                   'They must keep %s reserved to fill %d more squad slot(s) at base price.'
-                   % (fmt_lakhs(price), team['name'], fmt_lakhs(max_bid), fmt_lakhs(reserved_purse), reserved_spots))
+            msg = ('%s is above the %s limit for %s: %s must stay in their purse to fill '
+                   '%d more squad %s at base price.'
+                   % (fmt_lakhs(price), fmt_lakhs(max_bid), team['name'], fmt_lakhs(reserved_purse),
+                      reserved_spots, 'slot' if reserved_spots == 1 else 'slots'))
         else:
-            msg = ("Bid %s exceeds %s's remaining purse of %s."
+            msg = ('%s is above what %s has left: %s.'
                    % (fmt_lakhs(price), team['name'], fmt_lakhs(max_bid)))
         return jsonify({'error': msg}), 400
 

@@ -172,3 +172,4 @@ admin.post('/api/reset')
 check('draw category kept after a reset', draw_category() == 'Gold', str(draw_category()))
 
 print('\nALL CHECKS PASSED' if not check.failed else '\n%d CHECK(S) FAILED' % check.failed)
+sys.exit(1 if check.failed else 0)

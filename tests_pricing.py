@@ -77,7 +77,7 @@ check('one price for everyone: slots × base price, as before', reserved == 20 a
 # Server refuses a sale that eats the Platinum reserve.
 gold_id = players()['Gold A']['id']
 r = admin.post('/api/sell_player', json={'player_id': gold_id, 'team_id': tid, 'sold_price': 19})
-check('sale above the category reserve refused', r.status_code == 400 and 'reserved' in r.get_json().get('error', ''), r.get_data(as_text=True)[:160])
+check('sale above the category reserve refused, saying what must stay in the purse', r.status_code == 400 and 'must stay in their purse' in r.get_json().get('error', ''), r.get_data(as_text=True)[:160])
 r = admin.post('/api/sell_player', json={'player_id': gold_id, 'team_id': tid, 'sold_price': 0.9})
 check('sale within the purse accepted', r.status_code == 200, r.get_data(as_text=True)[:160])
 
@@ -137,3 +137,4 @@ check('nothing passed: nothing brought back', admin.post('/api/action/revive', j
 check('revive needs a player', admin.post('/api/action/revive', json={}).status_code == 400)
 
 print('\nALL CHECKS PASSED' if not check.failed else '\n%d CHECK(S) FAILED' % check.failed)
+sys.exit(1 if check.failed else 0)
