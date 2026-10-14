@@ -542,12 +542,34 @@ const ShareModal = ({ teams, onClose }) => {
     const [overlayPurses, setOverlayPurses] = useState(false);
     const overlayQuery = [overlayBg && `bg=${overlayBg}`, overlayPurses && 'purses=1'].filter(Boolean).join('&');
     const overlayUrl = `${origin}/overlay${overlayQuery ? '?' + overlayQuery : ''}`;
-    // The players' own link to their cards; it keeps working after the auction ends.
+    // The players' own links: their cards (kept after the auction ends), and
+    // the sign-up form.
     const [cardsPath, setCardsPath] = useState('');
+    const [registerPath, setRegisterPath] = useState('');
     useEffect(() => {
-        fetch('/api/auction/status').then(r => r.ok ? r.json() : {}).then(d => setCardsPath(d.cards_path || '')).catch(() => {});
+        fetch('/api/auction/status').then(r => r.ok ? r.json() : {}).then(d => {
+            setCardsPath(d.cards_path || '');
+            setRegisterPath(d.registration_path || '');
+        }).catch(() => {});
     }, []);
     const cardsUrl = cardsPath ? origin + cardsPath : '';
+    const registerUrl = registerPath ? origin + registerPath : '';
+    // The sign-up form's settings: open or closed, photo needed or not, and
+    // the organiser's own questions (one per line).
+    const [reg, setReg] = useState({ open: false, photoOptional: false, questions: '' });
+    useEffect(() => {
+        fetch('/api/config').then(r => r.ok ? r.json() : {}).then(d => {
+            const c = d.config || {};
+            setReg({ open: c.registration_open === '1', photoOptional: c.registration_photo_optional === '1',
+                     questions: c.registration_questions || '' });
+        }).catch(() => {});
+    }, []);
+    const saveReg = (next) => {
+        setReg(next);
+        fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: {
+            registration_open: next.open ? '1' : '', registration_photo_optional: next.photoOptional ? '1' : '',
+            registration_questions: next.questions } }) }).catch(() => alert('Could not save the registration settings'));
+    };
     // Each team's sign-in PIN, sent with its link.
     const [pins, setPins] = useState({});
     useEffect(() => {
@@ -623,6 +645,34 @@ const ShareModal = ({ teams, onClose }) => {
                             </a>
                         </div>
                     </div>
+
+                    {/* Player registration */}
+                    {registerUrl && <div className="bg-slate-950 p-4 rounded-2xl border border-teal-500/30">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="fredoka font-bold text-teal-400 text-sm flex items-center gap-2">📝 Player Registration</span>
+                            <button onClick={() => saveReg({ ...reg, open: !reg.open })}
+                                className={`px-3 py-1 rounded-lg text-xs font-extrabold border transition ${reg.open ? 'bg-teal-500/20 border-teal-500/50 text-teal-300' : 'bg-slate-900 border-slate-700 text-slate-400'}`}>
+                                {reg.open ? '● Open' : 'Closed'}
+                            </button>
+                        </div>
+                        <p className="text-xs text-slate-400 mb-2">Players sign up themselves, with a photo, instead of a Google Form. Each sign-up lands in the player pool at once; phone and email stay private.</p>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                            <input readOnly value={registerUrl} className="flex-1 bg-slate-900 border border-slate-700 text-teal-300 px-3 py-1.5 rounded-xl text-xs font-bold" />
+                            <button onClick={() => copy(registerUrl, 'register')} className="bg-teal-600 hover:bg-teal-500 text-white px-4 py-1.5 rounded-xl text-xs font-bold transition shadow-sm">
+                                {copied === 'register' ? '✓ Copied!' : 'Copy'}
+                            </button>
+                            <a href={registerUrl} target="_blank" className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center">
+                                Open ↗
+                            </a>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs text-slate-400 font-bold mb-2">
+                            <input type="checkbox" checked={reg.photoOptional} onChange={e => saveReg({ ...reg, photoOptional: e.target.checked })} />
+                            Photo optional (otherwise every player must add one)
+                        </label>
+                        <textarea value={reg.questions} onChange={e => setReg({ ...reg, questions: e.target.value })} onBlur={() => saveReg(reg)}
+                            rows={2} placeholder="Your own questions, one per line (Batting style, Company…). Name, phone, email, photo, role, age and city are always asked."
+                            className="w-full bg-slate-900 border border-slate-700 text-slate-200 px-3 py-2 rounded-xl text-xs font-semibold" />
+                    </div>}
 
                     {/* Player cards */}
                     {cardsUrl && <div className="bg-slate-950 p-4 rounded-2xl border border-amber-500/30">

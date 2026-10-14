@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Player Registration</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg: #0b0d12; --panel: #151922; --line: #262c38; --text: #f1f5f9; --dim: #94a3b8; --accent: #f5b72e; --bad: #fca5a5; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; }
+    .wrap { max-width: 560px; margin: 0 auto; padding: 20px 16px 48px; }
+    .banner { width: 100%; height: 120px; object-fit: cover; border-radius: 16px; margin-bottom: 16px; }
+    .banner[hidden], .logo[hidden] { display: none; }
+    .event { display: flex; align-items: center; gap: 14px; }
+    .logo { width: 56px; height: 56px; object-fit: contain; border-radius: 12px; background: rgba(255,255,255,.06); }
+    h1 { margin: 0; font: 800 30px/1.05 'Barlow Condensed', sans-serif; text-transform: uppercase; }
+    .lead { color: var(--dim); margin: 8px 0 22px; font-size: 15px; }
+    form { display: grid; gap: 16px; }
+    label { display: grid; gap: 6px; font-weight: 700; font-size: 14px; }
+    label small { color: var(--dim); font-weight: 600; font-size: 12px; }
+    input[type=text], input[type=tel], input[type=email], input[type=number] {
+      width: 100%; padding: 13px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel);
+      color: var(--text); font: 600 16px Inter, sans-serif; outline: none; }
+    input:focus { border-color: var(--accent); }
+    .photo { display: flex; align-items: center; gap: 16px; padding: 14px; border: 1px dashed var(--line); border-radius: 16px; cursor: pointer; }
+    .photo .ring { width: 84px; height: 84px; border-radius: 50%; background: var(--panel); border: 2px solid var(--line);
+                   flex: none; overflow: hidden; display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 28px; }
+    .photo .ring img { width: 100%; height: 100%; object-fit: cover; }
+    .photo b { display: block; font-size: 15px; }
+    .photo span { color: var(--dim); font-size: 13px; font-weight: 600; }
+    .photo input { display: none; }
+    .consent { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; font-size: 13px; color: var(--dim); }
+    .consent input { width: 20px; height: 20px; margin: 0; flex: none; accent-color: var(--accent); }
+    .trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+    button { padding: 15px; border: 0; border-radius: 14px; background: var(--accent); color: #111; font: 800 16px Inter, sans-serif; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: default; }
+    .error { color: var(--bad); font-weight: 700; font-size: 14px; min-height: 1em; }
+    .done { text-align: center; padding: 40px 10px; }
+    .done .tick { width: 72px; height: 72px; border-radius: 50%; background: rgba(16,185,129,.15); color: #34d399; font-size: 36px;
+                  display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+    .done h2 { margin: 0 0 8px; font: 800 28px 'Barlow Condensed', sans-serif; text-transform: uppercase; }
+    .done p, .closed { color: var(--dim); }
+    .closed { text-align: center; padding: 40px 0; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <img id="banner" class="banner" alt="" hidden />
+    <div class="event">
+      <img id="logo" class="logo" alt="" hidden />
+      <h1 id="event">Player Registration</h1>
+    </div>
+    <p class="lead">Register for the player auction. Your name, photo and answers are shown when you come up for bidding.</p>
+    <div id="body"><p class="closed">Loading…</p></div>
+  </main>
+  <script>
+  (function () {
+    const TOKEN = {{ token|tojson }};
+    const API = '/api/register/' + TOKEN;
+    const body = document.getElementById('body');
+    const ROLES = ['Batter', 'Bowler', 'All-rounder', 'Wicket-keeper'];
+    let photoBlob = null;
+
+    const el = (tag, attrs, ...kids) => {
+      const n = document.createElement(tag);
+      Object.entries(attrs || {}).forEach(([k, v]) => { if (v === true) n.setAttribute(k, ''); else if (v !== false && v != null) n.setAttribute(k, v); });
+      kids.forEach(k => n.append(k));
+      return n;
+    };
+    const field = (label, input, note) => el('label', {}, label, ...(note ? [el('small', {}, note)] : []), input);
+
+    // A phone photo is several megabytes: it is shrunk here first, so the
+    // upload is quick on a mobile connection.
+    function shrink(file) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const s = Math.min(1, 1600 / Math.max(img.width, img.height));
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          URL.revokeObjectURL(img.src);
+          c.toBlob(b => b ? resolve(b) : reject(new Error('unreadable')), 'image/jpeg', 0.88);
+        };
+        img.onerror = () => reject(new Error('unreadable'));
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
+    function form(info) {
+      const err = el('p', { class: 'error', role: 'alert' });
+      const ring = el('div', { class: 'ring' }, '📷');
+      const file = el('input', { type: 'file', accept: 'image/*', name: 'photo' });
+      const photo = el('label', { class: 'photo' }, ring,
+        el('div', {}, el('b', {}, 'Your photo'), el('span', {}, 'A clear photo of your face. Tap to choose.')), file);
+      file.addEventListener('change', async () => {
+        err.textContent = '';
+        if (!file.files[0]) return;
+        try {
+          photoBlob = await shrink(file.files[0]);
+          ring.innerHTML = '';
+          ring.append(el('img', { src: URL.createObjectURL(photoBlob), alt: '' }));
+        } catch (e) {
+          photoBlob = null;
+          err.textContent = 'That picture could not be read. Choose a JPG or PNG photo.';
+        }
+      });
+      const roles = el('datalist', { id: 'roles' }, ...ROLES.map(r => el('option', { value: r })));
+      const questions = info.fixed.concat(info.questions);
+      const f = el('form', { novalidate: true },
+        field('Full name', el('input', { type: 'text', name: 'name', required: true, autocomplete: 'name', maxlength: 80 })),
+        field('Phone number', el('input', { type: 'tel', name: 'phone', required: true, autocomplete: 'tel', inputmode: 'tel' }),
+              'Private: only the organiser sees it.'),
+        field('Email (optional)', el('input', { type: 'email', name: 'email', autocomplete: 'email' }), 'Private as well.'),
+        photo,
+        ...questions.map(q => field(q, el('input', q === 'Age'
+          ? { type: 'number', name: 'q:' + q, min: 5, max: 99, inputmode: 'numeric' }
+          : { type: 'text', name: 'q:' + q, maxlength: 120, list: q === 'Playing Role' ? 'roles' : null }))),
+        roles,
+        el('label', { class: 'consent' }, el('input', { type: 'checkbox', name: 'consent', value: 'yes' }),
+          el('span', {}, 'My name, photo and answers may be shown on the auction screens and in the results. My phone number and email stay private.')),
+        el('div', { class: 'trap', 'aria-hidden': 'true' }, el('input', { type: 'text', name: 'website', tabindex: '-1', autocomplete: 'off' })),
+        err,
+        el('button', { type: 'submit' }, 'Register'));
+      f.addEventListener('submit', async e => {
+        e.preventDefault();
+        const btn = f.querySelector('button');
+        if (btn.disabled) return;   // a second tap while sending
+        err.textContent = '';
+        const data = new FormData(f);
+        data.delete('photo');
+        if (photoBlob) data.append('photo', photoBlob, 'photo.jpg');
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+        try {
+          const r = await fetch(API, { method: 'POST', body: data });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(d.message || 'Could not register. Try again.');
+          body.innerHTML = '';
+          body.append(el('div', { class: 'done' }, el('div', { class: 'tick' }, '✓'),
+            el('h2', {}, 'You are registered'),
+            el('p', {}, d.name + ', the organiser has your details. See you at the auction!')));
+        } catch (e2) {
+          err.textContent = e2.message;
+          btn.disabled = false;
+          btn.textContent = 'Register';
+        }
+      });
+      return f;
+    }
+
+    fetch(API).then(r => r.json().then(d => ({ ok: r.ok, d }))).then(({ ok, d }) => {
+      body.innerHTML = '';
+      if (!ok) { body.append(el('p', { class: 'closed' }, d.message || 'This link does not work.')); return; }
+      const ev = d.event || {};
+      if (ev.event_name) { document.getElementById('event').textContent = ev.event_name; document.title = ev.event_name + ' · Registration'; }
+      if (ev.org_logo) { const l = document.getElementById('logo'); l.src = ev.org_logo; l.hidden = false; }
+      if (ev.event_banner) { const b = document.getElementById('banner'); b.src = ev.event_banner; b.hidden = false; }
+      if (!d.open) { body.append(el('p', { class: 'closed' }, 'Registration is closed. Ask the organiser.')); return; }
+      body.append(form(d));
+    }).catch(() => { body.innerHTML = '<p class="closed">Could not reach the server. Check your connection.</p>'; });
+  })();
+  </script>
+</body>
+</html>

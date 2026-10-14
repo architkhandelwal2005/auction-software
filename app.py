@@ -1327,6 +1327,7 @@ ROUTE_POLICY = {
     'card_view': 'public', 'get_card': 'public',
     'cards_view': 'public', 'cards_card_view': 'public', 'get_cards': 'public', 'get_cards_card': 'public',
     'service_worker': 'public',
+    'register_view': 'public', 'get_registration': 'public', 'submit_registration': 'public',
     'get_live_data': 'public', 'get_live_state': 'public', 'get_live_stream': 'public',
     # The login page lists the live auction's teams before anyone signs in.
     'get_teams': 'public', 'get_config': 'public',
@@ -1432,6 +1433,8 @@ AUCTION_FREE_ENDPOINTS = {
     # A cards link names its own auction (bind_cards_link).
     'cards_view', 'cards_card_view', 'get_cards', 'get_cards_card',
     'service_worker',
+    # So does a registration link (bind_registration_link).
+    'register_view', 'get_registration', 'submit_registration',
 }
 
 # Screens and feeds an audience opens with no login. These bind to whichever
@@ -1694,6 +1697,7 @@ def _auction_summary(row):
         'players': report.get('player_count'),
         'teams': report.get('team_count'),
         'cards_path': cards_path(row['id']),
+        'registration_path': registration_path(row['id']),
     }
 
 def require_admin():
@@ -2210,6 +2214,164 @@ def get_cards_card(token, player_id):
     if refused:
         return refused
     return card_answer(player_id)
+
+
+# ─── Player registration ───
+# Players sign themselves up from one link the organiser shares, instead of a
+# Google Form whose answers then have to be imported: each answer becomes a
+# player in the pool at once, photo included. Like the cards link, the link
+# names its auction and is signed, so it works without a login. The
+# organiser opens and closes it (config registration_open), and may add
+# questions of their own (registration_questions, one per line). Phone and
+# email are stored like any sheet's, so they stay private (public_attributes).
+_REGISTER_LINK = URLSafeSerializer(app.secret_key, salt='player-registration')
+REGISTER_FIXED = ('Playing Role', 'Age', 'City')   # asked of everyone, after name and contact
+REGISTER_PHOTO_MAX = 1600                           # pixels on the long side, as stored
+REGISTER_PER_HOUR = 20                              # sign-ups from one address
+_register_times = {}
+_register_lock = threading.Lock()
+
+
+def registration_path(auction_id):
+    return '/register/' + _REGISTER_LINK.dumps(int(auction_id))
+
+
+def registration_questions(cfg):
+    return [q.strip()[:80] for q in (cfg.get('registration_questions') or '').splitlines() if q.strip()][:10]
+
+
+def bind_registration_link(token):
+    """Bind this request to the auction a registration link names; or the
+    answer saying why the link does not work."""
+    try:
+        auction_id = _REGISTER_LINK.loads(token)
+    except BadSignature:
+        return jsonify({'error': 'bad_link',
+                        'message': 'This link is not complete. Ask the organiser to send it again.'}), 404
+    row = auction_row(auction_id)
+    release_registry_db()
+    if row is None or row['status'] in ('ended', 'purged'):
+        return jsonify({'error': 'closed', 'message': 'This auction is over: registration has closed.'}), 410
+    g.auction = dict(row)
+    g.auction_id = g.auction['id']
+    return None
+
+
+def registration_photo(file):
+    """A sign-up's photo as stored: a real image, turned upright, at most
+    REGISTER_PHOTO_MAX pixels, re-encoded as JPEG, which also drops what the
+    phone recorded inside it (where it was taken). None when it is not an
+    image."""
+    from PIL import Image, ImageOps
+    try:
+        img = Image.open(file.stream)
+        img.load()
+    except Exception:
+        return None
+    img = ImageOps.exif_transpose(img).convert('RGB')
+    img.thumbnail((REGISTER_PHOTO_MAX, REGISTER_PHOTO_MAX))
+    out = io.BytesIO()
+    img.save(out, 'JPEG', quality=86, optimize=True)
+    return out.getvalue()
+
+
+def registration_allowed(address):
+    now = time.monotonic()
+    with _register_lock:
+        recent = [t for t in _register_times.get(address, []) if now - t < 3600]
+        if len(recent) >= REGISTER_PER_HOUR:
+            _register_times[address] = recent
+            return False
+        _register_times[address] = recent + [now]
+        return True
+
+
+@app.route('/register/<token>')
+def register_view(token):
+    return render_template('register.html', token=token)
+
+
+@app.route('/api/register/<token>', methods=['GET'])
+def get_registration(token):
+    """What the sign-up form asks, and whether it is open."""
+    refused = bind_registration_link(token)
+    if refused:
+        return refused
+    conn = get_db()
+    cfg = {r['key']: r['value'] for r in conn.execute('SELECT key, value FROM config').fetchall()}
+    conn.close()
+    return jsonify({'event': {k: cfg.get(k) or '' for k in ('event_name', 'organisation_name', 'org_logo', 'event_banner')},
+                    'open': cfg.get('registration_open') == '1',
+                    'fixed': list(REGISTER_FIXED),
+                    'questions': registration_questions(cfg)})
+
+
+@app.route('/api/register/<token>', methods=['POST'])
+def submit_registration(token):
+    """One player signing up."""
+    refused = bind_registration_link(token)
+    if refused:
+        return refused
+    form = request.form
+    if form.get('website'):   # a field people never see: only a spam robot fills it
+        return jsonify({'success': True})
+    address = (request.headers.get('X-Forwarded-For') or request.remote_addr or '').split(',')[0].strip()
+    if not registration_allowed(address):
+        return jsonify({'error': 'too_many', 'message': 'Too many sign-ups from this connection. Try again in an hour.'}), 429
+    name = ' '.join((form.get('name') or '').split())[:80]
+    phone = re.sub(r'[^\d+]', '', form.get('phone') or '')
+    email = (form.get('email') or '').strip()[:120]
+    if not name:
+        return jsonify({'error': 'invalid', 'message': 'Enter your full name.'}), 400
+    if len(re.sub(r'\D', '', phone)) < 10:
+        return jsonify({'error': 'invalid', 'message': 'Enter your phone number, with at least 10 digits.'}), 400
+    if email and not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
+        return jsonify({'error': 'invalid', 'message': 'That email address does not look right.'}), 400
+    if form.get('consent') != 'yes':
+        return jsonify({'error': 'invalid', 'message': 'Tick the box to agree to your details being shown.'}), 400
+    photo = request.files.get('photo')
+    data = registration_photo(photo) if photo and photo.filename else None
+    if photo and photo.filename and data is None:
+        return jsonify({'error': 'invalid', 'message': 'The photo could not be read. Choose a JPG or PNG picture.'}), 400
+
+    conn = get_db()
+    cfg = {r['key']: r['value'] for r in conn.execute('SELECT key, value FROM config').fetchall()}
+    if cfg.get('registration_open') != '1':
+        return jsonify({'error': 'closed', 'message': 'Registration is closed. Ask the organiser.'}), 409
+    if data is None and cfg.get('registration_photo_optional') != '1':
+        return jsonify({'error': 'invalid', 'message': 'Add a photo of yourself: it is shown when you come up in the auction.'}), 400
+    # One sign-up per phone number: the same player twice would be auctioned twice.
+    last10 = re.sub(r'\D', '', phone)[-10:]
+    for r in conn.execute('SELECT name, attributes FROM players').fetchall():
+        try:
+            attrs = json.loads(r['attributes'] or '{}')
+        except Exception:
+            continue
+        if any(re.sub(r'\D', '', str(v))[-10:] == last10 for k, v in attrs.items() if _PRIVATE_COLUMN.search(str(k))):
+            return jsonify({'error': 'duplicate', 'message': 'This phone number is already registered (as %s).' % r['name']}), 409
+    attrs = {'Phone': phone}
+    if email:
+        attrs['Email'] = email
+    for q in list(REGISTER_FIXED) + registration_questions(cfg):
+        answer = ' '.join((form.get('q:' + q) or '').split())[:120]
+        if answer:
+            attrs[q] = answer
+    attrs['Registered'] = datetime.datetime.now().strftime('%d %b %Y')
+    photo_url = save_media(g.auction_id, 'players', 'reg_' + uuid.uuid4().hex[:10], data, 'jpg') if data else ''
+    base = pricing_rule(pricing_from_config(cfg), None)['base']
+    c = conn.cursor()
+    sql = 'INSERT INTO players (name, category, base_price, photo_url, attributes) VALUES (?, ?, ?, ?, ?)'
+    args = (name, '', base, photo_url, json.dumps(attrs))
+    if USE_PG:
+        c.execute(sql + ' RETURNING id', args)
+        pid = c.fetchone()['id']
+    else:
+        c.execute(sql, args)
+        pid = c.lastrowid
+    conn.commit()
+    conn.close()
+    excel_backup_async(g.auction_id)
+    return jsonify({'success': True, 'id': pid, 'name': name})
 
 
 @app.route('/sw.js')
