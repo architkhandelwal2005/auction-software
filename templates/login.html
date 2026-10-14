@@ -42,7 +42,7 @@
                     <select id="team-select" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl p-3 text-white text-sm font-bold focus:border-emerald-500 outline-none">
                         <option value="">Loading teams...</option>
                     </select>
-                    <input type="password" id="team-pass" placeholder="Password (Team Name)" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl p-3 text-white text-sm font-bold focus:border-emerald-500 outline-none">
+                    <input type="password" id="team-pass" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="Team PIN (6 digits from the auctioneer)" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl p-3 text-white text-sm font-bold focus:border-emerald-500 outline-none">
                     <button onclick="loginTeam()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
                         Login <i class="fa-solid fa-arrow-right"></i>
                     </button>

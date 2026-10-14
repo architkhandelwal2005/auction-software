@@ -50,7 +50,8 @@ check("and the webhook it set", admin.get('/api/config').get_json()['config'].ge
 
 anon = A.app.test_client()
 team = A.app.test_client()
-team.post('/api/auth/login', json={'role': 'team', 'team_id': tid, 'password': 'reds'})
+pin = next(t['pin'] for t in admin.get('/api/teams/pins').get_json() if t['id'] == tid)
+team.post('/api/auth/login', json={'role': 'team', 'team_id': tid, 'password': pin})
 for who, client, paths in (
         ('the audience', anon, ['/api/live_data', '/api/live_state', '/api/teams', '/api/config']),
         ('a team owner', team, ['/api/live_data', '/api/live_state', '/api/teams', '/api/config', '/api/players',

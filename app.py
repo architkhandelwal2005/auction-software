@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for, g, abort, has_request_context
 from itsdangerous import URLSafeSerializer, BadSignature
-import sqlite3, os, webbrowser, csv, io, uuid, json, re, threading, datetime, functools, time, hashlib
+import sqlite3, os, webbrowser, csv, io, uuid, json, re, threading, datetime, functools, time, hashlib, hmac, secrets
 import urllib.request as _ureq
 import urllib.error as _uerr
 import contextlib
@@ -1172,7 +1172,7 @@ def _create_auction_tables_sqlite(conn):
     c.execute('''CREATE TABLE IF NOT EXISTS teams (
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
         total_budget REAL NOT NULL, remaining_budget REAL NOT NULL,
-        color TEXT DEFAULT '#3b82f6', logo_url TEXT)''')
+        color TEXT DEFAULT '#3b82f6', logo_url TEXT, pin TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS players (
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, category TEXT,
         base_price REAL DEFAULT 0, status TEXT DEFAULT 'unsold', team_id INTEGER,
@@ -1200,7 +1200,7 @@ def _create_auction_tables_pg(cur, schema):
     cur.execute("""CREATE TABLE IF NOT EXISTS teams (
         id SERIAL PRIMARY KEY, name TEXT NOT NULL,
         total_budget DOUBLE PRECISION NOT NULL, remaining_budget DOUBLE PRECISION NOT NULL,
-        color TEXT DEFAULT '#3b82f6', logo_url TEXT)""")
+        color TEXT DEFAULT '#3b82f6', logo_url TEXT, pin TEXT)""")
     cur.execute("""CREATE TABLE IF NOT EXISTS players (
         id SERIAL PRIMARY KEY, name TEXT NOT NULL, category TEXT,
         base_price DOUBLE PRECISION DEFAULT 0, status TEXT DEFAULT 'unsold',
@@ -1241,6 +1241,7 @@ def upgrade_auction_schema(conn, auction_id):
             try:
                 conn.execute("SET LOCAL lock_timeout = '3s'")
                 conn.execute('ALTER TABLE players ADD COLUMN IF NOT EXISTS team_role TEXT')
+                conn.execute('ALTER TABLE teams ADD COLUMN IF NOT EXISTS pin TEXT')
                 conn.execute('RELEASE SAVEPOINT schema_upgrade')
             except Exception:
                 conn.execute('ROLLBACK TO SAVEPOINT schema_upgrade')
@@ -1251,6 +1252,8 @@ def upgrade_auction_schema(conn, auction_id):
                 return  # tables not built yet
             if 'team_role' not in cols:
                 conn.execute('ALTER TABLE players ADD COLUMN team_role TEXT')
+            if 'pin' not in [r['name'] for r in conn.execute('PRAGMA table_info(teams)').fetchall()]:
+                conn.execute('ALTER TABLE teams ADD COLUMN pin TEXT')
         conn.commit()
         _SCHEMA_CURRENT.add(key)
     except Exception as exc:
@@ -1332,6 +1335,7 @@ ROUTE_POLICY = {
 
     # A team owner's own dashboard.
     'team_dashboard': 'team', 'get_team_data': 'team',
+    'get_team_pins': 'admin', 'renew_team_pin': 'admin',
 
     # The auctioneer's console: everything that writes.
     'admin_dashboard': 'admin', 'control_view': 'admin',
@@ -1445,7 +1449,7 @@ MUTATING_ENDPOINTS = {
     'upload_banner', 'upload_org_logo', 'upload_sponsor_logo', 'upload_team_logo', 'fetch_drive_photos',
     'set_common_base_price', 'save_pricing', 'smart_analyze', 'pass_player', 'revive_player',
     'bargain_bin', 'go_live_auction',
-    'import_from_sheet', 'resync_sheet', 'apply_sheet_changes',
+    'import_from_sheet', 'resync_sheet', 'apply_sheet_changes', 'renew_team_pin',
 }
 
 # Changes to one auction take turns. A change reads, decides, then writes: a
@@ -2264,17 +2268,18 @@ def auth_login():
         auction_id = dict(live)['id']
         team_id = data.get('team_id')
         conn = open_auction_conn(auction_id)
-        row = conn.execute('SELECT name FROM teams WHERE id=?', (team_id,)).fetchone()
+        row = conn.execute('SELECT name, pin FROM teams WHERE id=?', (team_id,)).fetchone()
         conn.close()
 
         if not row:
             return jsonify({'error': 'Team not found'}), 404
 
         team_name = row['name']
-        expected_pass = team_name.replace(' ', '').lower()
-        entered_pass = password.replace(' ', '').lower()
-
-        if expected_pass == entered_pass:
+        if not row['pin']:
+            return jsonify({'error': "Ask the auctioneer for your team's PIN: it is on their Share Links."}), 401
+        if pin_locked(auction_id, team_id):
+            return jsonify({'error': 'Too many wrong PINs. Wait a few minutes, or ask the auctioneer.'}), 429
+        if hmac.compare_digest(re.sub(r'\D', '', password), row['pin']):
             if keep_auctioneer:
                 return jsonify({'success': True, 'url': f'/team/{team_id}'})
             session['user'] = team_name
@@ -2282,8 +2287,8 @@ def auth_login():
             session['team_id'] = team_id
             session['auction_id'] = auction_id
             return jsonify({'success': True, 'url': f'/team/{team_id}'})
-        else:
-            return jsonify({'error': 'Incorrect password'}), 401
+        pin_failed(auction_id, team_id)
+        return jsonify({'error': "Incorrect PIN. It is the 6 digits the auctioneer sent your team."}), 401
 
     elif role == 'spectator':
         live = live_auction_row()
@@ -2297,6 +2302,71 @@ def auth_login():
         return jsonify({'success': True, 'url': '/live'})
 
     return jsonify({'error': 'Invalid role'}), 400
+
+# A team signs in with a PIN the console shows the auctioneer: six random
+# digits, not the team's name, which everyone in the room knows. Wrong guesses
+# are limited per team, so trying every PIN would take years.
+PIN_TRIES = 8               # wrong PINs allowed per team...
+PIN_WINDOW_SECONDS = 600    # ...within this long
+_pin_failures = {}
+_pin_failures_lock = threading.Lock()
+
+
+def new_pin():
+    return '%06d' % secrets.randbelow(10 ** 6)
+
+
+def pin_locked(auction_id, team_id):
+    now = time.monotonic()
+    with _pin_failures_lock:
+        recent = [t for t in _pin_failures.get((auction_id, str(team_id)), []) if now - t < PIN_WINDOW_SECONDS]
+        _pin_failures[(auction_id, str(team_id))] = recent
+        return len(recent) >= PIN_TRIES
+
+
+def pin_failed(auction_id, team_id):
+    with _pin_failures_lock:
+        _pin_failures.setdefault((auction_id, str(team_id)), []).append(time.monotonic())
+
+
+def team_pins(conn):
+    """Every team's PIN, made now for any team without one (teams made before
+    PINs existed)."""
+    out = []
+    for r in conn.execute('SELECT id, name, pin FROM teams ORDER BY id').fetchall():
+        pin = r['pin']
+        if not pin:
+            pin = new_pin()
+            conn.execute('UPDATE teams SET pin = ? WHERE id = ?', (pin, r['id']))
+        out.append({'id': r['id'], 'name': r['name'], 'pin': pin})
+    conn.commit()
+    return out
+
+
+@app.route('/api/teams/pins', methods=['GET'])
+def get_team_pins():
+    conn = get_db()
+    pins = team_pins(conn)
+    conn.close()
+    return jsonify(pins)
+
+
+@app.route('/api/teams/<int:team_id>/pin', methods=['POST'])
+def renew_team_pin(team_id):
+    """A new PIN for a team, when the old one went to the wrong person. Their
+    phones already signed in stay signed in."""
+    conn = get_db()
+    pin = new_pin()
+    c = conn.execute('UPDATE teams SET pin = ? WHERE id = ?', (pin, team_id))
+    if c.rowcount == 0:
+        conn.rollback()
+        return jsonify({'error': 'Team not found'}), 404
+    conn.commit()
+    conn.close()
+    with _pin_failures_lock:
+        _pin_failures.pop((g.auction_id, str(team_id)), None)
+    return jsonify({'success': True, 'id': team_id, 'pin': pin})
+
 
 @app.route('/api/auth/me')
 def auth_me():
@@ -2386,12 +2456,33 @@ def rename_categories(c, renames):
         c.execute('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)', ('category_recipe', json.dumps(recipe)))
 
 
+def confirms_wipe(password):
+    """A password that allows clearing recorded sales: the wipe password, or,
+    for an auction's own auctioneer, that auction's login password."""
+    password = password or ''
+    if hmac.compare_digest(password.encode(), WIPE_PASSWORD.encode()):
+        return True
+    if session.get('role') == 'auctioneer' and (g.auction or {}).get('password_hash'):
+        from werkzeug.security import check_password_hash
+        return check_password_hash(g.auction['password_hash'], password)
+    return False
+
+
+def has_sales(conn):
+    return conn.execute("SELECT 1 FROM players WHERE status = 'sold' LIMIT 1").fetchone() is not None
+
+
 @app.route('/api/setup/restart', methods=['POST'])
 def restart_setup():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     wipe_all = data.get('wipe_all', False)
-    if wipe_all and data.get('password') != WIPE_PASSWORD:
+    if wipe_all and not confirms_wipe(data.get('password')):
         return jsonify({'error': 'Incorrect password'}), 403
+    # Going back to setup undoes the sales too: once there are any, that
+    # needs the password as well.
+    if not wipe_all and has_sales(get_db()) and not confirms_wipe(data.get('password')):
+        return jsonify({'error': 'password_required',
+                        'message': 'This undoes every sale. Enter the wipe password to confirm.'}), 403
     # Keep a dated copy of the outgoing auction before erasing it.
     archive_excel_backup(g.auction_id, 'wipe' if wipe_all else 'restart')
     conn = get_db()
@@ -2593,6 +2684,7 @@ def compute_max_bid(rem_budget, cat_counts, rules_list, config_dict, category=No
 # ─── Helper: Format Team Metrics with Max Allowed Bid & Reserved Purse ───
 def format_team_metrics(team_dict, players_list, rules_list, config_dict, category=None):
     td = dict(team_dict)
+    td.pop('pin', None)   # the team's sign-in; only the console sees it (/api/teams/pins)
     players = [dict(p) for p in players_list]
     td['players'] = players
     td['player_count'] = len(players)
@@ -4030,10 +4122,15 @@ def edit_player_sale():
 
 @app.route('/api/reset', methods=['POST'])
 def reset_auction():
+    """Undo every sale and refill every purse. One mistaken click would wipe
+    an auction's results, so once there are sales it needs the password."""
+    conn = get_db()
+    if has_sales(conn) and not confirms_wipe((request.get_json(silent=True) or {}).get('password')):
+        return jsonify({'error': 'password_required',
+                        'message': 'Resetting undoes every sale. Enter the wipe password to confirm.'}), 403
     # Archive first: clearing every sale would otherwise overwrite the backup
     # of a finished auction with an empty snapshot.
     archive_excel_backup(g.auction_id, 'reset')
-    conn = get_db()
     c = conn.cursor()
     c.execute('UPDATE players SET status="unsold", team_id=NULL, sold_price=NULL, sold_at=NULL, team_role=NULL')
     c.execute('UPDATE teams SET remaining_budget=total_budget')

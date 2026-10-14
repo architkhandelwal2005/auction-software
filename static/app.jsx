@@ -350,7 +350,26 @@ const RoleBadge = ({ role }) => <span className="text-[0.6rem] font-extrabold up
 // lets the auctioneer correct a sale mid-auction: move a player to another
 // team, change the price or team role, or return the player to the pool.
 // Purses are rebalanced on the server, and Undo reverses each change.
+// What the auctioneer sends a team owner to sign in.
+const pinMessage = (name, pin) =>
+    `${name}: open ${window.location.origin}/login, choose "${name}" under Team Owner, and enter the PIN ${pin}`;
+
 const TeamRosterModal = ({ team, onClose, teams = [], onChanged }) => {
+    // The team's sign-in PIN, for the auctioneer to send the team owner.
+    const [pin, setPin] = useState('');
+    const [pinCopied, setPinCopied] = useState(false);
+    useEffect(() => {
+        fetch('/api/teams/pins').then(r => r.ok ? r.json() : []).then(list => {
+            const mine = (list || []).find(t => t.id === team.id);
+            setPin(mine ? mine.pin : '');
+        }).catch(() => {});
+    }, [team.id]);
+    const renewPin = async () => {
+        if (!confirm(`Give ${team.name} a new PIN? The old one stops working for new sign-ins; phones already signed in stay in.`)) return;
+        const r = await fetch(`/api/teams/${team.id}/pin`, { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) setPin(d.pin); else alert(d.error || 'Could not change the PIN');
+    };
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(null);   // { id, team_id, price, role } of the player being edited
     const [busy, setBusy] = useState(false);
@@ -447,6 +466,14 @@ const TeamRosterModal = ({ team, onClose, teams = [], onChanged }) => {
                         <input readOnly value={`${window.location.origin}/team/${team.id}`} className="flex-1 min-w-0 bg-slate-950 border border-slate-700 text-blue-400 px-3 py-2.5 rounded-xl text-sm font-bold" onClick={e=>{e.target.select();navigator.clipboard?.writeText(e.target.value);}} />
                         <span className="text-sm text-slate-400 font-bold shrink-0">Copy</span>
                     </div>
+                    {pin && <div className="flex items-center gap-2 flex-wrap">
+                        <i className="fa-solid fa-key text-amber-400 text-base shrink-0"></i>
+                        <span className="text-sm text-slate-400 font-bold">Team PIN</span>
+                        <span className="font-mono text-xl font-extrabold text-amber-300 tracking-[0.3em] px-1">{pin}</span>
+                        <button onClick={() => { navigator.clipboard?.writeText(pinMessage(team.name, pin)); setPinCopied(true); setTimeout(() => setPinCopied(false), 2000); }}
+                            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold">{pinCopied ? '✓ Copied' : 'Copy message'}</button>
+                        <button onClick={renewPin} className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs font-bold">New PIN</button>
+                    </div>}
                 </div>
 
                 {/* RIGHT: Squad Roster — big cards, hall-readable */}
@@ -520,6 +547,15 @@ const ShareModal = ({ teams, onClose }) => {
         fetch('/api/auction/status').then(r => r.ok ? r.json() : {}).then(d => setCardsPath(d.cards_path || '')).catch(() => {});
     }, []);
     const cardsUrl = cardsPath ? origin + cardsPath : '';
+    // Each team's sign-in PIN, sent with its link.
+    const [pins, setPins] = useState({});
+    useEffect(() => {
+        fetch('/api/teams/pins').then(r => r.ok ? r.json() : []).then(list => {
+            const byId = {};
+            (list || []).forEach(t => { byId[t.id] = t.pin; });
+            setPins(byId);
+        }).catch(() => {});
+    }, []);
     const copy = (url, key) => {
         navigator.clipboard?.writeText(url);
         setCopied(key);
@@ -622,7 +658,7 @@ const ShareModal = ({ teams, onClose }) => {
 
                     {/* Team Portals */}
                     <div>
-                        <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Team-Specific Portals</h4>
+                        <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Team Owners: Sign-in Link + PIN</h4>
                         <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-1">
                             {teams.map(t => (
                                 <div key={t.id} className="flex items-center gap-2.5 p-2.5 bg-slate-950 rounded-xl border border-slate-800">
@@ -630,7 +666,10 @@ const ShareModal = ({ teams, onClose }) => {
                                         {t.logo_url ? <img src={t.logo_url} className="w-full h-full object-contain" /> : t.name[0]}
                                     </div>
                                     <span className="font-bold text-slate-300 text-xs flex-1 truncate">{t.name}</span>
-                                    <button onClick={() => copy(`${origin}/team/${t.id}`, `team-${t.id}`)} className="bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1 rounded-lg text-xs font-bold transition">
+                                    {pins[t.id] && <span className="font-mono text-xs font-extrabold text-amber-300 tracking-widest" title="Team PIN">{pins[t.id]}</span>}
+                                    <button onClick={() => copy(pins[t.id] ? pinMessage(t.name, pins[t.id]) : `${origin}/team/${t.id}`, `team-${t.id}`)}
+                                        title="The sign-in message for this team: link, team and PIN"
+                                        className="bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 px-3 py-1 rounded-lg text-xs font-bold transition">
                                         {copied === `team-${t.id}` ? '✓ Copied' : 'Copy'}
                                     </button>
                                     <a href={`/team/${t.id}`} target="_blank" className="text-blue-400 hover:text-blue-300 text-xs font-bold px-1">
@@ -2424,7 +2463,14 @@ function App() {
         setView('wizard');
     };
 
-    const resetAuction = async () => { if(confirm('⚠️ Reset entire auction?')){await fetch('/api/reset',{method:'POST'});await loadData();setCurrentPlayer(null);} };
+    const resetAuction = async () => {
+        const pwd = prompt('⚠️ RESET ALL SALES\n\nEvery sale is undone, every purse refilled, and every player goes back to the pool.\n\nEnter the wipe password to confirm:');
+        if (pwd === null) return;
+        const r = await fetch('/api/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pwd }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { alert(d.message || d.error || 'Not reset'); return; }
+        await loadData(); setCurrentPlayer(null);
+    };
 
     useEffect(()=>{
         if(currentPlayer && view==='auction'){
@@ -2556,7 +2602,7 @@ function App() {
                                  else alert('Click "End Auction" first. The report is a record of a finished auction, so it stays locked until then.');
                              }},
                             {divider:true},
-                            {icon:'fa-rotate-left', label:'Clear Bids Only', danger:true, onClick:resetAuction},
+                            {icon:'fa-rotate-left', label:'Reset All Sales', danger:true, onClick:resetAuction},
                             {icon:'fa-power-off', label:'Start Over (Wipe All)', danger:true, onClick:wipeAllAndRestart},
                             ...(myRole === 'admin' ? [{icon:'fa-arrow-left-long', label:'Switch Auction', onClick:switchAuction}] : []),
                             {icon:'fa-right-from-bracket', label:'Logout', danger:true, onClick:()=>window.location.href='/logout'},

@@ -54,7 +54,8 @@ check('player pool survived the spectator', len(admin.get('/api/players').get_js
 # ── Team owner: their own dashboard, no write access ─────────────────────────
 team_id = admin.get('/api/teams').get_json()[0]['id']
 team = A.app.test_client()
-r = team.post('/api/auth/login', json={'role': 'team', 'team_id': team_id, 'password': 'reds'})
+pin = next(t['pin'] for t in admin.get('/api/teams/pins').get_json() if t['id'] == team_id)
+r = team.post('/api/auth/login', json={'role': 'team', 'team_id': team_id, 'password': pin})
 check('team owner can sign in', r.status_code == 200, r.get_data(as_text=True)[:80])
 check('team owner sees their dashboard', team.get('/api/team/%d' % team_id).status_code == 200)
 check('team owner refused selling', team.post('/api/sell_player', json={}).status_code == 403)
@@ -64,7 +65,7 @@ check('refusal says how to fix it', 'not the auctioneer' in (r.get_json() or {})
 
 # The auctioneer opening the team or spectator view on their own browser
 # keeps their sign-in: SOLD and PASS must not start failing with 403.
-r = admin.post('/api/auth/login', json={'role': 'team', 'team_id': team_id, 'password': 'reds'})
+r = admin.post('/api/auth/login', json={'role': 'team', 'team_id': team_id, 'password': pin})
 check('auctioneer can open a team view', r.status_code == 200 and r.get_json().get('url') == '/team/%d' % team_id)
 admin.post('/api/auth/login', json={'role': 'spectator'})
 check('auctioneer still signed in as auctioneer', admin.get('/api/auth/me').get_json().get('role') == 'admin',

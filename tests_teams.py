@@ -168,7 +168,7 @@ admin.post('/api/action/pass', json={'player_id': d2})
 check('draw category kept after a pass', draw_category() == 'Gold', str(draw_category()))
 admin.post('/api/undo')
 check('draw category kept after an undo', draw_category() == 'Gold', str(draw_category()))
-admin.post('/api/reset')
+admin.post('/api/reset', json={'password': A.WIPE_PASSWORD})
 check('draw category kept after a reset', draw_category() == 'Gold', str(draw_category()))
 
 print('\nALL CHECKS PASSED' if not check.failed else '\n%d CHECK(S) FAILED' % check.failed)
