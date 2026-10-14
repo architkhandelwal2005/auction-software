@@ -94,7 +94,9 @@ full = admin.get('/api/live_data')
 live = admin.get('/api/live_state').get_json()
 check('live state names the revision of the full data', live['rev'] == full.headers.get('X-Live-Rev'), str(live['rev']))
 check('and carries the stage state', live['auction_state'].get('current_player') == 'Bina')
-check('live state is small', len(admin.get('/api/live_state').data) * 10 < len(full.data),
+# (Under a kilobyte whatever the pool's size; this test pool is tiny, so the
+# full data is too, while a real one's is ~75 KB.)
+check('live state is small', len(admin.get('/api/live_state').data) < 1024 < len(full.data),
       '%d vs %d bytes' % (len(admin.get('/api/live_state').data), len(full.data)))
 body = full.get_json()
 state = body.pop('auction_state')

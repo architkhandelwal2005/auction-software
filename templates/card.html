@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sold Card</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <script src="/static/auction_guard.js?v={{ asset_v }}" data-auction="{{ auction_pin }}"></script>
+  <script src="/static/bidding.js?v={{ asset_v }}"></script>
+  <script src="/static/player_details.js?v={{ asset_v }}"></script>
+  <script src="/static/sold_card.js?v={{ asset_v }}"></script>
+  <style>
+    :root { --bg: #0b0d12; --panel: #151922; --line: #262c38; --text: #f1f5f9; --dim: #94a3b8; --accent: #f5b72e; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; }
+    .wrap { max-width: 640px; margin: 0 auto; padding: 16px 16px 40px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    header h1 { font: 800 22px/1.1 'Barlow Condensed', sans-serif; letter-spacing: .04em; text-transform: uppercase; margin: 0; }
+    header a { color: var(--dim); text-decoration: none; font-weight: 700; font-size: 14px; }
+    .formats { display: flex; gap: 8px; margin-bottom: 12px; }
+    .formats button, .actions button {
+      flex: 1; padding: 11px 12px; border-radius: 12px; border: 1px solid var(--line);
+      background: var(--panel); color: var(--dim); font: 700 14px Inter, sans-serif; cursor: pointer;
+    }
+    .formats button.on { color: var(--accent); border-color: var(--accent); }
+    .frame { display: flex; justify-content: center; background: var(--panel); border: 1px solid var(--line);
+             border-radius: 18px; padding: 12px; min-height: 200px; align-items: center; }
+    canvas { display: block; width: 100%; height: auto; max-height: 72vh; object-fit: contain; border-radius: 10px; }
+    .actions { display: flex; gap: 10px; margin-top: 14px; }
+    .actions button.primary { background: var(--accent); border-color: var(--accent); color: #111; font-weight: 800; }
+    .actions button:disabled { opacity: .5; cursor: default; }
+    .steps { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; font-size: 14px; }
+    .steps a { color: var(--text); text-decoration: none; font-weight: 700; padding: 8px 4px; }
+    .steps a[aria-disabled="true"] { visibility: hidden; }
+    .steps span { color: var(--dim); font-weight: 600; }
+    .note { color: var(--dim); font-size: 13px; text-align: center; margin-top: 10px; }
+    .error { color: #fca5a5; text-align: center; font-weight: 700; padding: 40px 0; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <h1>Sold Card</h1>
+      <a href="javascript:history.back()">Back</a>
+    </header>
+    <div class="formats" role="group" aria-label="Card size">
+      <button type="button" data-format="post" class="on">Post · 4:5</button>
+      <button type="button" data-format="story">Story · 9:16</button>
+    </div>
+    <div class="frame"><canvas id="card" aria-label="Sold card"></canvas></div>
+    <div class="actions">
+      <button type="button" id="share" class="primary" disabled>Share</button>
+      <button type="button" id="download" disabled>Download</button>
+    </div>
+    <p class="note" id="note">Share sends the image straight to WhatsApp or Instagram on a phone.</p>
+    <nav class="steps" aria-label="Other sales">
+      <a id="prev" href="#" aria-disabled="true">‹ Previous sale</a>
+      <span id="pos"></span>
+      <a id="next" href="#" aria-disabled="true">Next sale ›</a>
+    </nav>
+  </main>
+  <script>
+  (function () {
+    const playerId = {{ player_id }};
+    const canvas = document.getElementById('card');
+    const share = document.getElementById('share');
+    const download = document.getElementById('download');
+    let card = null;
+    let format = 'post';
+    try { format = localStorage.getItem('cardFormat') || 'post'; } catch (e) { /* default */ }
+
+    function fileName() {
+      const p = card.player;
+      return ('SOLD - ' + p.name + ' - ' + p.team_name + (format === 'story' ? ' (story)' : '') + '.png')
+        .replace(/[\\/:*?"<>|]+/g, ' ');
+    }
+    function blob() {
+      return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    }
+    async function render() {
+      document.querySelectorAll('.formats button').forEach(b => b.classList.toggle('on', b.dataset.format === format));
+      share.disabled = download.disabled = true;
+      await SoldCard.draw(canvas, card, format);
+      share.disabled = download.disabled = false;
+    }
+
+    document.querySelectorAll('.formats button').forEach(b => b.addEventListener('click', () => {
+      format = b.dataset.format;
+      try { localStorage.setItem('cardFormat', format); } catch (e) { /* not kept */ }
+      if (card) render();
+    }));
+    download.addEventListener('click', async () => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(await blob());
+      a.download = fileName();
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    });
+    share.addEventListener('click', async () => {
+      const file = new File([await blob()], fileName(), { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: card.player.name + ' SOLD to ' + card.player.team_name });
+        } catch (e) { /* closed without sharing */ }
+      } else {
+        download.click();   // a computer without sharing: save it instead
+      }
+    });
+
+    fetch('/api/card/' + playerId).then(r => r.json().then(d => ({ ok: r.ok, d }))).then(({ ok, d }) => {
+      if (!ok) throw new Error(d.message || d.error || 'Could not load the card.');
+      card = d;
+      document.title = 'SOLD · ' + d.player.name;
+      const at = d.sold_ids.indexOf(playerId);
+      const step = (el, id) => {
+        if (id == null) return;
+        el.href = '/card/' + id;
+        el.setAttribute('aria-disabled', 'false');
+      };
+      step(document.getElementById('prev'), at > 0 ? d.sold_ids[at - 1] : null);
+      step(document.getElementById('next'), at >= 0 && at < d.sold_ids.length - 1 ? d.sold_ids[at + 1] : null);
+      document.getElementById('pos').textContent = at >= 0 ? 'Sale ' + (at + 1) + ' of ' + d.sold_ids.length : '';
+      return render();
+    }).catch(e => {
+      document.querySelector('.frame').outerHTML = '<p class="error"></p>';
+      document.querySelector('.error').textContent = e.message;
+      document.getElementById('note').hidden = true;
+    });
+  })();
+  </script>
+</body>
+</html>

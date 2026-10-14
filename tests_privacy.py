@@ -60,6 +60,13 @@ for who, client, paths in (
         check('%s: %s carries nothing private' % (who, path), r.status_code == 200 and not leaks(r.data),
               '%s %s' % (r.status_code, leaks(r.data)))
 
+card = anon.get('/api/card/%d' % pids[0])
+check('the audience: a sold player\'s share card carries nothing private', card.status_code == 200 and not leaks(card.data),
+      '%s %s' % (card.status_code, leaks(card.data)))
+check('and shows the sale', card.get_json()['player']['team_name'] == 'Reds' and card.get_json()['sold_ids'] == [pids[0]])
+check('a player not sold has no card', anon.get('/api/card/%d' % pids[2]).status_code == 404)
+check('the card page opens without a login', anon.get('/card/%d' % pids[0]).status_code == 200)
+
 live = anon.get('/api/live_data').get_json()
 shown = live['unsold_players'][0]['attributes']
 check('the details screens show are still there', shown == {'Role': 'Batter', 'Age': 24, 'Jersey Number': '1234567890', 'City': 'Pune'},

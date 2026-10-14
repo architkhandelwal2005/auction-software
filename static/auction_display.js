@@ -1100,6 +1100,13 @@
         stageTimerBar.style.transform = 'scaleX(' + Math.max(0, Math.min(1, left / total)) + ')';
       }
     }
+    // The last sale's share card, from the admin bar between players.
+    const card = document.getElementById('adminCardBtn');
+    if (card) {
+      const id = liveState.last_sold_player_id || '';
+      card.hidden = !id;
+      if (id && card.getAttribute('href') !== '/card/' + id) card.setAttribute('href', '/card/' + id);
+    }
     const btn = document.getElementById('adminTimerBtn');
     if (btn) {
       const label = liveState.timer_ends_at ? 'Stop Timer' : 'Start Timer';

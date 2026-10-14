@@ -316,6 +316,8 @@
                                                         <CatBadge category={p.category} />
                                                     </div>
                                                     <span className="text-green-600 font-extrabold text-base shrink-0">{fmtL(p.sold_price)}</span>
+                                                    {!retained && p.id && <a href={`/card/${p.id}`} target="_blank" title="Share card: an image for WhatsApp or Instagram"
+                                                        className="no-print shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-800 hover:bg-gray-100">Card</a>}
                                                 </div>
                                             ))}
                                         </div>

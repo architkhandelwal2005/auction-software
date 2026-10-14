@@ -1317,6 +1317,7 @@ ROUTE_POLICY = {
     'auth_me': 'public',
     'live_view': 'public', 'presentation_view': 'public',
     'cricket_auction_view': 'public', 'roster_view': 'public', 'overlay_view': 'public',
+    'card_view': 'public', 'get_card': 'public',
     'get_live_data': 'public', 'get_live_state': 'public', 'get_live_stream': 'public',
     # The login page lists the live auction's teams before anyone signs in.
     'get_teams': 'public', 'get_config': 'public',
@@ -1424,6 +1425,7 @@ AUCTION_FREE_ENDPOINTS = {
 # auction is currently live.
 PUBLIC_LIVE_ENDPOINTS = {
     'live_view', 'presentation_view', 'cricket_auction_view', 'roster_view', 'overlay_view',
+    'card_view', 'get_card',
     'get_live_data', 'get_live_state', 'get_live_stream', 'report_view',
     # The login page lists the live auction's teams before anyone has a session.
     'get_teams', 'get_config',
@@ -2062,6 +2064,40 @@ def presentation_view():
 @app.route('/cricket_auction')
 def cricket_auction_view():
     return render_template('cricket_auction.html')
+
+@app.route('/card/<int:player_id>')
+def card_view(player_id):
+    """A sold player's share card: an image drawn in the browser for a
+    WhatsApp status or an Instagram post (static/sold_card.js)."""
+    return render_template('card.html', player_id=player_id)
+
+
+@app.route('/api/card/<int:player_id>', methods=['GET'])
+def get_card(player_id):
+    """What a sold player's share card shows, and nothing private: the
+    player, the team that bought them, the event, and every sold player in
+    sale order, so the card page can step through them."""
+    conn = get_db()
+    p = conn.execute('SELECT p.id, p.name, p.category, p.photo_url, p.sold_price, p.team_role, p.attributes, '
+                     't.name AS team_name, t.color AS team_color, t.logo_url AS team_logo '
+                     "FROM players p JOIN teams t ON p.team_id = t.id WHERE p.id = ? AND p.status = 'sold'",
+                     (player_id,)).fetchone()
+    if not p:
+        conn.close()
+        return jsonify({'error': 'not_sold', 'message': 'That player has not been sold.'}), 404
+    cfg = {r['key']: r['value'] for r in conn.execute('SELECT key, value FROM config').fetchall()}
+    order = [r['id'] for r in conn.execute(
+        "SELECT id FROM players WHERE status = 'sold' ORDER BY sold_at, id").fetchall()]
+    conn.close()
+    card = dict(p)
+    card['attributes'] = public_attributes(card['attributes'])
+    return jsonify({
+        'player': card,
+        'event': {k: cfg.get(k) or '' for k in
+                  ('event_name', 'organisation_name', 'org_logo', 'sponsor_name', 'sponsor_logo', 'display_fields')},
+        'sold_ids': order,
+    })
+
 
 @app.route('/overlay')
 def overlay_view():
@@ -3691,6 +3727,7 @@ def sell_player():
     c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_sold_team_name', ?)", (team['name'] if team else '',))
     c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_sold_team_color', ?)", (team['color'] if team else '#3b82f6',))
     c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_sold_photo', ?)", (player['photo_url'] or '',))
+    c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('last_sold_player_id', ?)", (str(pid),))
     conn.commit()
     webhook = auction_sheets_webhook(conn)
     conn.close()

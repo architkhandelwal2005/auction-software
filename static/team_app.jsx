@@ -256,10 +256,14 @@ const TeamApp = () => {
                                         <div className="w-10 h-10 bg-zinc-800 rounded-lg overflow-hidden shrink-0">
                                             {p.photo_url ? <img src={p.photo_url} className="w-full h-full object-cover" /> : <i className="fa-solid fa-user text-zinc-600 m-2.5"></i>}
                                         </div>
-                                        <div className="min-w-0">
+                                        <div className="min-w-0 flex-1">
                                             <div className="font-bold text-sm truncate">{p.name}</div>
                                             <div className="text-xs text-zinc-500">{p.category} • <span className="text-amber-400 font-bold">{fmtL(p.sold_price)}</span></div>
                                         </div>
+                                        <a href={`/card/${p.id}`} target="_blank" title="Share card: an image for WhatsApp or Instagram"
+                                            className="shrink-0 w-8 h-8 rounded-lg bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center">
+                                            <i className="fa-solid fa-share-nodes text-xs"></i>
+                                        </a>
                                     </div>
                                 ))}
                             </div>
