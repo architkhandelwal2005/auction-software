@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sold Card</title>
+  <title>Player Card</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -31,6 +31,7 @@
     .actions { display: flex; gap: 10px; margin-top: 14px; }
     .actions button.primary { background: var(--accent); border-color: var(--accent); color: #111; font-weight: 800; }
     .actions button:disabled { opacity: .5; cursor: default; }
+    #downloadPng { flex: 0 0 auto; }
     .steps { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; font-size: 14px; }
     .steps a { color: var(--text); text-decoration: none; font-weight: 700; padding: 8px 4px; }
     .steps a[aria-disabled="true"] { visibility: hidden; }
@@ -42,8 +43,8 @@
 <body>
   <main class="wrap">
     <header>
-      <h1>Sold Card</h1>
-      <a href="javascript:history.back()">Back</a>
+      <h1>Player Card</h1>
+      {% if back_url %}<a href="{{ back_url }}">All players</a>{% else %}<a href="javascript:history.back()">Back</a>{% endif %}
     </header>
     <div class="formats" role="group" aria-label="Card size">
       <button type="button" data-format="post" class="on">Post · 4:5</button>
@@ -52,7 +53,8 @@
     <div class="frame"><canvas id="card" aria-label="Sold card"></canvas></div>
     <div class="actions">
       <button type="button" id="share" class="primary" disabled>Share</button>
-      <button type="button" id="download" disabled>Download</button>
+      <button type="button" id="download" disabled>Download JPG</button>
+      <button type="button" id="downloadPng" disabled>PNG</button>
     </div>
     <p class="note" id="note">Share sends the image straight to WhatsApp or Instagram on a phone.</p>
     <nav class="steps" aria-label="Other sales">
@@ -64,26 +66,32 @@
   <script>
   (function () {
     const playerId = {{ player_id }};
+    const API = {{ api_base|tojson }};    // this card's data: API + player id
+    const PAGE = {{ page_base|tojson }};  // another player's card: PAGE + their id
     const canvas = document.getElementById('card');
     const share = document.getElementById('share');
     const download = document.getElementById('download');
+    const downloadPng = document.getElementById('downloadPng');
+    const buttons = [share, download, downloadPng];
     let card = null;
     let format = 'post';
     try { format = localStorage.getItem('cardFormat') || 'post'; } catch (e) { /* default */ }
 
-    function fileName() {
+    // JPG is a fifth the size and what WhatsApp sends anyway; PNG for print.
+    const TYPES = { jpg: 'image/jpeg', png: 'image/png' };
+    function fileName(ext) {
       const p = card.player;
-      return ('SOLD - ' + p.name + ' - ' + p.team_name + (format === 'story' ? ' (story)' : '') + '.png')
+      return ('SOLD - ' + p.name + ' - ' + p.team_name + (format === 'story' ? ' (story)' : '') + '.' + ext)
         .replace(/[\\/:*?"<>|]+/g, ' ');
     }
-    function blob() {
-      return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    function blob(ext) {
+      return new Promise(resolve => canvas.toBlob(resolve, TYPES[ext], 0.92));
     }
     async function render() {
       document.querySelectorAll('.formats button').forEach(b => b.classList.toggle('on', b.dataset.format === format));
-      share.disabled = download.disabled = true;
+      buttons.forEach(b => { b.disabled = true; });
       await SoldCard.draw(canvas, card, format);
-      share.disabled = download.disabled = false;
+      buttons.forEach(b => { b.disabled = false; });
     }
 
     document.querySelectorAll('.formats button').forEach(b => b.addEventListener('click', () => {
@@ -91,15 +99,17 @@
       try { localStorage.setItem('cardFormat', format); } catch (e) { /* not kept */ }
       if (card) render();
     }));
-    download.addEventListener('click', async () => {
+    async function save(ext) {
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(await blob());
-      a.download = fileName();
+      a.href = URL.createObjectURL(await blob(ext));
+      a.download = fileName(ext);
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    });
+    }
+    download.addEventListener('click', () => save('jpg'));
+    downloadPng.addEventListener('click', () => save('png'));
     share.addEventListener('click', async () => {
-      const file = new File([await blob()], fileName(), { type: 'image/png' });
+      const file = new File([await blob('jpg')], fileName('jpg'), { type: TYPES.jpg });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         try {
           await navigator.share({ files: [file], title: card.player.name + ' SOLD to ' + card.player.team_name });
@@ -109,14 +119,14 @@
       }
     });
 
-    fetch('/api/card/' + playerId).then(r => r.json().then(d => ({ ok: r.ok, d }))).then(({ ok, d }) => {
+    fetch(API + playerId).then(r => r.json().then(d => ({ ok: r.ok, d }))).then(({ ok, d }) => {
       if (!ok) throw new Error(d.message || d.error || 'Could not load the card.');
       card = d;
       document.title = 'SOLD · ' + d.player.name;
       const at = d.sold_ids.indexOf(playerId);
       const step = (el, id) => {
         if (id == null) return;
-        el.href = '/card/' + id;
+        el.href = PAGE + id;
         el.setAttribute('aria-disabled', 'false');
       };
       step(document.getElementById('prev'), at > 0 ? d.sold_ids[at - 1] : null);

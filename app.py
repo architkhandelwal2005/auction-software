@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for, g, abort, has_request_context
+from itsdangerous import URLSafeSerializer, BadSignature
 import sqlite3, os, webbrowser, csv, io, uuid, json, re, threading, datetime, functools, time, hashlib
 import urllib.request as _ureq
 import urllib.error as _uerr
@@ -1318,6 +1319,7 @@ ROUTE_POLICY = {
     'live_view': 'public', 'presentation_view': 'public',
     'cricket_auction_view': 'public', 'roster_view': 'public', 'overlay_view': 'public',
     'card_view': 'public', 'get_card': 'public',
+    'cards_view': 'public', 'cards_card_view': 'public', 'get_cards': 'public', 'get_cards_card': 'public',
     'get_live_data': 'public', 'get_live_state': 'public', 'get_live_stream': 'public',
     # The login page lists the live auction's teams before anyone signs in.
     'get_teams': 'public', 'get_config': 'public',
@@ -1419,6 +1421,8 @@ AUCTION_FREE_ENDPOINTS = {
     'admin_dashboard',
     'list_auctions', 'create_auction', 'open_auction', 'delete_auction',
     'list_presets',
+    # A cards link names its own auction (bind_cards_link).
+    'cards_view', 'cards_card_view', 'get_cards', 'get_cards_card',
 }
 
 # Screens and feeds an audience opens with no login. These bind to whichever
@@ -1671,6 +1675,7 @@ def _auction_summary(row):
         'login_id': row.get('login_id') or '',
         'players': report.get('player_count'),
         'teams': report.get('team_count'),
+        'cards_path': cards_path(row['id']),
     }
 
 def require_admin():
@@ -2065,38 +2070,128 @@ def presentation_view():
 def cricket_auction_view():
     return render_template('cricket_auction.html')
 
+# ─── Sold cards ───
+# A sold player's card: an image drawn in the browser (static/sold_card.js)
+# for a WhatsApp status or an Instagram post. The console, the stage and team
+# phones open it at /card/<player>, for the auction they are on.
+#
+# The players themselves get one link, /cards/<token>, which the organiser
+# shares (in the players' WhatsApp group, say): each finds their name and
+# downloads their card. It must work without a login, and after End Auction
+# when no screen follows the auction any more, so the link names its auction
+# itself, signed with the server's secret key: it cannot be guessed, or made
+# for another auction. Cards last as long as the auction's data
+# (RETENTION_DAYS after it ends).
+CARD_EVENT_KEYS = ('event_name', 'organisation_name', 'org_logo', 'sponsor_name', 'sponsor_logo', 'display_fields')
+_CARDS_LINK = URLSafeSerializer(app.secret_key, salt='player-cards')
+
+
+def cards_path(auction_id):
+    return '/cards/' + _CARDS_LINK.dumps(int(auction_id))
+
+
+def card_payload(conn, player_id):
+    """What a sold player's card shows, and nothing private: the player, the
+    team that bought them, the event, where the price ranks, and every sold
+    player in sale order, so the card page can step through them. None when
+    the player was not sold."""
+    p = conn.execute('SELECT p.id, p.name, p.category, p.photo_url, p.base_price, p.sold_price, p.team_role, '
+                     'p.attributes, t.name AS team_name, t.color AS team_color, t.logo_url AS team_logo '
+                     "FROM players p JOIN teams t ON p.team_id = t.id WHERE p.id = ? AND p.status = 'sold'",
+                     (player_id,)).fetchone()
+    if not p:
+        return None
+    cfg = {r['key']: r['value'] for r in conn.execute('SELECT key, value FROM config').fetchall()}
+    sold = conn.execute("SELECT id, sold_price FROM players WHERE status = 'sold' ORDER BY sold_at, id").fetchall()
+    card = dict(p)
+    card['attributes'] = public_attributes(card['attributes'])
+    return {
+        'player': card,
+        'event': {k: cfg.get(k) or '' for k in CARD_EVENT_KEYS},
+        'sold_ids': [r['id'] for r in sold],
+        # 1 for the most expensive buy; players sold for the same price share
+        # it, and tied counts how many do.
+        'rank': 1 + sum(1 for r in sold if (r['sold_price'] or 0) > (p['sold_price'] or 0)),
+        'tied': sum(1 for r in sold if (r['sold_price'] or 0) == (p['sold_price'] or 0)),
+    }
+
+
+def card_answer(player_id):
+    conn = get_db()
+    card = card_payload(conn, player_id)
+    conn.close()
+    if card is None:
+        return jsonify({'error': 'not_sold', 'message': 'That player has not been sold.'}), 404
+    return jsonify(card)
+
+
+def bind_cards_link(token):
+    """Bind this request to the auction a cards link names; or the answer
+    saying why the link does not work."""
+    try:
+        auction_id = _CARDS_LINK.loads(token)
+    except BadSignature:
+        return jsonify({'error': 'bad_link',
+                        'message': 'This link is not complete. Ask the organiser to send it again.'}), 404
+    row = auction_row(auction_id)
+    release_registry_db()
+    if row is None:
+        return jsonify({'error': 'no_auction', 'message': 'This auction no longer exists.'}), 404
+    if row['status'] == 'purged':
+        return jsonify({'error': 'auction_purged',
+                        'message': 'These cards were available for %d days after the auction, and have '
+                                   'now been cleared.' % RETENTION_DAYS}), 410
+    g.auction = dict(row)
+    g.auction_id = g.auction['id']
+    return None
+
+
 @app.route('/card/<int:player_id>')
 def card_view(player_id):
-    """A sold player's share card: an image drawn in the browser for a
-    WhatsApp status or an Instagram post (static/sold_card.js)."""
-    return render_template('card.html', player_id=player_id)
+    return render_template('card.html', player_id=player_id, api_base='/api/card/', page_base='/card/',
+                           back_url='')
 
 
 @app.route('/api/card/<int:player_id>', methods=['GET'])
 def get_card(player_id):
-    """What a sold player's share card shows, and nothing private: the
-    player, the team that bought them, the event, and every sold player in
-    sale order, so the card page can step through them."""
+    return card_answer(player_id)
+
+
+@app.route('/cards/<token>')
+def cards_view(token):
+    """Every sold player, to find your own card."""
+    return render_template('cards.html', token=token)
+
+
+@app.route('/cards/<token>/<int:player_id>')
+def cards_card_view(token, player_id):
+    return render_template('card.html', player_id=player_id, api_base='/api/cards/%s/' % token,
+                           page_base='/cards/%s/' % token, back_url='/cards/%s' % token)
+
+
+@app.route('/api/cards/<token>', methods=['GET'])
+def get_cards(token):
+    """The players a cards link offers: every sold player, by name."""
+    refused = bind_cards_link(token)
+    if refused:
+        return refused
     conn = get_db()
-    p = conn.execute('SELECT p.id, p.name, p.category, p.photo_url, p.sold_price, p.team_role, p.attributes, '
-                     't.name AS team_name, t.color AS team_color, t.logo_url AS team_logo '
-                     "FROM players p JOIN teams t ON p.team_id = t.id WHERE p.id = ? AND p.status = 'sold'",
-                     (player_id,)).fetchone()
-    if not p:
-        conn.close()
-        return jsonify({'error': 'not_sold', 'message': 'That player has not been sold.'}), 404
+    rows = conn.execute('SELECT p.id, p.name, p.category, p.photo_url, p.sold_price, p.team_role, '
+                        't.name AS team_name, t.color AS team_color, t.logo_url AS team_logo '
+                        "FROM players p JOIN teams t ON p.team_id = t.id WHERE p.status = 'sold' "
+                        'ORDER BY LOWER(p.name)').fetchall()
     cfg = {r['key']: r['value'] for r in conn.execute('SELECT key, value FROM config').fetchall()}
-    order = [r['id'] for r in conn.execute(
-        "SELECT id FROM players WHERE status = 'sold' ORDER BY sold_at, id").fetchall()]
     conn.close()
-    card = dict(p)
-    card['attributes'] = public_attributes(card['attributes'])
-    return jsonify({
-        'player': card,
-        'event': {k: cfg.get(k) or '' for k in
-                  ('event_name', 'organisation_name', 'org_logo', 'sponsor_name', 'sponsor_logo', 'display_fields')},
-        'sold_ids': order,
-    })
+    return jsonify({'event': {k: cfg.get(k) or '' for k in CARD_EVENT_KEYS},
+                    'players': [dict(r) for r in rows]})
+
+
+@app.route('/api/cards/<token>/<int:player_id>', methods=['GET'])
+def get_cards_card(token, player_id):
+    refused = bind_cards_link(token)
+    if refused:
+        return refused
+    return card_answer(player_id)
 
 
 @app.route('/overlay')

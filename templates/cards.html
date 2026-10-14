@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Player Cards</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <script src="/static/bidding.js?v={{ asset_v }}"></script>
+  <script src="/static/player_details.js?v={{ asset_v }}"></script>
+  <script src="/static/sold_card.js?v={{ asset_v }}"></script>
+  <style>
+    :root { --bg: #0b0d12; --panel: #151922; --line: #262c38; --text: #f1f5f9; --dim: #94a3b8; --accent: #f5b72e; --gold: #ffd166; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 20px 16px 48px; }
+    .event { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+    .event img { width: 56px; height: 56px; object-fit: contain; border-radius: 12px; background: rgba(255,255,255,.06); }
+    .event img[hidden] { display: none; }
+    .event h1 { margin: 0; font: 800 30px/1.05 'Barlow Condensed', sans-serif; text-transform: uppercase; letter-spacing: .02em; }
+    .lead { color: var(--dim); font-size: 15px; margin: 6px 0 18px; }
+    .search { width: 100%; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel);
+              color: var(--text); font: 600 16px Inter, sans-serif; outline: none; }
+    .search:focus { border-color: var(--accent); }
+    .teams { display: flex; gap: 8px; overflow-x: auto; padding: 12px 0 4px; scrollbar-width: none; }
+    .teams button { flex: none; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel);
+                    color: var(--dim); font: 700 13px Inter, sans-serif; cursor: pointer; }
+    .teams button.on { color: var(--text); border-color: var(--accent); }
+    .count { color: var(--dim); font-size: 13px; font-weight: 600; margin: 10px 2px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 10px; }
+    .tile { display: block; text-decoration: none; color: inherit; background: var(--panel); border: 1px solid var(--line);
+            border-radius: 16px; overflow: hidden; transition: transform .15s, border-color .15s; }
+    .tile:hover, .tile:focus-visible { transform: translateY(-2px); border-color: var(--tc, var(--accent)); outline: none; }
+    .tile .ph { position: relative; aspect-ratio: 1; background: linear-gradient(160deg, var(--tc, #334155), #0b0d12);
+                display: flex; align-items: center; justify-content: center; }
+    .tile .ph img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .tile .ph span { font: 900 38px 'Barlow Condensed', sans-serif; color: rgba(255,255,255,.8); }
+    .tile .ph i { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--tc, var(--accent)); font-style: normal; }
+    .tile .meta { padding: 8px 10px 10px; }
+    .tile b { display: block; font: 800 16px/1.1 'Barlow Condensed', sans-serif; text-transform: uppercase;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tile small { display: flex; justify-content: space-between; gap: 6px; margin-top: 3px; color: var(--dim); font-size: 11px; font-weight: 700; }
+    .tile small em { font-style: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tile small strong { color: var(--gold); flex: none; }
+    .empty, .error { color: var(--dim); text-align: center; padding: 48px 0; font-weight: 600; }
+    .error { color: #fca5a5; }
+    .all { margin-top: 32px; padding: 18px; border: 1px dashed var(--line); border-radius: 16px; text-align: center; }
+    .all p { color: var(--dim); font-size: 13px; margin: 0 0 12px; }
+    .all button { padding: 12px 20px; border-radius: 12px; border: 1px solid var(--accent); background: transparent;
+                  color: var(--accent); font: 800 14px Inter, sans-serif; cursor: pointer; }
+    .all button:disabled { opacity: .6; cursor: default; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="event">
+      <img id="logo" alt="" hidden />
+      <h1 id="event">Player Cards</h1>
+    </div>
+    <p class="lead">Find your name and download your card, for your WhatsApp status or Instagram.</p>
+    <input id="search" class="search" type="search" placeholder="Search your name or team" autocomplete="off" aria-label="Search players" />
+    <div class="teams" id="teams" role="group" aria-label="Teams"></div>
+    <div class="count" id="count"></div>
+    <div class="grid" id="grid"></div>
+    <section class="all" id="all" hidden>
+      <p>Organiser: every card in one ZIP file, sorted by team, to send out yourself.</p>
+      <button type="button" id="zip">Download all cards</button>
+    </section>
+  </main>
+  <script>
+  (function () {
+    const TOKEN = {{ token|tojson }};
+    const $ = id => document.getElementById(id);
+    let players = [], team = '';
+    const initials = n => String(n || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+
+    function show() {
+      const q = $('search').value.trim().toLowerCase();
+      const list = players.filter(p => (!team || p.team_name === team) &&
+        (!q || p.name.toLowerCase().includes(q) || (p.team_name || '').toLowerCase().includes(q)));
+      $('count').textContent = list.length + (list.length === 1 ? ' player' : ' players');
+      const grid = $('grid');
+      grid.innerHTML = '';
+      if (!list.length) {
+        grid.innerHTML = '<p class="empty" style="grid-column:1/-1">No sold player by that name.</p>';
+        return;
+      }
+      list.forEach(p => {
+        const a = document.createElement('a');
+        a.className = 'tile';
+        a.href = '/cards/' + TOKEN + '/' + p.id;
+        if (/^#[0-9a-f]{6}$/i.test(p.team_color || '')) a.style.setProperty('--tc', p.team_color);
+        const ph = document.createElement('div'); ph.className = 'ph';
+        const letters = document.createElement('span'); letters.textContent = initials(p.name); ph.append(letters);
+        if (p.photo_url) {
+          const img = document.createElement('img');
+          img.loading = 'lazy'; img.alt = ''; img.src = p.photo_url;
+          img.onerror = () => img.remove();
+          ph.append(img);
+        }
+        ph.append(document.createElement('i'));
+        const meta = document.createElement('div'); meta.className = 'meta';
+        const name = document.createElement('b'); name.textContent = p.name;
+        const sub = document.createElement('small');
+        const t = document.createElement('em'); t.textContent = p.team_name || '';
+        const price = document.createElement('strong'); price.textContent = window.fmtL(p.sold_price);
+        sub.append(t, price);
+        meta.append(name, sub);
+        a.append(ph, meta);
+        grid.append(a);
+      });
+    }
+
+    function teamsBar() {
+      const names = [...new Set(players.map(p => p.team_name).filter(Boolean))].sort();
+      const bar = $('teams');
+      bar.innerHTML = '';
+      ['', ...names].forEach(n => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = n || 'All teams';
+        b.className = n === team ? 'on' : '';
+        b.onclick = () => { team = n; teamsBar(); show(); };
+        bar.append(b);
+      });
+    }
+
+    // Every card in one ZIP: drawn here one at a time, as JPG.
+    function loadZipLib() {
+      if (window.JSZip) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('Could not load the ZIP maker. Check the connection.'));
+        document.head.append(s);
+      });
+    }
+    $('zip').onclick = async () => {
+      const btn = $('zip');
+      btn.disabled = true;
+      try {
+        await loadZipLib();
+        const zip = new JSZip();
+        const canvas = document.createElement('canvas');
+        const clean = n => String(n || '').replace(/[\\/:*?"<>|]+/g, ' ').trim();
+        for (let i = 0; i < players.length; i++) {
+          btn.textContent = 'Drawing card ' + (i + 1) + ' of ' + players.length + '…';
+          const card = await (await fetch('/api/cards/' + TOKEN + '/' + players[i].id)).json();
+          if (!card.player) continue;
+          await SoldCard.draw(canvas, card, 'post');
+          const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
+          zip.file(clean(card.player.team_name) + '/' + clean(card.player.name) + '.jpg', blob);
+        }
+        btn.textContent = 'Packing the ZIP…';
+        const out = await zip.generateAsync({ type: 'blob' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(out);
+        a.download = clean($('event').textContent) + ' - player cards.zip';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+        btn.textContent = 'Download all cards';
+      } catch (e) {
+        btn.textContent = e.message || 'Something went wrong. Try again.';
+      }
+      btn.disabled = false;
+    };
+
+    $('search').addEventListener('input', show);
+    fetch('/api/cards/' + TOKEN).then(r => r.json().then(d => ({ ok: r.ok, d }))).then(({ ok, d }) => {
+      if (!ok) throw new Error(d.message || 'These cards could not be loaded.');
+      const ev = d.event || {};
+      if (ev.event_name) { $('event').textContent = ev.event_name; document.title = ev.event_name + ' · Player Cards'; }
+      if (ev.org_logo) { $('logo').src = ev.org_logo; $('logo').hidden = false; }
+      players = d.players || [];
+      if (!players.length) {
+        $('grid').innerHTML = '<p class="empty" style="grid-column:1/-1">No player has been sold yet.</p>';
+        return;
+      }
+      $('all').hidden = false;
+      teamsBar();
+      show();
+    }).catch(e => {
+      document.querySelector('.wrap').innerHTML = '<p class="error"></p>';
+      document.querySelector('.error').textContent = e.message;
+    });
+  })();
+  </script>
+</body>
+</html>

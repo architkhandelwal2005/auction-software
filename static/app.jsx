@@ -514,6 +514,12 @@ const ShareModal = ({ teams, onClose }) => {
     const [overlayPurses, setOverlayPurses] = useState(false);
     const overlayQuery = [overlayBg && `bg=${overlayBg}`, overlayPurses && 'purses=1'].filter(Boolean).join('&');
     const overlayUrl = `${origin}/overlay${overlayQuery ? '?' + overlayQuery : ''}`;
+    // The players' own link to their cards; it keeps working after the auction ends.
+    const [cardsPath, setCardsPath] = useState('');
+    useEffect(() => {
+        fetch('/api/auction/status').then(r => r.ok ? r.json() : {}).then(d => setCardsPath(d.cards_path || '')).catch(() => {});
+    }, []);
+    const cardsUrl = cardsPath ? origin + cardsPath : '';
     const copy = (url, key) => {
         navigator.clipboard?.writeText(url);
         setCopied(key);
@@ -580,6 +586,23 @@ const ShareModal = ({ teams, onClose }) => {
                             </a>
                         </div>
                     </div>
+
+                    {/* Player cards */}
+                    {cardsUrl && <div className="bg-slate-950 p-4 rounded-2xl border border-amber-500/30">
+                        <span className="fredoka font-bold text-amber-400 text-sm flex items-center gap-2 mb-1">
+                            🎴 Player Cards (send to the players' group)
+                        </span>
+                        <p className="text-xs text-slate-400 mb-2">Each sold player finds their name and downloads their card: team, price, photo, as JPG or PNG. Works without a login, and for 10 days after the auction ends.</p>
+                        <div className="flex flex-wrap gap-2">
+                            <input readOnly value={cardsUrl} className="flex-1 bg-slate-900 border border-slate-700 text-amber-300 px-3 py-1.5 rounded-xl text-xs font-bold" />
+                            <button onClick={() => copy(cardsUrl, 'cards')} className="bg-amber-500 hover:bg-amber-400 text-black px-4 py-1.5 rounded-xl text-xs font-bold transition shadow-sm">
+                                {copied === 'cards' ? '✓ Copied!' : 'Copy'}
+                            </button>
+                            <a href={cardsUrl} target="_blank" className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center">
+                                Open ↗
+                            </a>
+                        </div>
+                    </div>}
 
                     {/* Official Report */}
                     <div className="bg-slate-950 p-4 rounded-2xl border border-emerald-500/30">

@@ -165,6 +165,25 @@ window.SoldCard = (function () {
     x.fillText('SOLD', 0, 46);
     x.restore();
 
+    // The three most expensive buys say so, in gold, top left of the photo;
+    // not when many share the price, which says nothing about this player.
+    const RANKS = { 1: 'TOP BUY OF THE AUCTION', 2: '2ND HIGHEST BUY', 3: '3RD HIGHEST BUY' };
+    const tied = card.tied || 1;
+    const ranked = (card.sold_ids || []).length >= 5 && tied <= 2 && RANKS[card.rank];
+    if (ranked) {
+      x.font = '800 28px ' + BODY;
+      const label = '★  ' + (tied === 2 ? 'JOINT ' : '') + ranked;
+      const w = x.measureText(label).width + 52;
+      roundRect(x, PAD + 30, top + 30, w, 62, 31);
+      x.fillStyle = GOLD;
+      x.shadowColor = 'rgba(0,0,0,0.35)';
+      x.shadowBlur = 20;
+      x.fill();
+      x.shadowBlur = 0;
+      x.fillStyle = '#1a1205';
+      x.fillText(label, PAD + 56, top + 71);
+    }
+
     // The player, over the bottom of the photo.
     const nameY = top + photoH - 112;
     x.fillStyle = '#fff';
@@ -193,12 +212,24 @@ window.SoldCard = (function () {
       contain(x, teamLogo, teamLeft, panelT + 40, logoSize, logoSize);
       teamLeft += logoSize + 34;
     }
-    const priceText = window.fmtL ? window.fmtL(p.sold_price) : '₹' + p.sold_price + 'L';
+    const money = v => (window.fmtL ? window.fmtL(v) : '₹' + v + 'L');
+    const priceText = money(p.sold_price);
     x.font = '900 ' + (story ? 150 : 132) + 'px ' + DISPLAY;
     const priceW = x.measureText(priceText).width;
     x.textAlign = 'right';
     x.fillStyle = GOLD;
-    x.fillText(priceText, W - PAD - 44, panelT + panelH / 2 + (story ? 52 : 46));
+    // Below the price, the base it started from, and how many times over it
+    // went when the bidding pushed it well past.
+    const base = Number(p.base_price) || 0;
+    const priceY = panelT + panelH / 2 + (base ? (story ? 34 : 26) : (story ? 52 : 46));
+    x.fillText(priceText, W - PAD - 44, priceY);
+    if (base) {
+      const times = p.sold_price / base;
+      x.font = '700 24px ' + BODY;
+      x.fillStyle = 'rgba(255,255,255,0.6)';
+      x.fillText('BASE ' + money(base) + (times >= 1.5 ? '   ·   ' + (Math.round(times * 10) / 10) + '×' : ''),
+                 W - PAD - 48, priceY + (story ? 54 : 46));
+    }
     x.textAlign = 'left';
     x.font = '800 24px ' + BODY;
     x.fillStyle = 'rgba(255,255,255,0.6)';
