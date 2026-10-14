@@ -133,6 +133,9 @@ const TeamApp = () => {
                             <div className="text-xs font-extrabold text-zinc-500 uppercase tracking-wider mb-1">Squad</div>
                             <div className="text-2xl fredoka font-bold text-white">{currentSquadSize} <span className="text-sm text-zinc-600">/ {team.target_squad_size != null ? team.target_squad_size : currentSquadSize}</span></div>
                         </div>
+                        <button data-install-app className="px-3 hover:text-amber-400 transition" title="Install the app on this phone">
+                            <i className="fa-solid fa-mobile-screen"></i>
+                        </button>
                         <button onClick={()=>window.location.href='/'} className="px-3 hover:text-red-400 transition" title="Logout">
                             <i className="fa-solid fa-power-off"></i>
                         </button>

@@ -101,6 +101,12 @@ window.addEventListener('unhandledrejection', function(e) {
             text-shadow: 0 0 60px rgba(245, 158, 11, 0.3), 0 0 120px rgba(245, 158, 11, 0.1);
         }
     </style>
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="theme-color" content="#0b0d12">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Auction">
+<script src="/static/pwa.js?v={{ asset_v }}"></script>
 </head>
 <body class="selection:bg-amber-600/40">
     <div id="root"></div>

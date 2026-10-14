@@ -3,8 +3,9 @@ from itsdangerous import URLSafeSerializer, BadSignature
 import sqlite3, os, webbrowser, csv, io, uuid, json, re, threading, datetime, functools, time, hashlib, hmac, secrets
 import urllib.request as _ureq
 import urllib.error as _uerr
-import contextlib
+import contextlib, mimetypes
 from threading import Timer
+mimetypes.add_type('application/manifest+json', '.webmanifest')   # the installable app's manifest
 
 # Under gunicorn's gevent worker (Procfile) every request is a greenlet, so a
 # screen can hold a stream open (/api/live_stream) without holding a thread.
@@ -1325,6 +1326,7 @@ ROUTE_POLICY = {
     'cricket_auction_view': 'public', 'roster_view': 'public', 'overlay_view': 'public',
     'card_view': 'public', 'get_card': 'public',
     'cards_view': 'public', 'cards_card_view': 'public', 'get_cards': 'public', 'get_cards_card': 'public',
+    'service_worker': 'public',
     'get_live_data': 'public', 'get_live_state': 'public', 'get_live_stream': 'public',
     # The login page lists the live auction's teams before anyone signs in.
     'get_teams': 'public', 'get_config': 'public',
@@ -1429,6 +1431,7 @@ AUCTION_FREE_ENDPOINTS = {
     'list_presets',
     # A cards link names its own auction (bind_cards_link).
     'cards_view', 'cards_card_view', 'get_cards', 'get_cards_card',
+    'service_worker',
 }
 
 # Screens and feeds an audience opens with no login. These bind to whichever
@@ -2207,6 +2210,15 @@ def get_cards_card(token, player_id):
     if refused:
         return refused
     return card_answer(player_id)
+
+
+@app.route('/sw.js')
+def service_worker():
+    """The installed app's service worker (static/sw.js), served from the
+    root so it covers every page."""
+    resp = send_from_directory(app.static_folder, 'sw.js', mimetype='application/javascript', max_age=0)
+    resp.headers['Cache-Control'] = 'no-cache'
+    return resp
 
 
 @app.route('/overlay')
