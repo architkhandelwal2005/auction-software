@@ -235,7 +235,8 @@
             useEffect(() => {
                 loadData();
                 const interval = setInterval(loadData, 2000);
-                return () => clearInterval(interval);
+                window.addEventListener('livefeed', loadData);   // a change the server pushed
+                return () => { clearInterval(interval); window.removeEventListener('livefeed', loadData); };
             }, [lastPlayerId]);
 
             const toggleFullscreen = () => {

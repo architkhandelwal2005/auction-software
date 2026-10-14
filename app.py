@@ -2,7 +2,22 @@ from flask import Flask, render_template, request, jsonify, send_from_directory,
 import sqlite3, os, webbrowser, csv, io, uuid, json, re, threading, datetime, functools, time, hashlib
 import urllib.request as _ureq
 import urllib.error as _uerr
+import contextlib
 from threading import Timer
+
+# Under gunicorn's gevent worker (Procfile) every request is a greenlet, so a
+# screen can hold a stream open (/api/live_stream) without holding a thread.
+# psycopg2 must then wait for the database cooperatively, or one query would
+# stall every other request. Under threads (the local server, or the gthread
+# worker) there is no stream and screens poll instead.
+try:
+    from gevent import monkey as _gevent_monkey
+    STREAMING = _gevent_monkey.is_module_patched('socket')
+except ImportError:
+    STREAMING = False
+if STREAMING:
+    from psycogreen.gevent import patch_psycopg
+    patch_psycopg()
 
 # ── Load .env (DATABASE_URL, etc.) ──────────────────────────────────────────
 try:
@@ -1040,6 +1055,41 @@ def wait_turn(conn, auction_id):
                 status=403, mimetype='application/json'))
 
 
+def _pg_return(raw):
+    """Give a pooled auction connection back. The transaction is always ended
+    first, so a connection is never handed back "idle in transaction" (which
+    would hold locks and stall the next request), and the search path reset,
+    so it never carries one auction's scope into the next use."""
+    try: raw.rollback()
+    except Exception: pass
+    try:
+        cur = raw.cursor(); cur.execute('SET search_path TO public'); cur.close()
+        raw.commit()
+    except Exception: pass
+    _get_pg_pool().putconn(raw)
+
+
+@contextlib.contextmanager
+def auction_conn(auction_id):
+    """A pooled connection to one auction, for work that is not tied to a
+    request's own connection (the live snapshot, which a stream builds after
+    its request has ended), returned as soon as the work is done."""
+    if USE_PG:
+        raw = _pg_checkout(lambda r: _pg_scope(r, auction_id))
+        try:
+            conn = _PGConn(raw)
+            upgrade_auction_schema(conn, auction_id)
+            yield conn
+        finally:
+            _pg_return(raw)
+    else:
+        conn = open_auction_conn(auction_id)
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+
 def release_registry_db():
     """Give the request's registry connection back before the request ends."""
     reg = g.pop('registry_db', None)
@@ -1063,17 +1113,7 @@ def close_db(exception=None):
     if db is None:
         return
     if USE_PG:
-        # Always reset transaction state before returning to the pool, so a
-        # connection is never handed back "idle in transaction" (which would
-        # hold locks and stall the next request). Reset the search path too, so
-        # a connection never carries one auction's scope into the next request.
-        try: db._r.rollback()
-        except Exception: pass
-        try:
-            cur = db._r.cursor(); cur.execute('SET search_path TO public'); cur.close()
-            db._r.commit()
-        except Exception: pass
-        _get_pg_pool().putconn(db._r)
+        _pg_return(db._r)
     else:
         if exception:
             try: db.rollback()
@@ -1277,7 +1317,7 @@ ROUTE_POLICY = {
     'auth_me': 'public',
     'live_view': 'public', 'presentation_view': 'public',
     'cricket_auction_view': 'public', 'roster_view': 'public', 'overlay_view': 'public',
-    'get_live_data': 'public', 'get_live_state': 'public',
+    'get_live_data': 'public', 'get_live_state': 'public', 'get_live_stream': 'public',
     # The login page lists the live auction's teams before anyone signs in.
     'get_teams': 'public', 'get_config': 'public',
 
@@ -1384,7 +1424,7 @@ AUCTION_FREE_ENDPOINTS = {
 # auction is currently live.
 PUBLIC_LIVE_ENDPOINTS = {
     'live_view', 'presentation_view', 'cricket_auction_view', 'roster_view', 'overlay_view',
-    'get_live_data', 'get_live_state', 'report_view',
+    'get_live_data', 'get_live_state', 'get_live_stream', 'report_view',
     # The login page lists the live auction's teams before anyone has a session.
     'get_teams', 'get_config',
 }
@@ -1495,23 +1535,38 @@ _shared_reads_gen = [0]
 _shared_reads_lock = threading.Lock()
 
 
+_shared_builds = {}   # key -> the lock held while that answer is being built
+
 def _shared(key, build):
     """The shared answer under key, built by build() when there is none, or
-    when a write or SHARED_READ_SECONDS has passed since it was built."""
-    started = time.monotonic()
-    with _shared_reads_lock:
-        gen = _shared_reads_gen[0]
-        hit = _shared_reads.get(key)
-    if hit and hit[0] == gen and started - hit[1] < SHARED_READ_SECONDS:
-        return hit[2]
-    value = build()
-    if value is not None:
+    when a write or SHARED_READ_SECONDS has passed since it was built.
+
+    One build at a time per answer: after a sale every open screen asks at
+    once, and one database read serves them all. The others wait for it,
+    then take what it built."""
+    while True:
+        started = time.monotonic()
         with _shared_reads_lock:
-            # A write that finished while this was being built may have
-            # been missed by it: keep the answer only if none did.
-            if _shared_reads_gen[0] == gen:
-                _shared_reads[key] = (gen, started, value)
-    return value
+            gen = _shared_reads_gen[0]
+            hit = _shared_reads.get(key)
+            if hit and hit[0] == gen and started - hit[1] < SHARED_READ_SECONDS:
+                return hit[2]
+            building = _shared_builds.setdefault(key, threading.Lock())
+        if not building.acquire(blocking=False):
+            with building:   # another request is building it: wait, then look again
+                pass
+            continue
+        try:
+            value = build()
+            if value is not None:
+                with _shared_reads_lock:
+                    # A write that finished while this was being built may
+                    # have been missed by it: keep the answer only if none did.
+                    if _shared_reads_gen[0] == gen:
+                        _shared_reads[key] = (gen, started, value)
+            return value
+        finally:
+            building.release()
 
 
 def conditional_json(body, headers=None):
@@ -1544,21 +1599,27 @@ def shared_read(view):
     return wrapper
 
 
-def live_snapshot():
+def live_snapshot(auction_id):
     """The live screens' data, built once per change: (the full /api/live_data
     body, a revision of everything in it but the stage state, the
     /api/live_state body). A bid changes the stage state only, so the screens
-    poll the small state and fetch the full body only when the revision moves
-    (static/live_feed.js)."""
+    poll (or are sent) the small state and fetch the full body only when the
+    revision moves (static/live_feed.js). Needs no request: a stream builds it
+    after its request has ended."""
     def build():
-        conn = get_db()
-        data = build_live_report(conn)
-        conn.close()
+        with auction_conn(auction_id) as conn:
+            data = build_live_report(conn)
         full = app.json.dumps(data).encode()
         state = data.pop('auction_state', {})
         rev = hashlib.sha1(app.json.dumps(data).encode()).hexdigest()[:16]
         return full, rev, app.json.dumps({'rev': rev, 'auction_state': state}).encode()
-    return _shared((g.auction_id, '__live__'), build)
+    return _shared((auction_id, '__live__'), build)
+
+
+# Woken after every change, so open streams send it at once.
+_live_changed = threading.Condition()
+STREAM_PING_SECONDS = 15     # a comment line now and then keeps proxies from closing a quiet stream
+STREAM_MAX_SECONDS = 600     # then the browser reconnects, picking up a newly live auction
 
 
 @app.after_request
@@ -1575,6 +1636,8 @@ def clear_shared_reads(response):
         with _shared_reads_lock:
             _shared_reads_gen[0] += 1
             _shared_reads.clear()
+        with _live_changed:
+            _live_changed.notify_all()
     return response
 
 
@@ -4187,7 +4250,7 @@ def build_live_report(conn):
 
 @app.route('/api/live_data', methods=['GET'])
 def get_live_data():
-    full, rev, _ = live_snapshot()
+    full, rev, _ = live_snapshot(g.auction_id)
     return conditional_json(full, {'X-Live-Rev': rev})
 
 
@@ -4196,7 +4259,42 @@ def get_live_state():
     """What changes on every bid: the stage state, with the revision of the
     rest of /api/live_data. A few hundred bytes, polled every second.
     X-Now is the server's clock in milliseconds, which the bid timer counts by."""
-    return conditional_json(live_snapshot()[2], {'X-Now': str(int(time.time() * 1000))})
+    return conditional_json(live_snapshot(g.auction_id)[2], {'X-Now': str(int(time.time() * 1000))})
+
+
+@app.route('/api/live_stream', methods=['GET'])
+def get_live_stream():
+    """/api/live_state pushed as it changes (server-sent events), instead of
+    each screen asking every second. Each message is {"now": the server's
+    clock in ms, "live": the /api/live_state body}. Only where a stream costs
+    no thread (STREAMING); elsewhere 204, which tells the browser not to
+    retry, and the screen polls instead."""
+    if not STREAMING:
+        return ('', 204)
+    auction_id = g.auction_id
+
+    def events():
+        yield 'retry: 3000\n\n'
+        sent, quiet_since, opened = None, time.monotonic(), time.monotonic()
+        while time.monotonic() - opened < STREAM_MAX_SECONDS:
+            seen = _shared_reads_gen[0]
+            with app.app_context():
+                body = live_snapshot(auction_id)[2]
+            if body != sent:
+                sent, quiet_since = body, time.monotonic()
+                yield 'data: {"now":%d,"live":%s}\n\n' % (int(time.time() * 1000), body.decode())
+            elif time.monotonic() - quiet_since >= STREAM_PING_SECONDS:
+                quiet_since = time.monotonic()
+                yield ': ping\n\n'
+            # Wait for the next change, unless one came while this was sending;
+            # otherwise look again once the shared answer may have expired, for
+            # changes made outside a request.
+            with _live_changed:
+                if _shared_reads_gen[0] == seen:
+                    _live_changed.wait(SHARED_READ_SECONDS)
+
+    return app.response_class(events(), mimetype='text/event-stream', headers={
+        'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 # ─── Set Common Base Price for All Unsold Players ───
 @app.route('/api/players/fetch_photos', methods=['POST'])

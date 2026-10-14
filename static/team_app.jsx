@@ -67,7 +67,8 @@ const TeamApp = () => {
         fetchLive();
         const t1 = setInterval(fetchTeamData, 3000);
         const t2 = setInterval(fetchLive, 1000);
-        return () => { clearInterval(t1); clearInterval(t2); };
+        window.addEventListener('livefeed', fetchLive);   // a change the server pushed
+        return () => { clearInterval(t1); clearInterval(t2); window.removeEventListener('livefeed', fetchLive); };
     }, []);
 
     if (!team || !config) {

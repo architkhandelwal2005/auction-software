@@ -1231,8 +1231,10 @@
   setTemplate(params.get('template') || 'arena');
   paintAll();
   poll();
-  // Demo cycle advances slowly for a hands-off showcase; live mode polls at 2s.
+  // Demo cycle advances slowly for a hands-off showcase; live mode polls at 2s,
+  // and shows a change the server pushes at once.
   setInterval(poll, (demoMode && demoCycle) ? 5000 : 2000);
+  if (!demoMode) window.addEventListener('livefeed', poll);
 
   // ═══════════════════════════════════════════════════════════
   // ADMIN CONTROL PANEL — only active when ?admin=1 is in URL

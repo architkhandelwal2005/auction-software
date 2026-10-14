@@ -214,9 +214,13 @@
   }
   setInterval(frame, 100);
 
-  async function poll() {
+  async function refresh() {
     try { render(await window.LiveFeed.get()); } catch (e) { /* keep the last picture; retry */ }
+  }
+  async function poll() {
+    await refresh();
     setTimeout(poll, 1000);
   }
   poll();
+  window.addEventListener('livefeed', refresh);   // a change the server pushed
 })();

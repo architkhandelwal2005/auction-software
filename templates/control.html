@@ -73,7 +73,12 @@
                 } catch(e){ setErr('Connection lost — retrying'); }
             }, []);
 
-            useEffect(() => { load(); const i=setInterval(load, 1500); return ()=>clearInterval(i); }, [load]);
+            useEffect(() => {
+                load();
+                const i = setInterval(load, 1500);
+                window.addEventListener('livefeed', load);   // a change the server pushed
+                return () => { clearInterval(i); window.removeEventListener('livefeed', load); };
+            }, [load]);
             const [timerSecs, setTimerSecs] = useState(() => { try { return Number(localStorage.getItem('bidTimerSecs')) || 15; } catch (e) { return 15; } });
 
             if (!data) return <div className="min-h-screen flex items-center justify-center text-zinc-500 fredoka text-lg">Connecting…</div>;

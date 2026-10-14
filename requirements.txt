@@ -7,3 +7,5 @@ psycopg2-binary==2.9.13
 python-dotenv==1.0.1
 pypdf==6.16.2
 Pillow==12.3.0
+gevent==26.8.0
+psycogreen==1.0.2
