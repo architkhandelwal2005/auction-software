@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Auction Stream Overlay</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/overlay.css?v={{ asset_v }}" />
+  <script src="/static/auction_guard.js?v={{ asset_v }}" data-auction="{{ auction_pin }}"></script>
+  <script src="/static/bidding.js?v={{ asset_v }}"></script>
+  <script src="/static/player_details.js?v={{ asset_v }}"></script>
+  <script src="/static/live_feed.js?v={{ asset_v }}"></script>
+</head>
+<body>
+  <!-- A 1920×1080 broadcast graphic for OBS, vMix or a streaming studio, on a
+       transparent background (or ?bg=green / blue / any hex for a chroma key).
+       Scaled to whatever size the browser source is. -->
+  <div id="canvas" class="canvas">
+
+    <!-- Event bug, top left (?bug=0 hides it) -->
+    <div id="bug" class="bug">
+      <img id="bugLogo" class="bug-logo" alt="" hidden />
+      <div class="bug-text">
+        <b id="bugName">Live Auction</b>
+        <span><i class="live-dot"></i>LIVE AUCTION</span>
+      </div>
+    </div>
+
+    <!-- Team purses, right side (?purses=1 shows it) -->
+    <aside id="purses" class="purses" hidden>
+      <div class="purses-head">PURSE REMAINING</div>
+      <div id="purseRows"></div>
+    </aside>
+
+    <!-- Lower third -->
+    <section id="lower" class="lower" data-mode="idle">
+      <div class="timer-bar" id="timerBar"><i></i></div>
+
+      <!-- On the block -->
+      <div class="pane pane-bidding">
+        <div class="photo" id="photo"><img id="photoImg" alt="" hidden /><span id="photoInitials"></span></div>
+        <div class="who">
+          <div class="cat" id="cat"></div>
+          <div class="name" id="name"></div>
+          <div class="details" id="details"></div>
+        </div>
+        <div class="leader" id="leader">
+          <span class="leader-label">LEADING</span>
+          <div class="leader-team"><img id="leaderLogo" alt="" hidden /><b id="leaderName">No bid yet</b></div>
+        </div>
+        <div class="bid">
+          <span class="bid-label">CURRENT BID</span>
+          <b class="bid-amount" id="bidAmount"></b>
+          <span class="bid-base" id="bidBase"></span>
+        </div>
+        <div class="clock" id="clock" hidden>
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="clock-track" cx="60" cy="60" r="52" />
+            <circle class="clock-ring" id="clockRing" cx="60" cy="60" r="52" />
+          </svg>
+          <b id="clockSecs"></b>
+          <span id="clockLabel">SECONDS</span>
+        </div>
+      </div>
+
+      <!-- SOLD / UNSOLD -->
+      <div class="pane pane-result">
+        <div class="photo" id="resultPhoto"><img id="resultImg" alt="" hidden /><span id="resultInitials"></span></div>
+        <div class="who">
+          <div class="result-badge" id="resultBadge">SOLD</div>
+          <div class="name" id="resultName"></div>
+          <div class="result-to" id="resultTo"></div>
+        </div>
+        <div class="result-team"><img id="resultLogo" alt="" hidden /></div>
+        <div class="bid">
+          <span class="bid-label" id="resultPriceLabel">SOLD FOR</span>
+          <b class="bid-amount" id="resultPrice"></b>
+        </div>
+      </div>
+
+      <!-- Between players -->
+      <div class="pane pane-idle">
+        <div class="idle-title">
+          <span class="idle-kicker">UP NEXT</span>
+          <b id="idleText">The next player is coming up</b>
+        </div>
+        <div class="idle-stats" id="idleStats"></div>
+      </div>
+    </section>
+  </div>
+  <script src="/static/overlay.js?v={{ asset_v }}"></script>
+</body>
+</html>

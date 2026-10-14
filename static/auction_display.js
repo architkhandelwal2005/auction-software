@@ -73,6 +73,7 @@
   const TEAM_FALLBACK_COLORS = ['#3f82ff', '#f0a11b', '#22be88', '#ee5361', '#9a7cff', '#42efc2'];
 
   /* ───────────── state ───────────── */
+  let liveState = {};   // the server's auction state, as last polled
   const state = {
     tournament: { name: 'TOURNAMENT NAME', subtitle: 'PLAYER AUCTION • LIVE DISPLAY', progress: '-- / --' },
     player: null,   // null => nothing on the block yet
@@ -883,6 +884,7 @@
   function ingest(data) {
     const cfg = data.config || {};
     const st = data.auction_state || {};
+    liveState = st;
     const stats = data.stats || null;
 
     state.tournament.name = (cfg.event_name || 'LIVE AUCTION').toUpperCase();
@@ -1079,6 +1081,34 @@
     stage.dataset.connected = state.connected ? '1' : '0';
     paintAll();
   }
+
+  /* Bid timer: counts down to the moment the server set, which every screen
+     shares; each new bid restarts it (set_auction_state). */
+  const stageTimer = document.getElementById('stageTimer');
+  const stageTimerSecs = document.getElementById('stageTimerSecs');
+  const stageTimerBar = document.getElementById('stageTimerBar');
+  function paintTimer() {
+    const left = liveState.current_player && window.LiveFeed ? window.LiveFeed.timerLeft(liveState) : null;
+    const total = Number(liveState.timer_seconds) || 0;
+    const on = left !== null && total > 0;
+    if (stageTimer) {
+      stageTimer.hidden = !on;
+      if (on) {
+        const text = left > 0 ? String(Math.ceil(left)) : 'TIME';
+        if (stageTimerSecs.textContent !== text) stageTimerSecs.textContent = text;
+        stageTimer.classList.toggle('urgent', left <= 5);
+        stageTimerBar.style.transform = 'scaleX(' + Math.max(0, Math.min(1, left / total)) + ')';
+      }
+    }
+    const btn = document.getElementById('adminTimerBtn');
+    if (btn) {
+      const label = liveState.timer_ends_at ? 'Stop Timer' : 'Start Timer';
+      if (btn.textContent !== label) btn.textContent = label;
+    }
+  }
+  // A timer, not animation frames: a projector or streaming PC that throttles
+  // frames for a background window must still count down.
+  setInterval(paintTimer, 100);
 
   /* ───────────── controls (preview only — never on the public screen) ───────────── */
   function setTemplate(template) {
@@ -1863,6 +1893,27 @@
         toast('Not sold. ' + e.message, 'err');
       }
     });
+
+    // Bid timer: start or stop. The length chosen is remembered on this screen.
+    const adminTimerBtn = $('adminTimerBtn');
+    const adminTimerSecs = $('adminTimerSecs');
+    if (adminTimerBtn && adminTimerSecs) {
+      try { const saved = localStorage.getItem('bidTimerSecs'); if (saved) adminTimerSecs.value = saved; } catch (e) { /* not kept */ }
+      adminTimerSecs.onchange = () => { try { localStorage.setItem('bidTimerSecs', adminTimerSecs.value); } catch (e) { /* not kept */ } };
+      adminTimerBtn.onclick = oneAtATime(async () => {
+        const running = !!liveState.timer_ends_at;
+        try {
+          const res = await fetch('/api/auction/state', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ timer: running ? 0 : Number(adminTimerSecs.value) || 15 })
+          });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          await poll();
+        } catch (e) {
+          toast('Timer not changed: ' + e.message, 'err');
+        }
+      });
+    }
 
     // Next Player — default is the spin wheel, not the search/select list.
     if (adminNextBtn) adminNextBtn.onclick = async () => {

@@ -61,6 +61,10 @@
           </div>
         </div>
         <div class="header-meta">
+          <!-- Bid timer: shown while the auctioneer runs one -->
+          <div class="stage-timer" id="stageTimer" hidden>
+            <span>TIME LEFT</span><strong id="stageTimerSecs">--</strong><i><b id="stageTimerBar"></b></i>
+          </div>
           <div class="progress-box"><span>PLAYER</span><strong data-slot="auction.progress">-- / --</strong></div>
           <div class="live-dot"><span></span> LIVE</div>
         </div>
@@ -232,6 +236,11 @@
         <button class="admin-bid-btn admin-bid-up" id="adminBidPlus25">+25</button>
       </div>
       <div class="admin-actions-strip">
+        <select class="admin-team-sel" id="adminTimerSecs" title="Bid timer length">
+          <option value="10">10s</option><option value="15" selected>15s</option><option value="20">20s</option>
+          <option value="30">30s</option><option value="45">45s</option><option value="60">60s</option>
+        </select>
+        <button class="admin-btn admin-btn-blue" id="adminTimerBtn" title="Count down on every screen; each new bid restarts it">Start Timer</button>
         <button class="admin-btn admin-btn-red" id="adminPassBtn">PASS</button>
         <button class="admin-btn admin-btn-purple" id="adminUnsoldSpinBtn" title="Spin the wheel to assign this player to a team">Unsold&rarr;Spin</button>
         <select class="admin-team-sel admin-team-sel-wide" id="adminTeamSel"><option value="">Select Team...</option></select>

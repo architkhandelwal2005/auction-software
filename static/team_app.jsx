@@ -160,6 +160,7 @@ const TeamApp = () => {
                                             {liveData.bidder_team_logo && <img src={liveData.bidder_team_logo} alt="" className="w-5 h-5 object-contain rounded" />}
                                             <span className="text-xs font-extrabold uppercase" style={{color: liveData.bidder_team_color || '#f59e0b'}}>{liveData.bidder_team_name}</span>
                                         </div>}
+                                        <BidTimerChip state={liveData.auction_state} />
                                         <div className="text-xs font-bold text-zinc-500">Current Bid: <span className="text-amber-400 text-base">{fmtL(liveData.current_bid)}</span></div>
                                     </div>
                                 </div>

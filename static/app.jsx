@@ -508,6 +508,12 @@ const TeamRosterModal = ({ team, onClose, teams = [], onChanged }) => {
 const ShareModal = ({ teams, onClose }) => {
     const [copied, setCopied] = useState('');
     const origin = window.location.origin;
+    // Stream overlay options: background ('' transparent, or a colour to key
+    // out) and whether team purses show down the right.
+    const [overlayBg, setOverlayBg] = useState('');
+    const [overlayPurses, setOverlayPurses] = useState(false);
+    const overlayQuery = [overlayBg && `bg=${overlayBg}`, overlayPurses && 'purses=1'].filter(Boolean).join('&');
+    const overlayUrl = `${origin}/overlay${overlayQuery ? '?' + overlayQuery : ''}`;
     const copy = (url, key) => {
         navigator.clipboard?.writeText(url);
         setCopied(key);
@@ -543,6 +549,33 @@ const ShareModal = ({ teams, onClose }) => {
                                 {copied === 'live' ? '✓ Copied!' : 'Copy'}
                             </button>
                             <a href="/live" target="_blank" className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center">
+                                Open ↗
+                            </a>
+                        </div>
+                    </div>
+
+                    {/* Live-stream overlay */}
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-rose-500/30">
+                        <span className="fredoka font-bold text-rose-400 text-sm flex items-center gap-2 mb-1">
+                            🎥 Live-Stream Overlay (YouTube, OBS, vMix)
+                        </span>
+                        <p className="text-xs text-slate-400 mb-2">Player, bid, leading team, timer and SOLD as a lower third over your camera feed. In OBS: Sources, +, Browser, paste the link, width 1920, height 1080.</p>
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                            {[['', 'Transparent (OBS, vMix)'], ['green', 'Green screen'], ['blue', 'Blue screen']].map(([v, label]) => (
+                                <button key={v || 'clear'} onClick={() => setOverlayBg(v)}
+                                    className={`px-2.5 py-1 rounded-lg text-[0.7rem] font-bold border transition ${overlayBg === v ? 'bg-rose-500/20 border-rose-500/50 text-rose-300' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}>{label}</button>
+                            ))}
+                            <button onClick={() => setOverlayPurses(!overlayPurses)}
+                                className={`px-2.5 py-1 rounded-lg text-[0.7rem] font-bold border transition ${overlayPurses ? 'bg-rose-500/20 border-rose-500/50 text-rose-300' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}>
+                                {overlayPurses ? '✓ ' : ''}Team purses
+                            </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <input readOnly value={overlayUrl} className="flex-1 bg-slate-900 border border-slate-700 text-rose-300 px-3 py-1.5 rounded-xl text-xs font-bold" />
+                            <button onClick={() => copy(overlayUrl, 'overlay')} className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-1.5 rounded-xl text-xs font-bold transition shadow-sm">
+                                {copied === 'overlay' ? '✓ Copied!' : 'Copy'}
+                            </button>
+                            <a href={overlayUrl} target="_blank" className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center">
                                 Open ↗
                             </a>
                         </div>

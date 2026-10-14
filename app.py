@@ -1276,7 +1276,7 @@ ROUTE_POLICY = {
     'login_portal': 'public', 'logout': 'public', 'auth_login': 'public',
     'auth_me': 'public',
     'live_view': 'public', 'presentation_view': 'public',
-    'cricket_auction_view': 'public', 'roster_view': 'public',
+    'cricket_auction_view': 'public', 'roster_view': 'public', 'overlay_view': 'public',
     'get_live_data': 'public', 'get_live_state': 'public',
     # The login page lists the live auction's teams before anyone signs in.
     'get_teams': 'public', 'get_config': 'public',
@@ -1383,7 +1383,7 @@ AUCTION_FREE_ENDPOINTS = {
 # Screens and feeds an audience opens with no login. These bind to whichever
 # auction is currently live.
 PUBLIC_LIVE_ENDPOINTS = {
-    'live_view', 'presentation_view', 'cricket_auction_view', 'roster_view',
+    'live_view', 'presentation_view', 'cricket_auction_view', 'roster_view', 'overlay_view',
     'get_live_data', 'get_live_state', 'report_view',
     # The login page lists the live auction's teams before anyone has a session.
     'get_teams', 'get_config',
@@ -2000,6 +2000,12 @@ def presentation_view():
 def cricket_auction_view():
     return render_template('cricket_auction.html')
 
+@app.route('/overlay')
+def overlay_view():
+    """A broadcast graphic for a live stream: added to OBS, vMix or a
+    streaming studio as a 1920x1080 browser source (static/overlay.js)."""
+    return render_template('overlay.html')
+
 @app.route('/roster')
 def roster_view():
     """Themed player-roster confirmation page. Also reachable from the setup
@@ -2298,6 +2304,7 @@ def block_player(conn, state):
 # auction_state keys that are console settings rather than the player on the
 # block: kept when a sale, pass, undo or reset clears the stage.
 STAGE_SETTINGS = ('auction_sport', 'auction_template_mode', 'auction_template', 'draw_category')
+TIMER_KEYS = ('timer_seconds', 'timer_ends_at')   # the bid timer (set_auction_state)
 
 
 def clear_stage(c):
@@ -3491,6 +3498,13 @@ def set_auction_state():
     # player was sold or replaced (a slow phone, a second screen) is refused,
     # so it can never land on the next player.
     bid_for = data.pop('for_player_id', None)
+    # The bid timer: {"timer": 15} starts a 15-second countdown, {"timer": 0}
+    # stops it. The server keeps the moment it ends, by its own clock, so
+    # every screen counts down to the same moment. A new bid restarts it; a
+    # new player, a sale or a pass clears it.
+    timer = data.pop('timer', None)
+    for key in TIMER_KEYS:
+        data.pop(key, None)   # set only from "timer", never directly
     conn = get_db()
     c = conn.cursor()
     if bid_for is not None and 'current_player' not in data:
@@ -3506,6 +3520,22 @@ def set_auction_state():
         if row and row['status'] == 'sold':
             conn.rollback()
             return jsonify({'error': 'already_sold', 'message': '%s is already sold.' % row['name']}), 409
+    now_ms = int(time.time() * 1000)
+    if timer is not None:
+        try:
+            seconds = max(0, min(300, int(float(timer or 0))))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'timer must be a number of seconds'}), 400
+        if seconds:
+            data.update(timer_seconds=seconds, timer_ends_at=now_ms + seconds * 1000)
+        else:
+            c.execute("DELETE FROM auction_state WHERE key IN ('timer_seconds', 'timer_ends_at')")
+    elif 'current_player' in data:
+        c.execute("DELETE FROM auction_state WHERE key IN ('timer_seconds', 'timer_ends_at')")
+    elif 'current_bid' in data:
+        running = c.execute("SELECT value FROM auction_state WHERE key = 'timer_seconds'").fetchone()
+        if running:
+            data['timer_ends_at'] = now_ms + int(running['value']) * 1000
     for k, v in data.items():
         c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES (?, ?)', (k, str(v)))
     # Clear sold/passed overlay and any previous leading bidder when a new
@@ -4164,8 +4194,9 @@ def get_live_data():
 @app.route('/api/live_state', methods=['GET'])
 def get_live_state():
     """What changes on every bid: the stage state, with the revision of the
-    rest of /api/live_data. A few hundred bytes, polled every second."""
-    return conditional_json(live_snapshot()[2])
+    rest of /api/live_data. A few hundred bytes, polled every second.
+    X-Now is the server's clock in milliseconds, which the bid timer counts by."""
+    return conditional_json(live_snapshot()[2], {'X-Now': str(int(time.time() * 1000))})
 
 # ─── Set Common Base Price for All Unsold Players ───
 @app.route('/api/players/fetch_photos', methods=['POST'])

@@ -8,11 +8,13 @@
    revision moves.
 
    LiveFeed.get() resolves to the same object /api/live_data returns, a fresh
-   copy for each call (callers may change it). */
+   copy for each call (callers may change it). LiveFeed.timerLeft(state) is
+   the bid timer's seconds left, by the server's clock. */
 window.LiveFeed = (function () {
   let fullText = null;   // the last /api/live_data body
   let fullRev = null;    // its revision (X-Live-Rev)
   let fullLoad = null;   // that download, while it is on its way
+  const offsets = [];    // the server's clock less this one's, recent samples
 
   async function getOK(url) {
     // "no-cache": the browser asks every time, and an unchanged answer comes
@@ -32,8 +34,27 @@ window.LiveFeed = (function () {
     return fullLoad;
   }
 
+  // The server's clock (X-Now, in milliseconds), whatever this device's own
+  // clock says. Averaged over recent answers, since each arrives a little
+  // after it was sent.
+  function learnClock(r) {
+    const server = Number(r.headers.get('X-Now'));
+    if (!server) return;
+    offsets.push(server - Date.now());
+    if (offsets.length > 20) offsets.shift();
+  }
+  function now() {
+    return Date.now() + (offsets.length ? offsets.reduce((a, b) => a + b, 0) / offsets.length : 0);
+  }
+  function timerLeft(state) {
+    const ends = Number((state || {}).timer_ends_at);
+    return ends ? Math.max(0, (ends - now()) / 1000) : null;
+  }
+
   async function get() {
-    const live = await (await getOK('/api/live_state')).json();
+    const r = await getOK('/api/live_state');
+    learnClock(r);
+    const live = await r.json();
     if (live.rev !== fullRev && fullLoad) await fullLoad.catch(() => {});   // it may be this revision
     if (live.rev !== fullRev) await download();
     const data = JSON.parse(fullText);
@@ -43,5 +64,5 @@ window.LiveFeed = (function () {
     return data;
   }
 
-  return { get };
+  return { get, timerLeft };
 })();

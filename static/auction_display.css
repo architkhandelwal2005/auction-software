@@ -154,6 +154,18 @@ button, select, input { font:inherit; }
 .progress-box strong { font-family:var(--display-font); font-size:26px; }
 .live-dot { display:flex; align-items:center; gap:9px; padding:10px 15px; border:1px solid rgba(255,82,95,.36); border-radius:999px; font-size:13px; font-weight:800; letter-spacing:2px; color:#ff7b86; background:rgba(90,10,20,.22); }
 .live-dot span { width:8px; height:8px; border-radius:50%; background:#ff4051; box-shadow:0 0 15px #ff4051; }
+/* Bid timer, beside the player count (auction_display.js paintTimer) */
+.stage-timer { position:relative; min-width:132px; padding:10px 16px 14px; text-align:right; border:1px solid var(--accent-border); border-radius:12px; background:rgba(5,14,24,.66); overflow:hidden; }
+.stage-timer[hidden] { display:none; }
+.stage-timer span { display:block; font-family:var(--display-font); letter-spacing:2px; font-size:12px; color:var(--text-muted); }
+.stage-timer strong { font-family:var(--display-font); font-size:34px; line-height:1; color:var(--accent-bright); }
+.stage-timer i { position:absolute; left:0; right:0; bottom:0; height:4px; background:rgba(255,255,255,.08); }
+.stage-timer i b { display:block; height:100%; background:var(--accent); transform-origin:0 50%; transition:transform .1s linear; }
+#adminTimerSecs { flex:none; width:auto; min-width:0; }
+.stage-timer.urgent { border-color:rgba(255,82,95,.6); background:rgba(90,10,20,.42); }
+.stage-timer.urgent strong { color:#ff6b78; animation:stage-tick 1s ease infinite; }
+.stage-timer.urgent i b { background:#ff4051; }
+@keyframes stage-tick { 0%,100% { opacity:1; } 50% { opacity:.55; } }
 
 /* ---------- MAIN LAYOUT ---------- */
 .main-grid { position:absolute; z-index:10; left:62px; right:58px; top:114px; bottom:154px; display:grid; grid-template-columns: 540px minmax(620px, 1fr) 420px; gap:34px; align-items:center; }
