@@ -1,5 +1,69 @@
 const { useState, useEffect } = React;
 
+// The bid a phone may make now: with no bid yet, the base price; otherwise one
+// step above the standing bid, or above a phone bid waiting for the
+// auctioneer. The server works it out the same way and refuses any other.
+const phoneBidState = (st, cfg, team) => {
+    let waiting = null;
+    try { waiting = st.bid_request ? JSON.parse(st.bid_request) : null; } catch (e) { waiting = null; }
+    let standing = parseFloat(st.current_bid) || 0;
+    if (waiting) standing = Math.max(standing, parseFloat(waiting.amount) || 0);
+    const rule = BidRules.ruleFor(BidRules.parse(cfg), st.category);
+    const next = (!st.bidder_team_id && !waiting) ? BidRules.round(standing) : BidRules.up(rule, standing);
+    return {
+        waiting, next,
+        leading: String(st.bidder_team_id || '') === String(team.id),
+        mine: !!waiting && String(waiting.team_id) === String(team.id),
+    };
+};
+
+// Bidding from this phone, when the auctioneer allows it.
+const PhoneBid = ({ liveData, team, onDone }) => {
+    const [sending, setSending] = useState(false);
+    const [note, setNote] = useState('');
+    const st = liveData.auction_state || {};
+    const cfg = liveData.config || {};
+    const mode = cfg.team_bidding || 'off';
+    if (mode === 'off' || !st.current_player) return null;
+    const { waiting, next, leading, mine } = phoneBidState(st, cfg, team);
+    const max = team.max_allowed_bid;
+    const bid = async () => {
+        if (sending) return;
+        setSending(true); setNote('');
+        try {
+            const r = await fetch('/api/bid', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ for_player_id: String(st.current_player_id || ''), amount: next }) });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) setNote(d.message || 'That bid did not go through.');
+            await onDone();
+        } catch (e) { setNote('No connection. Try again.'); }
+        setSending(false);
+    };
+    let body;
+    if (leading) {
+        body = <div className="text-emerald-400 font-extrabold text-lg flex items-center gap-2"><i className="fa-solid fa-trophy"></i> You lead at {fmtL(st.current_bid)}</div>;
+    } else if (mine) {
+        body = <div className="text-amber-300 font-extrabold flex items-center gap-2"><i className="fa-solid fa-hourglass-half"></i> Your bid of {fmtL(waiting.amount)} is waiting for the auctioneer</div>;
+    } else if (team.category_full) {
+        body = <div className="text-red-400 font-bold">Your {st.category} slots are full.</div>;
+    } else if (max != null && next > max + 1e-6) {
+        body = <div className="text-red-400 font-bold">{fmtL(next)} is above your limit of {fmtL(max)}.</div>;
+    } else {
+        body = <button onClick={bid} disabled={sending}
+            className="w-full py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-black fredoka font-black text-2xl tracking-wide shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition">
+            {sending ? 'Sending…' : `BID ${fmtL(next)}`}
+        </button>;
+    }
+    return (
+        <div className="mt-5 pt-5 border-t border-zinc-800 space-y-2">
+            {body}
+            {waiting && !mine && <div className="text-xs text-zinc-500 font-bold">{waiting.team_name} has asked to bid {fmtL(waiting.amount)}.</div>}
+            {mode === 'confirm' && !leading && !mine && <div className="text-[0.7rem] text-zinc-500">The auctioneer accepts each phone bid.</div>}
+            {note && <div className="text-sm text-red-400 font-bold">{note}</div>}
+        </div>
+    );
+};
+
 const TeamApp = () => {
     const teamId = window.CURRENT_TEAM_ID;
     const [team, setTeam] = useState(null);
@@ -244,6 +308,7 @@ const TeamApp = () => {
                                         </div>
                                     </div>
                                 </div>
+                                <PhoneBid liveData={liveData} team={team} onDone={fetchLive} />
                             </div>
                         ) : (
                             <div className="p-10 flex flex-col items-center justify-center text-center opacity-50">

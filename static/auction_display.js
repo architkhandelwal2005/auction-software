@@ -74,6 +74,7 @@
 
   /* ───────────── state ───────────── */
   let liveState = {};   // the server's auction state, as last polled
+  let liveConfig = {};  // and its settings
   const state = {
     tournament: { name: 'TOURNAMENT NAME', subtitle: 'PLAYER AUCTION • LIVE DISPLAY', progress: '-- / --' },
     player: null,   // null => nothing on the block yet
@@ -885,6 +886,7 @@
     const cfg = data.config || {};
     const st = data.auction_state || {};
     liveState = st;
+    liveConfig = cfg;
     const stats = data.stats || null;
 
     state.tournament.name = (cfg.event_name || 'LIVE AUCTION').toUpperCase();
@@ -1107,6 +1109,20 @@
       card.hidden = !id;
       if (id && card.getAttribute('href') !== '/card/' + id) card.setAttribute('href', '/card/' + id);
     }
+    // A team owner's phone bid waiting for the auctioneer, and the phone
+    // bidding setting.
+    const request = document.getElementById('adminBidRequest');
+    if (request) {
+      let waiting = null;
+      try { waiting = liveState.bid_request ? JSON.parse(liveState.bid_request) : null; } catch (e) { waiting = null; }
+      request.hidden = !(waiting && liveState.current_player);
+      if (waiting) {
+        document.getElementById('adminBidRequestTeam').textContent = waiting.team_name;
+        document.getElementById('adminBidRequestAmount').textContent = money(waiting.amount);
+      }
+    }
+    const phoneBids = document.getElementById('adminPhoneBids');
+    if (phoneBids && document.activeElement !== phoneBids) phoneBids.value = liveConfig.team_bidding || 'off';
     const btn = document.getElementById('adminTimerBtn');
     if (btn) {
       const label = liveState.timer_ends_at ? 'Stop Timer' : 'Start Timer';
@@ -1450,8 +1466,9 @@
       adminBidDisplay.classList.add('bid-pulse');
       updateTeamDropdown();          // affordability labels track the new bid
       clearTimeout(bidPostTimer);
+      bidInFlight = true;
       bidPostTimer = setTimeout(async () => {
-        if (!adminPlayer) return;     // sold or passed meanwhile: nothing to bid on
+        if (!adminPlayer) { bidInFlight = false; return; }   // sold or passed meanwhile: nothing to bid on
         try {
           await fetch('/api/auction/state', {
             method: 'POST', headers: {'Content-Type':'application/json'},
@@ -1464,10 +1481,28 @@
               bidder_team_color: adminBidder ? (adminBidder.color || '') : ''
             })
           });
-          poll();
+          await poll();
         } catch(e) { console.error('bid update failed', e); }
+        bidInFlight = false;
       }, 120);
     }
+
+    /* Bids made elsewhere (a team owner's phone, the control phone) show here
+       too, so the next raise starts from them and SOLD goes to their team. */
+    let bidInFlight = false;   // this screen's own bid, not yet back from the server
+    function syncAdminBid() {
+      if (!adminPlayer || bidInFlight || String(liveState.current_player_id || '') !== String(adminPlayer.id)) return;
+      const server = parseFloat(liveState.current_bid);
+      const leaderId = String(liveState.bidder_team_id || '');
+      if (isNaN(server) || (Math.abs(server - adminBid) < 1e-6 && leaderId === String((adminBidder || {}).id || ''))) return;
+      adminBid = server;
+      adminBidder = adminTeams.find(t => String(t.id) === leaderId) || null;
+      adminBidDisplay.value = adminBid;
+      renderBidButtons();
+      updateTeamDropdown();
+      if (adminBidder) adminTeamSel.value = String(adminBidder.id);
+    }
+    setInterval(syncAdminBid, 300);
     function changeBid(steps) {
       adminBid = stepsFrom(adminBid, steps);
       SFX.bid();
@@ -1492,6 +1527,7 @@
       }
       adminBid = next;
       adminBidder = team;
+      if (adminTeamSel) adminTeamSel.value = String(team.id);   // SOLD goes to the leader
       SFX.bid();
       pushBid();
     }
@@ -1922,6 +1958,29 @@
         toast('Not sold. ' + e.message, 'err');
       }
     });
+
+    // Bids from team owners' phones: off, waiting for Accept, or instant.
+    const adminPhoneBids = $('adminPhoneBids');
+    if (adminPhoneBids) {
+      adminPhoneBids.onchange = () => fetch('/api/config', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ config: { team_bidding: adminPhoneBids.value } })
+      }).then(r => { if (!r.ok) throw new Error(); poll(); toast(adminPhoneBids.options[adminPhoneBids.selectedIndex].text, 'ok'); })
+        .catch(() => toast('Could not change phone bidding', 'err'));
+    }
+    const answerBid = accept => oneAtATime(async () => {
+      try {
+        const res = await fetch('/api/bid/answer', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ accept: accept, for_player_id: String(liveState.current_player_id || '') })
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) toast(j.message || 'That bid is gone', 'err');
+        await poll();
+      } catch (e) { toast('Could not answer the bid', 'err'); }
+    });
+    if ($('adminBidAccept')) $('adminBidAccept').onclick = answerBid(true);
+    if ($('adminBidReject')) $('adminBidReject').onclick = answerBid(false);
 
     // Bid timer: start or stop. The length chosen is remembered on this screen.
     const adminTimerBtn = $('adminTimerBtn');

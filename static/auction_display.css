@@ -163,6 +163,14 @@ button, select, input { font:inherit; }
 .stage-timer i b { display:block; height:100%; background:var(--accent); transform-origin:0 50%; transition:transform .1s linear; }
 #adminTimerSecs { flex:none; width:auto; min-width:0; }
 a.admin-btn { display:inline-flex; align-items:center; text-decoration:none; }
+/* A phone bid waiting for the auctioneer */
+.admin-bid-request { display:flex; align-items:center; justify-content:center; gap:12px; padding:10px 16px; margin-bottom:8px;
+  border-radius:12px; background:rgba(16,185,129,.14); border:1px solid rgba(16,185,129,.5); color:#d1fae5; font-size:15px; font-weight:700;
+  animation: bid-request-in .3s ease; }
+.admin-bid-request[hidden] { display:none; }
+.admin-bid-request b { color:#fff; }
+@keyframes bid-request-in { from { transform:translateY(8px); opacity:0; } to { transform:none; opacity:1; } }
+#adminPhoneBids { flex:none; width:auto; min-width:0; }
 a.admin-btn[hidden] { display:none; }
 .stage-timer.urgent { border-color:rgba(255,82,95,.6); background:rgba(90,10,20,.42); }
 .stage-timer.urgent strong { color:#ff6b78; animation:stage-tick 1s ease infinite; }

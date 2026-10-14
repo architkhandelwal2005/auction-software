@@ -1339,7 +1339,8 @@ ROUTE_POLICY = {
     'fetch_drive_photos_status': 'viewer',
 
     # A team owner's own dashboard.
-    'team_dashboard': 'team', 'get_team_data': 'team',
+    'team_dashboard': 'team', 'get_team_data': 'team', 'team_bid': 'team',
+    'answer_bid': 'admin',
     'get_team_pins': 'admin', 'renew_team_pin': 'admin',
 
     # The auctioneer's console: everything that writes.
@@ -1458,6 +1459,7 @@ MUTATING_ENDPOINTS = {
     'set_common_base_price', 'save_pricing', 'smart_analyze', 'pass_player', 'revive_player',
     'bargain_bin', 'go_live_auction',
     'import_from_sheet', 'resync_sheet', 'apply_sheet_changes', 'renew_team_pin',
+    'team_bid', 'answer_bid',
 }
 
 # Changes to one auction take turns. A change reads, decides, then writes: a
@@ -2722,6 +2724,20 @@ def _clean_rule(rule, fallback):
     return {'base': max(0.0, _num(rule.get('base'), fallback['base'])),
             'increment': inc if inc > 0 else fallback['increment'],
             'steps': sorted(steps, key=lambda s: s['from'])}
+
+
+def bid_step_at(rule, bid):
+    """The increment that raises a bid standing at `bid` (BidRules.stepAt)."""
+    inc = rule['increment']
+    for s in rule['steps']:
+        if bid >= s['from'] - 1e-9:
+            inc = s['increment']
+    return inc
+
+
+def next_bid(rule, bid):
+    """One step up from `bid` (BidRules.up)."""
+    return round(bid + bid_step_at(rule, bid), 2)
 
 
 def pricing_from_config(cfg):
@@ -3994,6 +4010,9 @@ def set_auction_state():
         if row and row['status'] == 'sold':
             conn.rollback()
             return jsonify({'error': 'already_sold', 'message': '%s is already sold.' % row['name']}), 409
+    if 'current_player' in data:
+        # A new player, or none: a phone bid waiting for the last one is gone.
+        c.execute("DELETE FROM auction_state WHERE key = 'bid_request'")
     now_ms = int(time.time() * 1000)
     if timer is not None:
         try:
@@ -4010,13 +4029,22 @@ def set_auction_state():
         running = c.execute("SELECT value FROM auction_state WHERE key = 'timer_seconds'").fetchone()
         if running:
             data['timer_ends_at'] = now_ms + int(running['value']) * 1000
+        # A bid from a phone waiting for the auctioneer is overtaken by a room
+        # bid at least as high.
+        waiting = c.execute("SELECT value FROM auction_state WHERE key = 'bid_request'").fetchone()
+        try:
+            if waiting and float(json.loads(waiting['value'])['amount']) <= float(data['current_bid']) + 1e-9:
+                c.execute("DELETE FROM auction_state WHERE key = 'bid_request'")
+        except (ValueError, TypeError, KeyError):
+            c.execute("DELETE FROM auction_state WHERE key = 'bid_request'")
     for k, v in data.items():
         c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES (?, ?)', (k, str(v)))
     # Clear sold/passed overlay and any previous leading bidder when a new
     # player goes on the block (unless this same request sets a bidder).
     if data.get('current_player'):
         keys = ['auction_status', 'last_sold_player', 'last_sold_price', 'last_sold_team_name',
-                'last_sold_team_color', 'last_sold_photo', 'last_passed_player', 'last_passed_photo']
+                'last_sold_team_color', 'last_sold_photo', 'last_passed_player', 'last_passed_photo',
+                'bid_request']
         if 'bidder_team_id' not in data:
             keys += ['bidder_team_id', 'bidder_team_name', 'bidder_team_color']
         c.execute("DELETE FROM auction_state WHERE key IN (%s)" % ','.join(['?'] * len(keys)), keys)
@@ -4026,6 +4054,133 @@ def set_auction_state():
     conn.commit()
     conn.close()
     return jsonify({'success': True})
+
+# ─── Bids from team owners' phones ───
+# The auctioneer chooses (config team_bidding): "off", phones only watch;
+# "confirm", a phone's bid waits for the auctioneer to accept it on the stage
+# or the control phone (only the highest waiting bid is kept); "auto", it
+# stands at once. The server decides what a bid may be: always the next step
+# above the standing bid (or, with no bid yet, the base price), never past
+# the team's limit or into a full category. Changes take turns, so two teams
+# tapping the same amount at once cannot both win: the second is told the
+# bid moved.
+TEAM_BIDDING_MODES = ('off', 'confirm', 'auto')
+
+
+def bid_standing(state):
+    """(the amount a phone bid must be, the waiting phone bid or None)."""
+    waiting = None
+    try:
+        waiting = json.loads(state['bid_request']) if state.get('bid_request') else None
+    except ValueError:
+        waiting = None
+    return waiting
+
+
+def apply_bid(c, amount, team):
+    """Make `team` the leader at `amount`, restarting a running timer."""
+    for k, v in (('current_bid', amount), ('bidder_team_id', team['id']), ('bidder_team_name', team['name']),
+                 ('bidder_team_color', team['color'] or '#3b82f6')):
+        c.execute('INSERT OR REPLACE INTO auction_state (key, value) VALUES (?, ?)', (k, str(v)))
+    running = c.execute("SELECT value FROM auction_state WHERE key = 'timer_seconds'").fetchone()
+    if running:
+        c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('timer_ends_at', ?)",
+                  (str(int(time.time() * 1000) + int(running['value']) * 1000),))
+    c.execute("DELETE FROM auction_state WHERE key = 'bid_request'")
+
+
+def check_phone_bid(c, cfg, state, team, amount):
+    """Why `team` may not bid `amount` on the player on the block now, as
+    (error, message, next amount) — or None when it may."""
+    if not state.get('current_player'):
+        return 'no_player', 'Nobody is on the block.', None
+    rule = pricing_rule(pricing_from_config(cfg), state.get('category') or None)
+    current = _num(state.get('current_bid'), 0.0)
+    waiting = bid_standing(state)
+    if waiting:
+        current = max(current, _num(waiting.get('amount'), 0.0))
+    opening = not state.get('bidder_team_id') and not waiting
+    expected = round(current, 2) if opening else next_bid(rule, current)
+    if str(state.get('bidder_team_id') or '') == str(team['id']):
+        return 'leading', 'You already lead this bid.', expected
+    if waiting and str(waiting.get('team_id')) == str(team['id']) and abs(_num(waiting.get('amount'), 0) - current) < 1e-6:
+        return 'waiting', 'Your bid is waiting for the auctioneer.', expected
+    if abs(amount - expected) > 1e-6:
+        return 'bid_moved', 'The bid moved: the next bid is %s.' % fmt_lakhs(expected), expected
+    rules = c.execute('SELECT * FROM category_rules').fetchall()
+    metrics = format_team_metrics(team, team_squad(c, team['id']), rules, cfg, state.get('category') or None)
+    if metrics['category_full']:
+        return 'category_full', 'Your %s slots are full.' % state.get('category'), expected
+    if amount > metrics['max_allowed_bid'] + 1e-6:
+        return 'over_limit', '%s is above your limit of %s.' % (fmt_lakhs(amount), fmt_lakhs(metrics['max_allowed_bid'])), expected
+    return None
+
+
+@app.route('/api/bid', methods=['POST'])
+def team_bid():
+    """A team owner bids from their phone, for their own team."""
+    data = request.get_json(silent=True) or {}
+    team_id = session.get('team_id') if session.get('role') == 'team' else data.get('team_id')
+    try:
+        amount = round(float(data.get('amount')), 2)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'invalid', 'message': 'A bid needs an amount.'}), 400
+    conn = get_db()
+    c = conn.cursor()
+    cfg = {r['key']: r['value'] for r in c.execute('SELECT key, value FROM config').fetchall()}
+    mode = cfg.get('team_bidding') or 'off'
+    if mode not in ('confirm', 'auto'):
+        return jsonify({'error': 'off', 'message': 'Bidding from phones is off: raise your paddle in the room.'}), 403
+    team = c.execute('SELECT * FROM teams WHERE id = ?', (team_id,)).fetchone()
+    if not team:
+        return jsonify({'error': 'invalid', 'message': 'Team not found.'}), 404
+    state = {r['key']: r['value'] for r in c.execute('SELECT key, value FROM auction_state').fetchall()}
+    if str(data.get('for_player_id') or '') != str(state.get('current_player_id') or ''):
+        return jsonify({'error': 'stale_bid', 'message': 'That player is no longer on the block.'}), 409
+    refused = check_phone_bid(c, cfg, state, team, amount)
+    if refused:
+        conn.rollback()
+        return jsonify({'error': refused[0], 'message': refused[1], 'next': refused[2]}), 409
+    if mode == 'auto':
+        apply_bid(c, amount, team)
+    else:
+        c.execute("INSERT OR REPLACE INTO auction_state (key, value) VALUES ('bid_request', ?)", (json.dumps({
+            'team_id': team['id'], 'team_name': team['name'], 'team_color': team['color'] or '#3b82f6',
+            'team_logo': team['logo_url'] or '', 'amount': amount, 'player_id': state.get('current_player_id')}),))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'mode': mode, 'amount': amount})
+
+
+@app.route('/api/bid/answer', methods=['POST'])
+def answer_bid():
+    """The auctioneer accepts or rejects the phone bid waiting for them."""
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    c = conn.cursor()
+    state = {r['key']: r['value'] for r in c.execute('SELECT key, value FROM auction_state').fetchall()}
+    waiting = bid_standing(state)
+    if not waiting or str(waiting.get('player_id')) != str(data.get('for_player_id') or ''):
+        conn.rollback()
+        return jsonify({'error': 'none', 'message': 'That bid is no longer waiting.'}), 409
+    if data.get('accept'):
+        team = c.execute('SELECT * FROM teams WHERE id = ?', (waiting['team_id'],)).fetchone()
+        amount = _num(waiting.get('amount'), 0.0)
+        cfg = {r['key']: r['value'] for r in c.execute('SELECT key, value FROM config').fetchall()}
+        rules = c.execute('SELECT * FROM category_rules').fetchall()
+        metrics = format_team_metrics(team, team_squad(c, team['id']), rules, cfg, state.get('category') or None) if team else None
+        if not team or amount <= _num(state.get('current_bid'), 0.0) - 1e-6 and state.get('bidder_team_id') \
+                or metrics['category_full'] or amount > metrics['max_allowed_bid'] + 1e-6:
+            c.execute("DELETE FROM auction_state WHERE key = 'bid_request'")
+            conn.commit()
+            return jsonify({'error': 'invalid', 'message': 'That bid no longer stands, so it was dropped.'}), 409
+        apply_bid(c, amount, team)
+    else:
+        c.execute("DELETE FROM auction_state WHERE key = 'bid_request'")
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
 
 @app.route('/api/sell_player', methods=['POST'])
 def sell_player():

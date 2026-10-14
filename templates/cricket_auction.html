@@ -197,6 +197,12 @@
        ?admin=1 is in the URL; never part of the public screen.
        ══════════════════════════════════════════════════════════════════ -->
   <div id="adminPanel" class="admin-panel" style="display:none">
+    <!-- A team owner's bid from their phone, waiting for the auctioneer -->
+    <div id="adminBidRequest" class="admin-bid-request" hidden>
+      <span>📱 <b id="adminBidRequestTeam"></b> bids <b id="adminBidRequestAmount"></b></span>
+      <button class="admin-btn admin-btn-green" id="adminBidAccept">Accept</button>
+      <button class="admin-btn admin-btn-gray" id="adminBidReject">Reject</button>
+    </div>
     <!-- Idle bar: no player on block -->
     <div id="adminIdle" class="admin-bar admin-idle-bar">
       <span class="admin-label">NO PLAYER ON BLOCK</span>
@@ -243,6 +249,11 @@
           <option value="30">30s</option><option value="45">45s</option><option value="60">60s</option>
         </select>
         <button class="admin-btn admin-btn-blue" id="adminTimerBtn" title="Count down on every screen; each new bid restarts it">Start Timer</button>
+        <select class="admin-team-sel" id="adminPhoneBids" title="Whether team owners can bid from their phones">
+          <option value="off">Phone bids: Off</option>
+          <option value="confirm">Phone bids: Ask me</option>
+          <option value="auto">Phone bids: Instant</option>
+        </select>
         <button class="admin-btn admin-btn-red" id="adminPassBtn">PASS</button>
         <button class="admin-btn admin-btn-purple" id="adminUnsoldSpinBtn" title="Spin the wheel to assign this player to a team">Unsold&rarr;Spin</button>
         <select class="admin-team-sel admin-team-sel-wide" id="adminTeamSel"><option value="">Select Team...</option></select>

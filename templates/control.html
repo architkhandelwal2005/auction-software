@@ -144,6 +144,16 @@
                 await post('/api/auction/state', { current_player: p.name, current_player_id: String(p.id), current_bid: p.base_price||0, category: p.category||'', base_price: p.base_price||0, photo_url: p.photo_url||'', bidder_team_id:'', bidder_team_name:'', bidder_team_color:'' });
                 await load();
             };
+            // A team owner's phone bid waiting for the auctioneer.
+            let waiting = null;
+            try { waiting = st.bid_request ? JSON.parse(st.bid_request) : null; } catch (e) { waiting = null; }
+            const answer = oneAtATime('answer', async (accept) => {
+                const res = await post('/api/bid/answer', { accept, for_player_id: String(st.current_player_id || '') });
+                if (!res.ok) { const j = await res.json().catch(()=>({})); alert(j.message || 'That bid is gone'); }
+                await load();
+            });
+            const setPhoneBids = async (mode) => { await post('/api/config', { config: { team_bidding: mode } }); await load(); };
+
             // Start a countdown on every screen, or stop it. Each new bid restarts it.
             const toggleTimer = oneAtATime('timer', async () => {
                 await post('/api/auction/state', { timer: st.timer_ends_at ? 0 : timerSecs });
@@ -187,6 +197,13 @@
                                 {leader
                                     ? <div className="inline-flex items-center gap-2 mt-1 px-3 py-1 rounded-full text-sm font-bold" style={{ background:`${leader.color||'#3b82f6'}22`, color: leader.color||'#93c5fd' }}>Leading: {leader.name}</div>
                                     : <div className="text-xs text-zinc-600 font-bold mt-1">Tap a franchise to bid</div>}
+                                {waiting && <div className="mt-3 rounded-xl border border-emerald-500/50 bg-emerald-500/10 p-3">
+                                    <div className="text-sm font-bold text-emerald-200">📱 {waiting.team_name} bids <b className="text-white">{fmtL(waiting.amount)}</b></div>
+                                    <div className="mt-2 grid grid-cols-2 gap-2">
+                                        <button onClick={() => answer(true)} className="rounded-xl bg-emerald-500 text-black font-extrabold py-2 active:scale-95">Accept</button>
+                                        <button onClick={() => answer(false)} className="rounded-xl bg-zinc-800 text-zinc-300 font-bold py-2 active:scale-95">Reject</button>
+                                    </div>
+                                </div>}
                                 <div className="mt-3 flex items-center justify-center gap-2">
                                     <BidTimerChip state={st} big />
                                     {!st.timer_ends_at && <select value={timerSecs} onChange={e=>chooseTimerSecs(Number(e.target.value))}
@@ -196,6 +213,13 @@
                                     <button onClick={toggleTimer} className="rounded-xl border border-zinc-700 bg-zinc-950 text-zinc-300 px-3 py-1.5 text-sm font-extrabold active:scale-95">
                                         <i className="fa-solid fa-stopwatch mr-1.5"></i>{st.timer_ends_at ? 'Stop timer' : 'Start timer'}
                                     </button>
+                                </div>
+                                <div className="mt-2 flex items-center justify-center gap-2 text-xs text-zinc-500 font-bold">
+                                    <i className="fa-solid fa-mobile-screen"></i> Phone bids
+                                    <select value={(data.config || {}).team_bidding || 'off'} onChange={e => setPhoneBids(e.target.value)}
+                                        className="bg-zinc-950 border border-zinc-700 text-zinc-300 rounded-lg px-2 py-1 text-xs font-bold">
+                                        <option value="off">Off</option><option value="confirm">Ask me</option><option value="auto">Instant</option>
+                                    </select>
                                 </div>
                             </div>
 
