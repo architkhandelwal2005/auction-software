@@ -1187,7 +1187,8 @@ def _create_auction_tables_sqlite(conn):
         id INTEGER PRIMARY KEY AUTOINCREMENT, action_type TEXT NOT NULL,
         player_id INTEGER NOT NULL, player_name TEXT, old_team_id INTEGER, new_team_id INTEGER,
         old_sold_price REAL, new_sold_price REAL, old_status TEXT, new_status TEXT,
-        base_price REAL, category TEXT, photo_url TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        base_price REAL, category TEXT, photo_url TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        batch TEXT)''')
     for k, v in DEFAULT_CONFIG.items():
         c.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (k, v))
 
@@ -1215,7 +1216,7 @@ def _create_auction_tables_pg(cur, schema):
         player_name TEXT, old_team_id INTEGER, new_team_id INTEGER,
         old_sold_price DOUBLE PRECISION, new_sold_price DOUBLE PRECISION,
         old_status TEXT, new_status TEXT, base_price DOUBLE PRECISION,
-        category TEXT, photo_url TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+        category TEXT, photo_url TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, batch TEXT)""")
     for k, v in DEFAULT_CONFIG.items():
         cur.execute("INSERT INTO config (key, value) VALUES (%s, %s) "
                     "ON CONFLICT (key) DO NOTHING", (k, v))
@@ -1245,6 +1246,7 @@ def upgrade_auction_schema(conn, auction_id):
                 conn.execute("SET LOCAL lock_timeout = '3s'")
                 conn.execute('ALTER TABLE players ADD COLUMN IF NOT EXISTS team_role TEXT')
                 conn.execute('ALTER TABLE teams ADD COLUMN IF NOT EXISTS pin TEXT')
+                conn.execute('ALTER TABLE action_history ADD COLUMN IF NOT EXISTS batch TEXT')
                 conn.execute('RELEASE SAVEPOINT schema_upgrade')
             except Exception:
                 conn.execute('ROLLBACK TO SAVEPOINT schema_upgrade')
@@ -1257,6 +1259,8 @@ def upgrade_auction_schema(conn, auction_id):
                 conn.execute('ALTER TABLE players ADD COLUMN team_role TEXT')
             if 'pin' not in [r['name'] for r in conn.execute('PRAGMA table_info(teams)').fetchall()]:
                 conn.execute('ALTER TABLE teams ADD COLUMN pin TEXT')
+            if 'batch' not in [r['name'] for r in conn.execute('PRAGMA table_info(action_history)').fetchall()]:
+                conn.execute('ALTER TABLE action_history ADD COLUMN batch TEXT')
         conn.commit()
         _SCHEMA_CURRENT.add(key)
     except Exception as exc:
@@ -1340,7 +1344,7 @@ ROUTE_POLICY = {
 
     # A team owner's own dashboard.
     'team_dashboard': 'team', 'get_team_data': 'team', 'team_bid': 'team',
-    'answer_bid': 'admin',
+    'answer_bid': 'admin', 'record_trade': 'admin',
     'get_team_pins': 'admin', 'renew_team_pin': 'admin',
 
     # The auctioneer's console: everything that writes.
@@ -1459,7 +1463,7 @@ MUTATING_ENDPOINTS = {
     'set_common_base_price', 'save_pricing', 'smart_analyze', 'pass_player', 'revive_player',
     'bargain_bin', 'go_live_auction',
     'import_from_sheet', 'resync_sheet', 'apply_sheet_changes', 'renew_team_pin',
-    'team_bid', 'answer_bid',
+    'team_bid', 'answer_bid', 'record_trade',
 }
 
 # Changes to one auction take turns. A change reads, decides, then writes: a
@@ -4055,6 +4059,87 @@ def set_auction_state():
     conn.close()
     return jsonify({'success': True})
 
+# ─── Trades ───
+# Sold players move between two teams at their sale prices, purses
+# rebalanced: a swap, or one team passing players to another, after the
+# auction or between rounds. One undo reverses a whole trade.
+def move_sold_player(c, pid, from_team, to_team, price):
+    """A sold player changes team at the same price: the team losing them is
+    refunded it, the team gaining them pays it."""
+    c.execute('UPDATE teams SET remaining_budget = remaining_budget + ? WHERE id = ?', (price, from_team))
+    c.execute('UPDATE teams SET remaining_budget = remaining_budget - ? WHERE id = ?', (price, to_team))
+    c.execute('UPDATE players SET team_id = ?, team_role = NULL WHERE id = ?', (to_team, pid))
+
+
+def trade_problem(c, team, gets, gives, check_categories=True):
+    """Why `team` cannot make this trade, as (error, message), or None: its
+    purse would go below zero ("short"), or a category past its maximum
+    ("category_full", which the auctioneer may override)."""
+    left = float(team['remaining_budget']) + sum(p['sold_price'] or 0 for p in gives) - sum(p['sold_price'] or 0 for p in gets)
+    if left < -1e-6:
+        return 'short', '%s would be %s short.' % (team['name'], fmt_lakhs(-left))
+    if not check_categories:
+        return None
+    rules = {r['category']: r['max_per_team'] for r in c.execute('SELECT category, max_per_team FROM category_rules').fetchall()}
+    leaving = {p['id'] for p in gives}
+    counts = {}
+    for r in c.execute("SELECT id, category FROM players WHERE team_id = ? AND status = 'sold'", (team['id'],)).fetchall():
+        if r['id'] not in leaving:
+            counts[r['category']] = counts.get(r['category'], 0) + 1
+    for p in gets:
+        cap = rules.get(p['category'])
+        if cap is not None and counts.get(p['category'], 0) >= cap:
+            return 'category_full', '%s already has %d of %d %s players.' % (team['name'], counts.get(p['category'], 0), cap, p['category'])
+        counts[p['category']] = counts.get(p['category'], 0) + 1
+    return None
+
+
+@app.route('/api/trade', methods=['POST'])
+def record_trade():
+    """Two teams swap sold players, or one passes players to the other, at
+    their sale prices; each purse pays for what it gains and is refunded what
+    it gives. Checked against both purses and category maximums."""
+    data = request.get_json(silent=True) or {}
+    try:
+        a_id, b_id = int(data.get('team_a')), int(data.get('team_b'))
+        give_a = [int(x) for x in data.get('from_a') or []]
+        give_b = [int(x) for x in data.get('from_b') or []]
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Choose two teams and the players they trade'}), 400
+    if a_id == b_id or not (give_a or give_b):
+        return jsonify({'error': 'Choose two different teams and at least one player'}), 400
+    conn = get_db()
+    c = conn.cursor()
+    a = c.execute('SELECT * FROM teams WHERE id = ?', (a_id,)).fetchone()
+    b = c.execute('SELECT * FROM teams WHERE id = ?', (b_id,)).fetchone()
+    if not a or not b:
+        return jsonify({'error': 'Team not found'}), 404
+    def sold_to(ids, team):
+        rows = [dict(r) for r in c.execute('SELECT * FROM players WHERE id IN (%s)' % ','.join('?' * len(ids)), ids).fetchall()] if ids else []
+        if len(rows) != len(set(ids)) or any(r['status'] != 'sold' or int(r['team_id'] or 0) != int(team['id']) for r in rows):
+            return None
+        return rows
+    out_a, out_b = sold_to(give_a, a), sold_to(give_b, b)
+    if out_a is None or out_b is None:
+        return jsonify({'error': 'Each player must be in the squad of the team giving them'}), 400
+    check = not data.get('override_category_max')
+    why = trade_problem(c, a, out_b, out_a, check) or trade_problem(c, b, out_a, out_b, check)
+    if why:
+        return jsonify({'error': why[0], 'message': why[1]}), 409
+    batch = uuid.uuid4().hex
+    for p, frm, to in [(p, a, b) for p in out_a] + [(p, b, a) for p in out_b]:
+        move_sold_player(c, p['id'], frm['id'], to['id'], p['sold_price'] or 0)
+        c.execute('''INSERT INTO action_history
+            (action_type, player_id, player_name, old_team_id, new_team_id, old_sold_price, new_sold_price, old_status, new_status, base_price, category, photo_url, batch)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            ('trade', p['id'], p['name'], frm['id'], to['id'], p['sold_price'], p['sold_price'], 'sold', 'sold',
+             p['base_price'], p['category'], p['photo_url'], batch))
+    conn.commit()
+    conn.close()
+    excel_backup_async(g.auction_id)
+    return jsonify({'success': True})
+
+
 # ─── Bids from team owners' phones ───
 # The auctioneer chooses (config team_bidding): "off", phones only watch;
 # "confirm", a phone's bid waits for the auctioneer to accept it on the stage
@@ -4292,6 +4377,20 @@ def undo_last_sale():
 
     # Check action_history stack first
     last_action = c.execute('SELECT * FROM action_history ORDER BY id DESC LIMIT 1').fetchone()
+
+    # A trade is undone whole: every player it moved goes back.
+    if last_action and dict(last_action).get('batch'):
+        batch = dict(last_action)['batch']
+        moved = [dict(r) for r in c.execute('SELECT * FROM action_history WHERE batch = ? ORDER BY id DESC', (batch,)).fetchall()]
+        for act in moved:
+            move_sold_player(c, act['player_id'], act['new_team_id'], act['old_team_id'], act['new_sold_price'] or 0)
+        c.execute('DELETE FROM action_history WHERE batch = ?', (batch,))
+        rem_history = c.execute('SELECT COUNT(*) as c FROM action_history').fetchone()['c']
+        conn.commit()
+        conn.close()
+        excel_backup_async(g.auction_id)
+        names = ', '.join(a['player_name'] or '' for a in reversed(moved))
+        return jsonify({'success': True, 'player_name': 'the trade of ' + names, 'remaining_undos': rem_history})
 
     if last_action:
         act = dict(last_action)

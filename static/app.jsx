@@ -531,6 +531,89 @@ const TeamRosterModal = ({ team, onClose, teams = [], onChanged }) => {
 };
 
 // ═══════════════════════════════════════════════
+// TRADE MODAL — sold players between two teams, at their sale prices
+// ═══════════════════════════════════════════════
+const TradeModal = ({ teams, onClose, onDone }) => {
+    const [a, setA] = useState(teams[0] ? teams[0].id : '');
+    const [b, setB] = useState(teams[1] ? teams[1].id : '');
+    const [fromA, setFromA] = useState([]);
+    const [fromB, setFromB] = useState([]);
+    const [busy, setBusy] = useState(false);
+    const [msg, setMsg] = useState('');
+    const ta = teams.find(t => String(t.id) === String(a));
+    const tb = teams.find(t => String(t.id) === String(b));
+    const toggle = (list, set, id) => set(list.includes(id) ? list.filter(x => x !== id) : [...list, id]);
+    const worth = (team, ids) => ((team && team.players) || []).filter(p => ids.includes(p.id)).reduce((n, p) => n + (p.sold_price || 0), 0);
+    const outA = worth(ta, fromA), outB = worth(tb, fromB);
+    const after = { a: ta ? ta.remaining_budget + outA - outB : 0, b: tb ? tb.remaining_budget + outB - outA : 0 };
+    const ready = ta && tb && String(a) !== String(b) && (fromA.length || fromB.length);
+    const record = async (override) => {
+        setBusy(true); setMsg('');
+        try {
+            const r = await fetch('/api/trade', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ team_a: a, team_b: b, from_a: fromA, from_b: fromB, override_category_max: !!override }) });
+            const d = await r.json().catch(() => ({}));
+            if (r.ok) { onDone(); onClose(); return; }
+            const text = d.message || d.error || 'The trade did not go through';
+            // Past a category maximum: only if the auctioneer confirms.
+            if (!override && d.error === 'category_full' && confirm(text + '\n\nRecord the trade anyway?')) { setBusy(false); return record(true); }
+            setMsg(text);
+        } catch (e) { setMsg('No connection. Try again.'); }
+        setBusy(false);
+    };
+    const side = (team, value, setValue, picked, setPicked, other) => (
+        <div className="flex-1 min-w-0 space-y-2">
+            <select value={value} onChange={e => { setValue(e.target.value); setPicked([]); }}
+                className="w-full bg-slate-950 border border-slate-700 text-white px-3 py-2 rounded-xl text-sm font-bold">
+                {teams.map(t => <option key={t.id} value={t.id} disabled={String(t.id) === String(other)}>{t.name}</option>)}
+            </select>
+            <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-1 pr-1">
+                {((team && team.players) || []).length === 0 && <p className="text-xs text-slate-500 font-bold py-3 text-center">No players yet</p>}
+                {((team && team.players) || []).map(p => (
+                    <label key={p.id} className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer text-sm ${picked.includes(p.id) ? 'border-amber-500 bg-amber-500/10' : 'border-slate-800 bg-slate-950 hover:border-slate-600'}`}>
+                        <input type="checkbox" checked={picked.includes(p.id)} onChange={() => toggle(picked, setPicked, p.id)} />
+                        <span className="flex-1 min-w-0 truncate font-bold text-slate-200">{p.name}</span>
+                        <span className="text-[0.65rem] text-slate-500 font-bold">{p.category}</span>
+                        <span className="text-xs text-amber-400 font-extrabold">{fmtL(p.sold_price)}</span>
+                    </label>
+                ))}
+            </div>
+        </div>
+    );
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md anim-scaleIn p-4" onClick={onClose}>
+            <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-3xl w-full shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center pb-3 border-b border-slate-800">
+                    <div>
+                        <h3 className="fredoka text-xl font-bold text-white">Trade Players</h3>
+                        <p className="text-xs text-slate-400 font-bold">Tick who each team gives. Players move at their sale prices; each purse pays for what it gains.</p>
+                    </div>
+                    <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center"><i className="fa-solid fa-xmark"></i></button>
+                </div>
+                <div className="flex flex-col md:flex-row gap-4 items-stretch">
+                    {side(ta, a, setA, fromA, setFromA, b)}
+                    <div className="flex md:flex-col items-center justify-center text-slate-500 text-xl"><i className="fa-solid fa-right-left"></i></div>
+                    {side(tb, b, setB, fromB, setFromB, a)}
+                </div>
+                {ready && <div className="grid grid-cols-2 gap-3 text-xs font-bold">
+                    {[[ta, after.a], [tb, after.b]].map(([t, left]) => (
+                        <div key={t.id} className={`p-3 rounded-xl border ${left < 0 ? 'border-red-500/50 bg-red-500/10 text-red-300' : 'border-slate-800 bg-slate-950 text-slate-300'}`}>
+                            {t.name} purse: {fmtL(t.remaining_budget)} → <span className="text-white">{fmtL(left)}</span>
+                        </div>
+                    ))}
+                </div>}
+                {msg && <p className="text-sm text-red-400 font-bold">{msg}</p>}
+                <div className="flex justify-end gap-2">
+                    <button onClick={onClose} className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-sm font-bold">Cancel</button>
+                    <button onClick={() => record(false)} disabled={!ready || busy}
+                        className="px-5 py-2 rounded-xl bg-amber-500 disabled:opacity-40 text-black text-sm font-extrabold">{busy ? 'Recording…' : 'Record Trade'}</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ═══════════════════════════════════════════════
 // SHARE MODAL (Dark Themed)
 // ═══════════════════════════════════════════════
 const ShareModal = ({ teams, onClose }) => {
@@ -1975,6 +2058,7 @@ function App() {
     const [wheelMode, setWheelMode] = useState('player');
     const [showTeamRoster, setShowTeamRoster] = useState(null);
     const [showShareModal, setShowShareModal] = useState(false);
+    const [showTradeModal, setShowTradeModal] = useState(false);
     const [editTeam, setEditTeam] = useState(null);
     const [editPlayer, setEditPlayer] = useState(null);
     const [reAnalyze, setReAnalyze] = useState(null); // re-run smart analysis modal
@@ -2582,6 +2666,7 @@ function App() {
             {showWheel && <SpinWheel items={wheelItems} title={wheelTitle} onSelect={handleSpinSelect} onClose={()=>setShowWheel(false)} />}
             {showTeamRoster && <TeamRosterModal team={teams.find(t=>t.id===showTeamRoster.id)||showTeamRoster} teams={teams} onChanged={loadData} onClose={()=>setShowTeamRoster(null)} />}
             {showShareModal && <ShareModal teams={teams} onClose={()=>setShowShareModal(false)} />}
+            {showTradeModal && <TradeModal teams={teams} onDone={loadData} onClose={()=>setShowTradeModal(false)} />}
 
             {storage && (storage.problem || storage.missing_files > 0 || storage.server_only_files > 0) && (
                 <div className="bg-red-600/90 text-white px-6 py-3 text-sm font-bold flex items-start gap-3">
@@ -2649,6 +2734,7 @@ function App() {
                             {divider:true},
                             {icon:'fa-tags', label:'Bargain Bin Round', onClick:startBargainBin},
                             {icon:'fa-rotate-left', label:'Bring Back Passed Players', onClick:reviveAllPassed},
+                            {icon:'fa-right-left', label:'Trade Players', onClick:()=>setShowTradeModal(true)},
                             {icon:'fa-share-nodes', label:'Share Links', onClick:()=>setShowShareModal(true)},
                             {icon:'fa-rotate', label:'Re-sync from Sheet', onClick:resyncSheet},
                             {icon:'fa-images', label:'Fetch Photos from Drive', onClick:fetchDrivePhotos},
@@ -3097,6 +3183,7 @@ function App() {
         {showWheel && <SpinWheel items={wheelItems} title={wheelTitle} onSelect={handleSpinSelect} onClose={()=>setShowWheel(false)} />}
         {showTeamRoster && <TeamRosterModal team={teams.find(t=>t.id===showTeamRoster.id)||showTeamRoster} teams={teams} onChanged={loadData} onClose={()=>setShowTeamRoster(null)} />}
         {showShareModal && <ShareModal teams={teams} onClose={()=>setShowShareModal(false)} />}
+        {showTradeModal && <TradeModal teams={teams} onDone={loadData} onClose={()=>setShowTradeModal(false)} />}
 
         {/* Main Stage */}
         <div className="flex-1 flex flex-col relative z-10">
