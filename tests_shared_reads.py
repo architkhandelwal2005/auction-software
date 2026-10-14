@@ -47,8 +47,8 @@ check('a sale shows on the next poll', [p['name'] for p in live['sold_players']]
 check('and on the team list', admin.get('/api/teams').get_json()[0]['remaining_budget'] == 97)
 check('and on the player list', admin.get('/api/players').get_json()[0]['status'] == 'sold')
 
-# A change made outside a request (a photo downloading in the background)
-# shows once SHARED_READ_SECONDS has passed.
+# A change made outside this server (an edit straight in the database) shows
+# once SHARED_READ_SECONDS has passed.
 A.SHARED_READ_SECONDS = 0.5
 admin.get('/api/players')
 with A.app.test_request_context():
@@ -59,7 +59,24 @@ with A.app.test_request_context():
 check('outside change waits for the window', admin.get('/api/players').get_json()[0]['photo_url'] != '/media/x.png')
 time.sleep(0.6)
 check('and shows after it', admin.get('/api/players').get_json()[0]['photo_url'] == '/media/x.png')
-A.SHARED_READ_SECONDS = 5
+A.SHARED_READ_SECONDS = 30
+
+# The app's own background work (a Drive photo finishing its download) shows
+# at once, without waiting for the window.
+admin.get('/api/players')
+with A.app.test_request_context():
+    A.g.auction_id = aid
+    conn = A.get_db()
+    conn.execute("UPDATE players SET photo_url = 'https://drive.google.com/file/d/xyz/view' WHERE id = ?", (pid,))
+    conn.commit()
+A.shared_reads_changed()   # (as the edit above were made by a request)
+admin.get('/api/players')
+_download = A.download_drive_photo
+A.download_drive_photo = lambda url, auction_id, player_id: '/media/from_drive.png'
+A._hydrate_drive_photos(aid)
+A.download_drive_photo = _download
+check('a downloaded photo shows on the next poll', admin.get('/api/players').get_json()[0]['photo_url'] == '/media/from_drive.png',
+      admin.get('/api/players').get_json()[0]['photo_url'])
 
 # A write that finishes while an answer is being built: that answer is not kept.
 def build_during_write(conn):

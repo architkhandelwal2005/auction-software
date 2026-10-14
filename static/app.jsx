@@ -13,6 +13,7 @@ const speakCommentary = () => {};
 // A second tap while the first is still being saved is ignored: one click
 // must not sell, pass or undo twice.
 const busyActions = new Set();
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;   // "1 player", "2 players"
 const oneAtATime = (key, fn) => async (...args) => {
     if (busyActions.has(key)) return;
     busyActions.add(key);
@@ -1404,10 +1405,12 @@ const SetupWizard = ({ onComplete, auctionInfo }) => {
                         </div>
                     )}
 
+                    {/* What a player sheet needs, for whoever is filling one in. */}
                     <div className="bg-zinc-950 rounded-xl p-3.5 border border-zinc-800 text-xs space-y-1">
-                        <div className="font-extrabold text-zinc-300 mb-2">📁 Sample files in <code className="text-amber-400">sample_data\</code> folder:</div>
-                        {[['sample_society.xlsx','40 players — Residential Society'],['sample_club.xlsx','80 players — Sports Club'],['sample_colony.xlsx','120 players — Colony Event']].map(([f,d])=>
-                            <div key={f}>• <span className="text-white font-bold">{f}</span> <span className="text-zinc-500">— {d}</span></div>)}
+                        <div className="font-extrabold text-zinc-300 mb-2">📋 What the sheet needs</div>
+                        <div>• One row per player, with a <span className="text-white font-bold">Name</span> column. That is the only must.</div>
+                        <div>• Optional: <span className="text-white font-bold">Photo</span> (a Google Drive or web link), <span className="text-white font-bold">Category</span>, <span className="text-white font-bold">Base Price</span>.</div>
+                        <div>• Any other columns (Role, Age, City, Batting…) can be shown on screen. Phone numbers and emails never are.</div>
                     </div>
                 </div>}
 
@@ -1872,7 +1875,7 @@ const AuctionChooser = ({ onOpen }) => {
                                         </div>
                                         <div className="text-[11px] text-slate-500 mt-1">
                                             {a.created_at ? a.created_at.slice(0, 10) : ''}
-                                            {a.players ? ` · ${a.players} players` : ''}
+                                            {a.players ? ` · ${plural(a.players, 'player')}` : ''}
                                             {a.teams ? ` · ${a.teams} teams` : ''}
                                             {a.status === 'ended' && left !== null && ` · data kept ${left} more day${left === 1 ? '' : 's'}`}
                                             {a.status === 'purged' && ' · report only'}
@@ -2426,17 +2429,26 @@ function App() {
             return;
         }
 
-        // Soft warning only: category max reached
+        // Category maximum: the server refuses the sale unless the
+        // auctioneer confirms it here (the hammer may already have fallen).
         const rule = catRules.find(r => r.category === currentPlayer.category);
         const currentCatCount = (chosenTeam.players || []).filter(p => p.category === currentPlayer.category).length;
+        let override = false;
         if(rule && currentCatCount >= rule.max_per_team) {
             if(!confirm(`⚠️ WARNING: ${chosenTeam.name} has already reached the max limit of ${rule.max_per_team} for ${currentPlayer.category}! Proceed anyway?`)) {
                 return;
             }
+            override = true;
         }
 
-        const res = await fetch('/api/sell_player',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player_id:currentPlayer.id,team_id:parseInt(teamId),sold_price:price})});
-        const json = await res.json().catch(()=>({}));
+        const sell = (extra) => fetch('/api/sell_player',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({player_id:currentPlayer.id,team_id:parseInt(teamId),sold_price:price,override_category_max:override,...extra})});
+        let res = await sell({});
+        let json = await res.json().catch(()=>({}));
+        if (res.status === 409 && json.error === 'category_full' && confirm(`${json.message}\n\nRecord the sale anyway?`)) {
+            res = await sell({ override_category_max: true });
+            json = await res.json().catch(()=>({}));
+        }
         if(!res.ok || json.error){
             alert('🚫 Sale rejected: ' + (json.message || json.error || 'Unknown error'));
             await loadData();
@@ -2998,7 +3010,7 @@ function App() {
 
                     <button onClick={runReanalyze} disabled={reAnalyze.loading}
                         className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2">
-                        {reAnalyze.loading ? <><i className="fa-solid fa-spinner animate-spin"></i>Analyzing…</> : <><i className="fa-solid fa-bolt"></i>Run Analysis on {players.length} players</>}
+                        {reAnalyze.loading ? <><i className="fa-solid fa-spinner animate-spin"></i>Analyzing…</> : <><i className="fa-solid fa-bolt"></i>Run Analysis on {plural(players.length, 'player')}</>}
                     </button>
 
                     {reAnalyze.cats && <div className="space-y-2">
@@ -3007,7 +3019,7 @@ function App() {
                         </div>
                         {reAnalyze.cats.map((c,i)=>(
                             <div key={i} className="flex items-center justify-between gap-2 bg-slate-950 border border-slate-800 rounded-xl p-2.5">
-                                <div className="min-w-0"><div className="font-bold text-white text-xs truncate">{c.category}</div><div className="text-[0.55rem] text-slate-500 font-bold">{c.count} players</div></div>
+                                <div className="min-w-0"><div className="font-bold text-white text-xs truncate">{c.category}</div><div className="text-[0.55rem] text-slate-500 font-bold">{plural(c.count, 'player')}</div></div>
                                 <div className="flex gap-2 shrink-0">
                                     <input type="number" value={c.per_team_min} onChange={e=>setReAnalyze(s=>{const cats=[...s.cats];cats[i]={...cats[i],per_team_min:e.target.value};return {...s,cats};})} className="w-14 bg-slate-900 border border-slate-700 text-white p-1.5 rounded-lg text-xs font-bold text-center" />
                                     <input type="number" value={c.per_team_max} onChange={e=>setReAnalyze(s=>{const cats=[...s.cats];cats[i]={...cats[i],per_team_max:e.target.value};return {...s,cats};})} className="w-14 bg-slate-900 border border-slate-700 text-white p-1.5 rounded-lg text-xs font-bold text-center" />
@@ -3197,7 +3209,7 @@ function App() {
                                 <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-md" style={{background:t.color||'#3b82f6'}}>
                                     {t.logo_url ? <img src={t.logo_url} className="w-5 h-5 object-contain" /> : t.name[0]}
                                 </div>
-                                <div><h4 className="font-extrabold text-white text-xs truncate max-w-[130px]">{t.name}</h4><span className="text-[0.6rem] text-slate-500 font-bold">{t.player_count||0}{t.target_squad_size ? `/${t.target_squad_size}` : ''} players</span></div>
+                                <div><h4 className="font-extrabold text-white text-xs truncate max-w-[130px]">{t.name}</h4><span className="text-[0.6rem] text-slate-500 font-bold">{t.target_squad_size ? `${t.player_count||0}/${t.target_squad_size} players` : plural(t.player_count||0, 'player')}</span></div>
                             </div>
                             <div className="text-right"><div className="text-[0.55rem] text-slate-500 font-bold uppercase">Purse</div><div className={`fredoka font-bold text-base ${pct>20?'text-green-400':'text-red-400'}`}>{fmtL(t.remaining_budget)}</div></div>
                         </div>

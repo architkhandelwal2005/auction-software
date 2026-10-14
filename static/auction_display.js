@@ -1481,6 +1481,10 @@
       const team = adminTeams.find(t => String(t.id) === String(teamId));
       if (!team) return;
       const next = stepsFrom(adminBid, 1);
+      if (team.category_full) {
+        toast(team.name + ' already has the most ' + (adminPlayer.category || '') + ' players allowed', 'err');
+        return;
+      }
       const max = team.max_allowed_bid;
       if (max != null && next > max) {
         toast(team.name + ' cannot bid ' + money(next) + ' (max ' + money(max) + ')', 'err');
@@ -1512,6 +1516,23 @@
         if (e.key === 'Enter') { e.preventDefault(); commitTypedBid(); adminBidDisplay.blur(); }
       });
       adminBidDisplay.addEventListener('blur', commitTypedBid);
+    }
+
+    /* Record a sale. Past the team's maximum for the player's category the
+       server refuses unless the auctioneer confirms it, as the hammer may
+       already have fallen in the room. */
+    async function postSale(body) {
+      const send = extra => fetch('/api/sell_player', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(Object.assign({}, body, extra))
+      });
+      const res = await send({});
+      if (res.status !== 409) return res;
+      const j = await res.clone().json().catch(() => ({}));
+      if (j.error === 'category_full' && confirm(j.message + '\n\nRecord the sale anyway?')) {
+        return send({ override_category_max: true });
+      }
+      return res;
     }
 
     /* How many players of the current player's category a team already holds,
@@ -1885,10 +1906,9 @@
       }
 
       try {
-        const res = await fetch('/api/sell_player', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ player_id: adminPlayer.id, team_id: parseInt(teamId), sold_price: adminBid })
-        });
+        // Confirmed above when the team is at its category maximum.
+        const res = await postSale({ player_id: adminPlayer.id, team_id: parseInt(teamId), sold_price: adminBid,
+                                     override_category_max: !!(q && q.atMax) });
         if (!res.ok) { const j = await res.json().catch(()=>({})); throw new Error(j.message || j.error || ('HTTP ' + res.status)); }
         SFX.sold();
         confetti();
@@ -2072,10 +2092,7 @@
         const name = adminPlayer && adminPlayer.name;
         if (!adminPlayer || !adminPlayer.id) { toast('No player on the block', 'err'); return; }
         try {
-          const res = await fetch('/api/sell_player', {
-            method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ player_id: adminPlayer.id, team_id: parseInt(team.id), sold_price: price })
-          });
+          const res = await postSale({ player_id: adminPlayer.id, team_id: parseInt(team.id), sold_price: price });
           if (!res.ok) { const j = await res.json().catch(()=>({})); throw new Error(j.message || j.error || ('HTTP ' + res.status)); }
           spinModal.style.display = 'none';
           SFX.sold();

@@ -62,6 +62,31 @@
             return <div style={{width:size,height:size,borderRadius:'50%',background:bg,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:size*0.35,flexShrink:0}}>{initials}</div>;
         };
 
+        // A logo on this white page. Logos made for dark screens (white text,
+        // a white crest) vanish on white, so a light logo gets a dark tile:
+        // its opaque pixels' brightness is measured once it loads.
+        const LogoOnWhite = ({ src, className }) => {
+            const [dark, setDark] = useState(false);
+            const measure = (e) => {
+                try {
+                    const img = e.target, c = document.createElement('canvas');
+                    c.width = c.height = 32;
+                    const x = c.getContext('2d');
+                    x.drawImage(img, 0, 0, 32, 32);
+                    const px = x.getImageData(0, 0, 32, 32).data;
+                    let sum = 0, n = 0;
+                    for (let i = 0; i < px.length; i += 4) {
+                        if (px[i + 3] < 128) continue;   // transparent: the page shows through
+                        sum += 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]; n++;
+                    }
+                    setDark(n > 0 && sum / n > 200);
+                } catch (err) { /* another site's image: leave it as it is */ }
+            };
+            return <img src={src} alt="" onLoad={measure} className={className}
+                style={dark ? { background: '#0f172a', borderColor: '#0f172a', padding: 4, borderRadius: 10 } : {}} />;
+        };
+        const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
         // Team logo (or a colored initial square when there isn't one) — the
         // same fallback pattern used throughout the admin and team dashboards.
         const TeamMark = ({ team, size = 40 }) => (
@@ -141,7 +166,7 @@
                         <div className="flex justify-between items-start border-b border-gray-200 pb-6">
                             <div>
                                 <div className="flex items-center gap-3 mb-2">
-                                    {orgLogo && <img src={orgLogo} alt="" className="h-11 w-11 object-contain rounded-lg border border-gray-200 p-0.5" />}
+                                    {orgLogo && <LogoOnWhite src={orgLogo} className="h-11 w-11 object-contain rounded-lg border border-gray-200 p-0.5" />}
                                     {orgName && <span className="text-sm font-extrabold uppercase tracking-widest text-amber-600">{orgName}</span>}
                                 </div>
                                 <h1 className="fredoka text-3xl font-bold text-gray-900">{eventName}</h1>
@@ -156,7 +181,7 @@
                                 {(sponsorName || sponsorLogo) && (
                                     <div className="mt-3 flex flex-col items-end gap-1">
                                         <span className="text-[0.6rem] font-extrabold uppercase tracking-widest text-gray-400">Official Sponsor</span>
-                                        {sponsorLogo && <img src={sponsorLogo} alt="" className="h-10 max-w-[150px] object-contain" />}
+                                        {sponsorLogo && <LogoOnWhite src={sponsorLogo} className="h-10 max-w-[150px] object-contain" />}
                                         {sponsorName && <span className="text-sm font-extrabold text-gray-800">{sponsorName}</span>}
                                     </div>
                                 )}
@@ -167,15 +192,15 @@
                         <div className="grid grid-cols-4 gap-4 mt-6">
                             <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
                                 <p className="text-xs text-blue-600 font-extrabold uppercase">Total Pool</p>
-                                <p className="fredoka text-2xl font-bold text-blue-900">{stats.total || 0} Players</p>
+                                <p className="fredoka text-2xl font-bold text-blue-900">{plural(stats.total || 0, 'Player')}</p>
                             </div>
                             <div className="p-4 bg-green-50 rounded-2xl border border-green-100">
                                 <p className="text-xs text-green-600 font-extrabold uppercase">Players Sold</p>
-                                <p className="fredoka text-2xl font-bold text-green-900">{stats.sold || 0} Players</p>
+                                <p className="fredoka text-2xl font-bold text-green-900">{plural(stats.sold || 0, 'Player')}</p>
                             </div>
                             <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100">
                                 <p className="text-xs text-orange-600 font-extrabold uppercase">Unsold Players</p>
-                                <p className="fredoka text-2xl font-bold text-orange-900">{stats.unsold || 0} Players</p>
+                                <p className="fredoka text-2xl font-bold text-orange-900">{plural(stats.unsold || 0, 'Player')}</p>
                             </div>
                             <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100">
                                 <p className="text-xs text-purple-600 font-extrabold uppercase">Total Spend</p>

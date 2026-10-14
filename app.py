@@ -754,6 +754,7 @@ def _hydrate_drive_photos(auction_id):
                             ' WHERE id=' + placeholder + ' AND photo_url=' + placeholder,
                             (local, row['id'], row['photo_url']))
                 conn.commit()
+                shared_reads_changed()   # screens show it now
                 done += 1
             else:
                 # Could not store the bytes. Rewrite the link to a form the
@@ -765,6 +766,7 @@ def _hydrate_drive_photos(auction_id):
                                 ' WHERE id=' + placeholder + ' AND photo_url=' + placeholder,
                                 (direct, row['id'], row['photo_url']))
                     conn.commit()
+                    shared_reads_changed()
                     linked += 1
                 else:
                     failed += 1
@@ -1535,11 +1537,14 @@ def resolve_auction():
 # (about 75 KB), so a dozen screens pulled gigabytes an hour out of Supabase,
 # whose free plan allows 5 GB of egress a month. These answers are the same for
 # everyone, so one is built and shared until something changes. Every write
-# request clears them the moment it finishes; SHARED_READ_SECONDS bounds how
-# long a change made outside a request (a photo downloading in the background)
-# takes to show. Only for views whose answer depends on the auction alone: not
-# on the viewer, nor on query arguments.
-SHARED_READ_SECONDS = 5
+# request clears them the moment it finishes, and so does the app's own
+# background work (a photo finishing its download: shared_reads_changed).
+# SHARED_READ_SECONDS only bounds how long a change made outside this server
+# altogether (an edit straight in the database) takes to show; each rebuild
+# reads the whole auction again, so it is not short. Only for views whose
+# answer depends on the auction alone: not on the viewer, nor on query
+# arguments.
+SHARED_READ_SECONDS = 30
 _shared_reads = {}
 _shared_reads_gen = [0]
 _shared_reads_lock = threading.Lock()
@@ -1640,14 +1645,20 @@ def name_the_auction(response):
     return response
 
 
+def shared_reads_changed():
+    """Something changed: drop the shared answers, and wake the open streams
+    to send it."""
+    with _shared_reads_lock:
+        _shared_reads_gen[0] += 1
+        _shared_reads.clear()
+    with _live_changed:
+        _live_changed.notify_all()
+
+
 @app.after_request
 def clear_shared_reads(response):
     if request.method not in ('GET', 'HEAD', 'OPTIONS'):
-        with _shared_reads_lock:
-            _shared_reads_gen[0] += 1
-            _shared_reads.clear()
-        with _live_changed:
-            _live_changed.notify_all()
+        shared_reads_changed()
     return response
 
 
@@ -2711,6 +2722,9 @@ def format_team_metrics(team_dict, players_list, rules_list, config_dict, catego
             'at_max': have >= max_req
         })
     td['fulfillment'] = fulfillment
+    # The player on the block's category is already at this team's maximum:
+    # screens show the team cannot bid, and a sale to it is refused.
+    td['category_full'] = bool(category) and any(f['at_max'] for f in fulfillment if f['category'] == category)
 
     # Max Allowed Bid — single source of truth (shared with sell enforcement)
     rem_budget = float(td['remaining_budget'])
@@ -3889,6 +3903,18 @@ def sell_player():
                    % (fmt_lakhs(price), team['name'], fmt_lakhs(max_bid)))
         return jsonify({'error': msg}), 400
 
+    # A category's maximum per team. The hammer may already have fallen in the
+    # room, so the console can still record such a sale, but only on purpose
+    # (override_category_max, after the auctioneer confirms), never by a slip.
+    rule = next((r for r in rules if r['category'] == player['category']), None)
+    if rule and rule['max_per_team'] is not None and not data.get('override_category_max'):
+        have = cat_counts.get(player['category'] or 'Unknown', 0)
+        if have >= rule['max_per_team']:
+            conn.close()
+            return jsonify({'error': 'category_full',
+                            'message': '%s already has %d of %d %s players.'
+                                       % (team['name'], have, rule['max_per_team'], player['category'])}), 409
+
     # Record in action_history for multi-level undo
     c.execute('''INSERT INTO action_history 
         (action_type, player_id, player_name, old_team_id, new_team_id, old_sold_price, new_sold_price, old_status, new_status, base_price, category, photo_url)
@@ -4516,11 +4542,11 @@ def get_live_stream():
                 quiet_since = time.monotonic()
                 yield ': ping\n\n'
             # Wait for the next change, unless one came while this was sending;
-            # otherwise look again once the shared answer may have expired, for
-            # changes made outside a request.
+            # otherwise look again in time to ping, or once the shared answer
+            # may have expired.
             with _live_changed:
                 if _shared_reads_gen[0] == seen:
-                    _live_changed.wait(SHARED_READ_SECONDS)
+                    _live_changed.wait(min(SHARED_READ_SECONDS, STREAM_PING_SECONDS))
 
     return app.response_class(events(), mimetype='text/event-stream', headers={
         'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})

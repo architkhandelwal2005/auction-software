@@ -83,6 +83,7 @@ A.build_live_report = _build
 
 # A stream ends after a while and the browser opens a new one.
 A.STREAM_MAX_SECONDS = 0.5
+A.STREAM_PING_SECONDS = 1   # how often a quiet stream looks again
 short = events(anon.get('/api/live_stream', buffered=False))
 next(short)
 started = time.time()

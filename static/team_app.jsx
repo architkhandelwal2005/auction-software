@@ -212,7 +212,12 @@ const TeamApp = () => {
                                 <div className="mt-6 pt-6 border-t border-zinc-800 flex items-center justify-between">
                                     <div>
                                         <div className="text-xs font-extrabold text-zinc-500 uppercase tracking-widest mb-1">Your Max Allowed Bid</div>
-                                        {maxBid >= (liveData.current_bid || liveData.current_player.base_price) ? (
+                                        {team.category_full ? (
+                                            // At the category's maximum: no bid on this player at all.
+                                            <div className="text-lg fredoka font-bold text-red-500 flex items-center gap-2">
+                                                <i className="fa-solid fa-ban"></i> Your {liveData.current_player.category} slots are full
+                                            </div>
+                                        ) : maxBid >= (liveData.current_bid || liveData.current_player.base_price) ? (
                                             <div className="text-2xl fredoka font-bold text-emerald-400">{fmtL(maxBid)}</div>
                                         ) : maxBid >= (liveData.current_player.base_price || 0) ? (
                                             // The team can bid, just not this high: the bid is over its limit.
@@ -314,7 +319,7 @@ const TeamApp = () => {
                                     </div>
                                     <div className="text-right shrink-0 ml-2">
                                         <div className="text-amber-400 font-bold text-sm">{fmtL(t.remaining_budget)}</div>
-                                        <div className="text-[0.65rem] text-zinc-500 font-bold">{t.players?.length || 0} players</div>
+                                        <div className="text-[0.65rem] text-zinc-500 font-bold">{t.players?.length || 0} {(t.players?.length || 0) === 1 ? 'player' : 'players'}</div>
                                     </div>
                                 </div>
                             ))}
